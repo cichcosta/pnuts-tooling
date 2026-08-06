@@ -1,0 +1,441 @@
+// FUNCAO: bproz_mc_insert_npc_fn()
+// BPROZ - Insert - NPC
+// 2013-09-23 - OZANA SPINOSA - Exibir na geração de NPC um alerta informando se já existe documento para INV podendo dar cont. no processo.
+
+x_mc_inserir_log_fn("BPROZ", "bproz_mc_insert_npc_fn", "BPROZBR3");
+
+// Work
+wdatetime = x_mc_br_get_date_server_fn();
+wdate = wdatetime.substring(0, 10);
+wtime = wdatetime.substring(11, 19);
+row = wrows.elementAt(0);
+
+/*
+ * ! Rateio de impostos caso necessário
+ */
+zglobals.RATEIA_IMP = false;
+
+wsel = "";
+wsel += " SELECT COUNT(*) ";
+wsel += " FROM oitot0 AS a WITH(NOLOCK) ";
+wsel += " WHERE ";
+wsel += `     a.iorg = '${row.iorg.trim()}' `;
+wsel += `     AND a.iprot = '${row.iprot.trim()}' `;
+wsel += `     AND a.ipro = '${row.ipro.trim()}' `;
+wsel += "     AND 0.00 IN (a.mvalort2, a.mvalort3, a.mvalort4, a.mvalort5, a.mvalort6) ";
+ratear = getSQLNumber(wsel);
+
+if (ratear > 0) {
+  zglobals.RATEIA_IMP = true;
+  bproz_mc_rateio_imp_fn(row);
+}
+
+bproz_mc_recalc_fn(row);
+row.refreshRow();
+
+widoct = "NPC";
+wcr = "AX";
+wctcf = "AX-IMP";
+
+wsel = "";
+wsel += " Select top 1 mvalor, dpre, hpre ";
+wsel += " from bpret0 WITH(NOLOCK) ";
+wsel += ` Where iprot = '${row.iprot.trim()}' `;
+wsel += ` and ipro    = '${row.ipro.trim()}' `;
+wsel += " and cpre     in ('NPC') ";
+wsel += " order by zk DESC ";
+wnpc = getRow("BPRE", wsel);
+println(`wselnpc  >>>>>>>>>> ${wsel}`);
+flush();
+
+if (wnpc.wdcode !== 100) {
+  wsel = "";
+  wsel += " Select count(cpre) ";
+  wsel += " from bpret0 WITH(NOLOCK) ";
+  wsel += ` Where iprot  = '${row.iprot.trim()}' `;
+  wsel += ` and ipro     = '${row.ipro.trim()}' `;
+  wsel += " and cpre     in ('AQT','AVL','INC','EXC') ";
+  wsel += ` and dpre = '${wnpc.dpre}' `;
+  weventmesmodia = getSQLNumber(wsel);
+
+  wsel = "";
+  wsel += " Select count(cpre) ";
+  wsel += " from bpret0 WITH(NOLOCK) ";
+  wsel += ` Where iprot  = '${row.iprot.trim()}' `;
+  wsel += ` and ipro     = '${row.ipro.trim()}' `;
+  wsel += " and cpre     in ('AQT','AVL','INC','EXC') ";
+  wsel += ` and dpre >= '${wnpc.dpre}' `;
+  if (weventmesmodia > 0) {
+    wsel += ` and hpre > '${wnpc.hpre}' `;
+  }
+  wevent = getSQLNumber(wsel);
+  println(`wsel wevent>>>>>>>>>> ${wsel}`);
+  flush();
+
+  if (wevent > 0) {
+    wsel = "";
+    wsel += " Select (round(a.mvalor,2) - ";
+    wsel += "(select top 1 vvalor from bpret0 b WITH(NOLOCK) where b.iprot = a.iprot and ipro = a.ipro ";
+    wsel += "           and cpre = 'NPC' order by zk DESC)) ";
+    wsel += " from bprot0 a WITH(NOLOCK) ";
+    wsel += ` Where a.iprot  = '${row.iprot.trim()}'`;
+    wsel += ` and a.ipro     = '${row.ipro.trim()}'`;
+    winv = getSQLNumber(wsel);
+
+    println(`SEL? >>>>>>>>>>>>>>>>>>>>>>>>>${wsel}`);
+    flush();
+    println(`HOUVE ALTERAÇÃO? >>>>>>>>>>>>>>>>>>>>>>>>>${winv}`);
+    flush();
+
+    if (winv > 0 || winv < 0) {
+      if (!x_mc_get_access_fn("BPROZ-0002", "")) {
+        throwError("Houve alteração na INV após a confirmação da NPC. Entre em contato com a Gestão.");
+      }
+    }
+  }
+} else {
+  if (!x_mc_get_access_fn("BPROZ-0002", "")) {
+    throwError("Usuário Não Autorizado. Entre em contato com a Gestão.");
+  }
+}
+
+// Critica
+wsel = "select count(*) ";
+wsel += "  from ddoct0 WITH(NOLOCK) ";
+wsel += ` where iorg  = '${row.iorg}'`;
+wsel += `   and iprot = '${row.iprot}'`;
+wsel += `   and ipro  = '${row.ipro}'`;
+wsel += "   and idoct = 'NPC' ";
+wqtnpc = getSQLNumber(wsel);
+
+cursor = MConnection;
+:: getMCursor()
+
+// Confirmação
+if (wqtnpc > 0) {
+  cursor.commitWork();
+  wsn = MUtil;
+  :: getStringInput(m, "Existe NPC gerado", "Confirma Geração do Documento (S/N)", "S")
+  cursor.beginWork()
+  wsn = wsn.toUpperCase().trim()
+  if (wsn !== "S") {
+    throwError("Operação Cancelada!");
+  }
+}
+
+// Encontra sequencial
+wddoc = getMRow("DDOC0");
+wddoc.iorg = row.iorg;
+wddoc.ientt = row.ientt;
+wddoc.ient = row.ient;
+wddoc.idoct = widoct;
+wddoc.idoc = `${row.iuorg.trim()}/%`;
+widoc = MUtil;
+:: seqNumber("idoc", wddoc.idoc, wddoc)
+
+println("############# 1 " + widoc)
+flush()
+
+// Insere Documento
+wddoc = getMRow("DDOC0");
+wddoc.iorg = row.iorg;
+wddoc.ientt = row.ientt;
+wddoc.ient = row.ient;
+wddoc.idoct = widoct;
+wddoc.idoc = widoc;
+wddoc.iuorgt = "UO";
+wddoc.iuorg = row.iuorg;
+wddoc.iuorgt2 = "AR";
+if (wddoc.iuorg.trim() === "F00") {
+  wddoc.iuorg2 = `B${row.iuorg.substring(1, 3)}`;
+} else {
+  wddoc.iuorg2 = `I${row.iuorg.substring(1, 3)}`;
+}
+wddoc.ndoc = `IMP - INVOICE ${row.ipro.trim()}`;
+wddoc.iprot = row.iprot;
+wddoc.ipro = row.ipro;
+wddoc.ddoc = row.dpro;
+wddoc.ddoces = row.ddoc;
+wddoc.ddocv = wdate;
+wddoc.dcnt = wdate;
+wddoc.cr = wcr;
+wddoc.ctcf = wctcf;
+wddoc.idoct2 = widoct;
+wddoc.idoc2 = widoc;
+wddoc.ientt2 = row.ientt;
+wddoc.ient2 = row.ient;
+wddoc.cmc = "BRL";
+wddoc.mcm = row.mcm;
+wddoc.vcm = "BRL";
+wddoc.ycm = "BRL";
+wddoc.iixp = getNctx("BPROZ*CMP1", row.cmp1);
+wddoc.qcamb = 1.0;
+wddoc.cdoce = ""; // Local Pagamento
+wddoc.iixp2 = ""; // Local - Entrega
+wddoc.ccl = row.cmp4; // Tipo Frete
+wddoc.c3 = ""; // Montagem
+wddoc.idol = ""; // Faturamento
+wddoc.c2 = ""; // Tipo de Venda
+wddoc.c1 = ""; // Sistema Operacional
+wddoc.cstc = "PD";
+wddoc.dstc = wdate;
+wddoc.csto = "PD";
+wddoc.dsto = wdate;
+wddoc.insertRow();
+wddoc.setZCommand("INSERT_ROW", "AF", " ");
+
+println(`############# 2 ${widoc}`);
+flush();
+
+// Valor Adições
+wsel = "";
+wsel += " select a.qqcoef1 ";
+wsel += "   from bctxt0 a WITH(NOLOCK) ";
+wsel += "  where a.ictx  = 'BCTX*ADICOES' ";
+wsel += `    and a.ivalk = '${row.cm1.trim()}' `;
+mvaladic = getSQLNumber(wsel);
+wresto = mvaladic;
+
+// Valor Total
+wsel = "";
+wsel += " select sum(a.mvalor) ";
+wsel += "   from oitot0 a WITH(NOLOCK) ";
+wsel += `  where a.iorg  = '${row.iorg}' `;
+wsel += `    and a.iprot = '${row.iprot}' `;
+wsel += `    and a.ipro  = '${row.ipro}' `;
+wsel += "    and a.ipsr  <> '' ";
+wtotal = getSQLNumber(wsel);
+
+println(`############# 3 ${widoc}`);
+flush();
+
+// ########  Processo Itens  ########
+wsel = "";
+wsel += " select a.*, b.npsr, b.cstat2 ";
+wsel += "   from oitot0 a WITH(NOLOCK),bpsrt0 b WITH(NOLOCK) ";
+wsel += `  where a.iorg  = '${row.iorg}' `;
+wsel += `    and a.iprot = '${row.iprot}' `;
+wsel += `    and a.ipro  = '${row.ipro}' `;
+wsel += "    and a.iorg  = b.iorg ";
+wsel += "    and a.ipsr  = b.ipsr ";
+wsel += "    and a.ipsr  <> '' ";
+voito = getRows("OITO", wsel);
+wsize = voito.size();
+
+foreach;
+woito(voito.elements());
+{
+  wxstk = "+ppppppEET";
+
+  // Rateio de Depesas Acessórias
+  wper = woito.mvalor / wtotal;
+  wval = round(mvaladic * wper, 2);
+  if (wsize > 1) {
+    wresto = wresto - wval;
+  } else {
+    wval = wresto;
+  }
+
+  // Insere DDOL
+  wddol = getMRow("DDOL");
+  wddol.iorg = woito.iorg;
+  wddol.idoct = widoct;
+  wddol.idoc = widoc;
+  wddol.ientt = row.ientt;
+  wddol.ient = row.ient;
+  wddol.iuorgt = "UO";
+  wddol.iuorg = row.iuorg;
+  wddol.iuorgt2 = "AR";
+  if (wddoc.iuorg.trim() === "F00") {
+    wddol.iuorg2 = `B${row.iuorg.substring(1, 3)}`;
+    wddol.irct1 = "CP";
+  } else {
+    wddol.iuorg2 = `I${row.iuorg.substring(1, 3)}`;
+    wddol.irct1 = "CC";
+  }
+  wddol.iprot = woito.iprot;
+  wddol.ipro = woito.ipro;
+  wddol.ipsr = woito.ipsr;
+  wddol.ipsrlp = "*";
+  wddol.cci = "ND";
+  wddol.ccf = "N";
+  wddol.ci = "N";
+  wddol.ci2 = "";
+  wddol.ndoc = woito.npsr.trim();
+  wddol.qpsr = woito.qpsr;
+  wddol.mvalun = woito.mvalun + woito.mvalunc;
+  wddol.ddoc = row.dpro;
+  wddol.ddoces = row.ddoc;
+  wddol.dcnt = wdate;
+  wddol.cr = wcr;
+  wddol.ctcf = wctcf;
+  wddol.zcst = "us";
+  wddol.cstc = "PD";
+  wddol.dstc = wdate;
+  wddol.csto = "PD";
+  wddol.dsto = wdate;
+  wddol.xstk = wxstk;
+  wddol.cmc = "BRL";
+  wddol.mcm = "BRL";
+  wddol.vcm = "BRL";
+  wddol.ycm = "BRL";
+  wddol.qcamb = 1.0;
+  wddol.idol = woito.iito;
+  wddol.insertRow();
+  wddol.setZCommand("INSERT_ROW", "AF", " ");
+
+  if (woito.mvalort2 > 0) {
+    wddol.refresh();
+    wddol.idol = woito.iito;
+    wddol.ndoc = "II";
+    wddol.irct1 = "II";
+    wddol.qpsr = 0.0;
+    wddol.mvalun = 0.0;
+    wddol.mvallq = woito.mvalort2;
+    wddol.mvalor = woito.mvalort2;
+    wddol.iixp = woito.qpsrc;
+    wddol.xstk = wxstk;
+    wddol.insertRow();
+    wddol.setZCommand("INSERT_ROW", "AF", " ");
+  }
+  if (woito.mvalort3 > 0) {
+    wddol.refresh();
+    wddol.idol = woito.iito;
+    wddol.ndoc = "IPI";
+    wddol.irct1 = "IP";
+    wddol.qpsr = 0.0;
+    wddol.mvalun = 0.0;
+    wddol.mvallq = woito.mvalort3;
+    wddol.mvalor = woito.mvalort3;
+    wddol.iixp = woito.qpsrc2;
+    wddol.xstk = wxstk;
+    wddol.insertRow();
+    wddol.setZCommand("INSERT_ROW", "AF", " ");
+  }
+  if (woito.mvalort4 > 0) {
+    wddol.refresh();
+    wddol.idol = woito.iito;
+    wddol.ndoc = "PIS";
+    wddol.irct1 = "PI";
+    wddol.qpsr = 0.0;
+    wddol.mvalun = 0.0;
+    wddol.mvallq = woito.mvalort4;
+    wddol.mvalor = woito.mvalort4;
+    wddol.iixp = woito.qpsrc3;
+    wddol.xstk = wxstk;
+    wddol.insertRow();
+    wddol.setZCommand("INSERT_ROW", "AF", " ");
+  }
+  if (woito.mvalort5 > 0) {
+    wddol.refresh();
+    wddol.idol = woito.iito;
+    wddol.ndoc = "COFINS";
+    wddol.irct1 = "CF";
+    wddol.qpsr = 0.0;
+    wddol.mvalun = 0.0;
+    wddol.mvallq = woito.mvalort5;
+    wddol.mvalor = woito.mvalort5;
+    wddol.iixp = woito.qpsrex;
+    wddol.xstk = wxstk;
+    wddol.insertRow();
+    wddol.setZCommand("INSERT_ROW", "AF", " ");
+  }
+  if (woito.mvalort6 > 0 && inList(row.iuorg.trim(), ["F00", "F03", "F38"])) {
+    //..............
+    wddol.refresh();
+    wddol.idol = woito.iito;
+    wddol.ndoc = "ICMS";
+    wddol.irct1 = "IM";
+    wddol.qpsr = 0.0;
+    wddol.mvalun = 0.0;
+    wddol.mvallq = woito.mvalort6;
+    wddol.mvalor = woito.mvalort6;
+    wddol.iixp = woito.pi;
+    wddol.xstk = wxstk;
+    wddol.insertRow();
+    wddol.setZCommand("INSERT_ROW", "AF", " ");
+  }
+  if (woito.mvalorex > 0 && inList(row.iuorg.trim(), ["F00", "F03", "F38"])) {
+    //..............
+    wddol.refresh();
+    wddol.idol = woito.iito;
+    wddol.ndoc = "ICMSST";
+    wddol.irct1 = "IM";
+    wddol.qpsr = 0.0;
+    wddol.mvalun = 0.0;
+    wddol.mvallq = woito.mvalorex;
+    wddol.mvalor = woito.mvalorex;
+    wddol.iixp = "4.71"; //  4.71 "3.82" alteração solicitada por Tom.
+    wddol.xstk = wxstk;
+    wddol.insertRow();
+    wddol.setZCommand("INSERT_ROW", "AF", " ");
+  }
+  if (woito.mvalort7 > 0) {
+    wddol.refresh();
+    wddol.idol = woito.iito;
+    wddol.ndoc = "AFRMM";
+    wddol.irct1 = "AF";
+    wddol.qpsr = 0.0;
+    wddol.mvalun = 0.0;
+    wddol.mvallq = woito.mvalort7;
+    wddol.mvalor = woito.mvalort7;
+    wddol.iixp = "0.00";
+    wddol.xstk = wxstk;
+    wddol.insertRow();
+    wddol.setZCommand("INSERT_ROW", "AF", " ");
+  }
+  if (wval > 0) {
+    wddol.refresh();
+    wddol.idol = woito.iito;
+    wddol.ndoc = "DESPACESS";
+    wddol.irct1 = "DA";
+    wddol.qpsr = 0.0;
+    wddol.mvalun = 0.0;
+    wddol.mvallq = wval;
+    wddol.mvalor = wval;
+    wddol.xstk = wxstk;
+    wddol.insertRow();
+    wddol.setZCommand("INSERT_ROW", "AF", " ");
+  }
+}
+
+// Recalcula, Atualiza Cabeçalho
+executeProcedure("ddocpcal", [row.iorg, row.ientt, row.ient, widoct, widoc, "RECALC_ROW", 0]);
+
+wddoc.refreshRow();
+
+//conc4_fm_validar_cota_fn(wddoc)
+wvalida = conc4_fm_validar_cota_fn(wddoc);
+if (wvalida !== "") {
+  throwError(wvalida);
+}
+
+concf_fm_validar_orcamento_fn(wddoc);
+
+//if (MLogin::getUser().trim() != "ospinosa"){
+// Confirmar
+wddoc.refreshRow();
+wddoc.cstc = "E0";
+wddoc.dstc = wdate;
+wddoc.zcst = "ro";
+wddoc.updateRow(wddoc);
+wddoc.setZCommand("VERIFY_ROW", "AF", " ");
+//}
+
+// Marcar Como Enviado
+wddoc.refreshRow();
+wddoc.cstc = "X0";
+wddoc.dstc = wdate;
+wddoc.updateRow(wddoc);
+wddoc.setZCommand("UPDATE_ROW", "AF", " ");
+
+// Confirmar Emissão
+wddoc.refreshRow();
+wddoc.csto = "CE";
+wddoc.dsto = wdate;
+wddoc.updateRow(wddoc);
+wddoc.setZCommand("STOCKE_ROW", "AF", " ");
+
+bproz_pr_insert_bpre_fn(row, "NPC", 0);
+
+// EOF

@@ -1,0 +1,475 @@
+//edoc_mc_gerar_xml_400_comp_fn(wrow)
+// Objetivo: Gerar o XML da nota fiscal eletronica complementar
+
+import("java.lang.StringBuilder")
+import("java.math.BigDecimal")
+import("java.io.*")
+import("br.com.unigex.nfe.NFe")
+
+// temporario
+zglobals.WESPELHO = ""
+
+wdatetime = x_mc_br_get_date_server_fn()
+wdate = wdatetime.substring(0, 10)
+wtime = wdatetime.substring(11, 19)
+wNFe = NFe()
+
+wzk = formatNumber(wrow.zk, "N00000000000000")
+
+// serie
+wserie = "1"
+
+// Obtem os dados do emitente da nota
+wbent = edoc_mc_get_bent_fn("*", wrow.iorg.trim(), wrow.iuorgt.trim(), wrow.iuorg.trim())
+
+// Obtem os dados do municipio do emitente
+wbgeo = edoc_mc_get_bgeo_fn(wbent)
+
+// Armazena os dados do destinatario da nota na variavel wbent2
+wbent2 = edoc_mc_get_destinatario_fn(wrow)
+
+// Obtem os dados do municipio do destinatario
+wbgeo2 = edoc_mc_get_bgeo_fn(wbent2)
+
+// Obter a descriÃ§Ã£o da Natureza da OperaÃ§Ã£o
+wnatOp = edoc_mc_get_natop_fn(wrow)
+
+// CÃ³digo da UF do emitente do Documento Fiscal
+wcUF = wbgeo.westado.trim()
+
+// CÃ³digo NumÃ©rico que compÃµe a Chave de Acesso
+wcodigoNumerico = INT(wrow.idoc.trim().substring(4, wrow.idoc.trim().length())) + 1
+
+// CÃ³digo NumÃ©rico que compÃµe a Chave de Acesso
+wcNF = formatNumber(wcodigoNumerico, "N00000000")
+
+// CÃ³digo do Modelo do Documento Fiscal
+wmod = "55"
+
+// NÃºmero do Documento Fiscal
+wnNF = INT(wrow.idoc.trim().substring(4, wrow.idoc.trim().length())).toString()
+
+// Data e hora de emissÃ£o do Documento Fiscal
+wdhEmi = wrow.ddoc.trim() + "T" + wtime + "-03:00"
+
+// Data e hora de SaÃ­da ou da Entrada da Mercadoria/Produto
+wdhSaiEnt = wrow.ddoces.trim() + "T" + wtime + "-03:00"
+
+// 0: entrada, : saida
+wtpNF = "1"
+
+// Identificador de local de destino da operaÃ§Ã£o
+// 1=OperaÃ§Ã£o interna;
+// 2=OperaÃ§Ã£o interestadual;
+// 3=OperaÃ§Ã£o com exterior.
+widDest = "1"
+if (inList(wrow.cit.trim().substring(0, 1), ["2", "6"])) {
+  widDest = "2"
+}
+
+// CÃ³digo do municÃ­pio de ocorrÃªncia do fato gerador do ISSQN
+wcMunFG = wbgeo.wcidade.trim()
+
+// Formato do DANFE
+// 1=DANFE normal, Retrato;
+wtpImp = "1"
+
+// Objetivo: Obter o tipo de emissao da nota fiscal e validar se o tipo informado he valido
+// Tipo de EmissÃ£o da NF-e
+// 1=Normal
+// 6=Contingencia SVC-AN (SEFAZ Virtual de Contingencia do AN);
+// 7=Contingencia SVC-RS (SEFAZ Virtual de Contingencia do RS);
+wtpEmis = getTparms("BCTX*PARAM*NFE", "TPEMIS*" + wrow.iorg.trim() + "*" + wrow.iuorg.trim())
+if (!inList(wtpEmis.trim(), ["1", "6", "7"])) {
+  throwError("Tipo de Emissao invalido.")
+}
+
+// Objetivo: Obter a identificacao do ambiente de emissao das notas fiscais
+//           e validar se a identificacao informada e valida
+// IdentificaÃ§Ã£o do Ambiente
+// 1=Producao
+// 2=Homologacao
+wtpAmb = getTparms("BCTX*PARAM*NFE", "AMBIENTE*" + wrow.iorg.trim() + "*" + wrow.iuorg.trim())
+if (!inList(wtpAmb, ["1", "2"])) {
+  throwError("Tipo de Emissão inválido. Tipo válidos: 1 (produção), 2 (Homologação)")
+}
+
+// Objetivo: Obter a finalidade da NF-e.
+// Finalidade de emissÃ£o da NF-e
+// 1=NF-e normal;
+// 2=NF-e complementar;
+// 3=NF-e de ajuste;
+// 4=DevoluÃ§Ã£o de mercadoria.
+wfinNFe = edoc_mc_get_finnfe_fn(wrow)
+
+// Objetivo: Calcular a chave da NF-e, obter o digito verificador
+//           e salvar a chave nas extensoes
+wAnoMes = wrow.ddoc.trim().substring(2, 4) + wrow.ddoc.trim().substring(5, 7)
+
+// Faz o calculo da chave de acesso da nota fiscal
+// Para atender o novo CNPJ Alfanumerico, trocamos a regex antiga "[^0-9]" pela nova "[^A-Z0-9]".
+wId = wNFe.calculaChaveNFe200(wcUF, wAnoMes, wbent.tidfisc.trim().replaceAll("[^A-Z0-9]", ""), wmod, wserie, wnNF, wtpEmis, wcodigoNumerico.toString())
+
+// obtem o digito verificador da chave de acesso da nota fiscal
+wcDV = wId.substring(wId.length() - 1, wId.length())
+
+//salva a chave da nota nas extensoes
+x_mc_update_extension_fn("c", "DDOCTX", wzk, "widnfe", wId)
+
+// totalizadores
+wTotvBC = BigDecimal(0.00)
+wTotvICMS = BigDecimal(0.00)
+wTotvICMSDeson = BigDecimal(0.00)
+wTotvFCPUFDest = BigDecimal(0.00)
+wTotvICMSUFDest = BigDecimal(0.00)
+wTotvICMSUFRemet = BigDecimal(0.00)
+wTotvFCP = BigDecimal(0.00)
+wTotvBCST = BigDecimal(0.00)
+wTotvST = BigDecimal(0.00)
+wTotvFCPST = BigDecimal(0.00)
+wTotvFCPSTRet = BigDecimal(0.00)
+wTotvProd = BigDecimal(0.00)
+wTotvFrete = BigDecimal(0.00)
+wTotvSeg = BigDecimal(0.00)
+wTotvDesc = BigDecimal(0.00)
+wTotvII = BigDecimal(0.00)
+wTotvIPI = BigDecimal(0.00)
+wTotvIPIDevol = BigDecimal(0.00)
+wTotvPIS = BigDecimal(0.00)
+wTotvCOFINS = BigDecimal(0.00)
+wTotvOutro = BigDecimal(0.00)
+wTotvNF = BigDecimal(0.00)
+
+wComplementoICMS = true
+
+function montaTag(tagName, value) {
+  return "<" + tagName + ">" + value + "</" + tagName + ">"
+}
+
+function getNFRef() {
+
+  wrefNFe = x_mc_select_extension_fn("c", "DDOCTX", wzk, "wrefnfe").trim()
+
+  wret = "<NFref>"
+  wret += montaTag("refNFe", wrefNFe)
+  wret += "</NFref>"
+
+  return wret
+}
+
+function getIde() {
+  import("java.lang.StringBuilder")
+
+  sb = StringBuilder()
+  sb.append("<ide>")
+  sb.append(montaTag("cUF", wcUF))
+  sb.append(montaTag("cNF", wcNF))
+  sb.append(montaTag("natOp", wnatOp))
+  sb.append(montaTag("mod", wmod))
+  sb.append(montaTag("serie", wserie))
+  sb.append(montaTag("nNF", wnNF))
+  sb.append(montaTag("dhEmi", wdhEmi))
+  sb.append(montaTag("dhSaiEnt", wdhSaiEnt))
+  sb.append(montaTag("tpNF", wtpNF))
+  sb.append(montaTag("idDest", widDest))
+  sb.append(montaTag("cMunFG", wcMunFG))
+  sb.append(montaTag("tpImp", wtpImp))
+  sb.append(montaTag("tpEmis", wtpEmis))
+  sb.append(montaTag("cDV", wcDV))
+  sb.append(montaTag("tpAmb", wtpAmb))
+  sb.append(montaTag("finNFe", wfinNFe))
+  sb.append(montaTag("indFinal", "1"))
+  sb.append(montaTag("indPres", "1"))
+  sb.append(montaTag("procEmi", "0"))
+  sb.append(montaTag("verProc", "4.00"))
+  sb.append(getNFRef())
+  sb.append("</ide>")
+
+  return sb.toString()
+}
+
+
+function getEmit() {
+  import("java.lang.StringBuilder")
+
+  sb = StringBuilder()
+  sb.append("<emit>")
+
+  // Para atender o novo CNPJ Alfanumerico, trocamos a regex antiga "[^0-9]" pela nova "[^A-Z0-9]".
+  sb.append(montaTag("CNPJ", wbent.tidfisc.trim().replaceAll("[^A-Z0-9]", "")))
+  sb.append(montaTag("xNome", wbent.nnomel.trim().replaceAll("&", "E")))
+  sb.append(montaTag("xFant", wbent.nent.trim().replaceAll("&", "E")))
+  sb.append("<enderEmit>")
+  sb.append(montaTag("xLgr", wbent.tmorad.trim()))
+  sb.append(montaTag("nro", wbent.tmail.trim()))
+  sb.append(montaTag("xBairro", wbent.tlocal.trim()))
+  sb.append(montaTag("cMun", wbgeo.wcidade.trim()))
+  sb.append(montaTag("xMun", wbent.tmunicip.trim()))
+  sb.append(montaTag("UF", wbent.testado.trim()))
+  sb.append(montaTag("CEP", formatNumber(wbent.icpt.replaceAll("[^0-9]", ""), "N00000000")))
+  sb.append(montaTag("cPais", wbgeo.wpais.trim()))
+  sb.append(montaTag("xPais", wbent.tpais.trim()))
+  sb.append("</enderEmit>")
+  sb.append(montaTag("IE", wbent.tidfisc2.trim().replaceAll("[^0-9]", "")))
+  sb.append(montaTag("CRT", "3"))
+  sb.append("</emit>")
+
+  return sb.toString()
+}
+
+function getDest() {
+  import("java.lang.StringBuilder")
+
+  sb = StringBuilder()
+  sb.append("<dest>")
+
+  // Para atender o novo CNPJ Alfanumerico, trocamos a regex antiga "[^0-9]" pela nova "[^A-Z0-9]".
+  sb.append(montaTag("CNPJ", wbent2.tidfisc.replaceAll("[^A-Z0-9]", "")))
+
+  if (wtpAmb == "1") {
+    sb.append(montaTag("xNome", wbent2.nnomel.trim().replaceAll("&", "E")))
+  } else {
+    sb.append(montaTag("xNome", "NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL"))
+  }
+
+  sb.append("<enderDest>")
+  sb.append(montaTag("xLgr", wbent2.tmorad.trim()))
+  sb.append(montaTag("nro", wbent2.tmail.trim()))
+  sb.append(montaTag("xBairro", wbent2.tlocal.trim()))
+  sb.append(montaTag("cMun", wbgeo2.wcidade.trim()))
+  sb.append(montaTag("xMun", wbent2.tmunicip.trim()))
+  sb.append(montaTag("UF", wbent2.testado.trim().toUpperCase()))
+  sb.append(montaTag("CEP", formatNumber(wbent2.icpt.replaceAll("[^0-9]", ""), "N00000000")))
+  sb.append(montaTag("cPais", wbgeo2.wpais.trim()))
+  sb.append(montaTag("xPais", wbent2.tpais.trim()))
+  sb.append(montaTag("fone", wbent2.ttel.replaceAll("[^0-9]", "")))
+  sb.append("</enderDest>")
+  sb.append(montaTag("indIEDest", "1"))
+  sb.append(montaTag("IE", wbent2.tidfisc2.replaceAll("[^0-9]", "")))
+  sb.append("</dest>")
+
+  return sb.toString()
+}
+
+
+function getDet() {
+  import("java.lang.StringBuilder")
+  import("java.math.BigDecimal")
+  import("java.lang.Double")
+
+  sbQuery = StringBuilder()
+  sbQuery.append("SELECT a.idol, a.ipsr, a.qpsr, round(a.mvalun,4) as mvalun, ")
+  sbQuery.append("       a.mvalim2, a.mvalor, a.qbfisc, a.pi, a.pi2, ")
+  sbQuery.append("       a.ndoc, a.ci, a.cci, a.iuorg, a.iuorg2, ")
+  sbQuery.append("       b.ipst,a.iixp, a.mvalim, a.cit,  a.mvaldc, ")
+  sbQuery.append("       a.cfpsr2, b.cstat2, b.npsr, b.cur, b.cfpsr, ")
+  sbQuery.append("       b.cfpsr2 as wimpipi, a.irct1,a.cfpsr as cfpsrl, a.cr, a.ctcf, ")
+  sbQuery.append("	cbarras = (select top 1 ipsr2 from bpsst0 where iorg = 'TEC' and ipsr = a.ipsr and cpss in ('SI','EA') order by zk desc) ")
+  sbQuery.append("  FROM ddolt0 a with(nolock), bpsrt0 b with(nolock) ")
+  sbQuery.append(" WHERE a.iorg = '" + wrow.iorg.trim() + "' ")
+  sbQuery.append("   and a.idoct = '" + wrow.idoct.trim() + "' ")
+  sbQuery.append("   and a.idoc = '" + wrow.idoc.trim() + "' ")
+  sbQuery.append("   and a.ientt = '" + wrow.ientt.trim() + "' ")
+  sbQuery.append("   and a.ient = '" + wrow.ient.trim() + "' ")
+  sbQuery.append("   and a.qpsr > 0 ")
+  sbQuery.append("   and b.ipst <> 'SRV' ")
+  sbQuery.append("   and a.iorg = b.iorg ")
+  sbQuery.append("   and a.ipsr = b.ipsr ")
+  sbQuery.append(" ORDER BY a.idol, a.iixp")
+  vddol = getRows("DDOL", sbQuery.toString())
+
+  i = 1
+  sb = StringBuilder()
+	foreach wddol(vddol.elements()) {
+
+    wQuantidade = wddol.qpsr.setScale(4, BigDecimal:: ROUND_FLOOR)
+    wValorUnitario = wddol.mvalun.setScale(2, BigDecimal:: ROUND_FLOOR)
+    wReducaoBaseCalculo = wddol.qbfisc
+
+    wAliquotaICMS = wddol.pi.setScale(2, BigDecimal:: ROUND_FLOOR)
+    wBaseCalculoICMS = wQuantidade.multiply(wValorUnitario).multiply(wReducaoBaseCalculo).setScale(2, BigDecimal:: ROUND_FLOOR)
+    wValorICMS = wBaseCalculoICMS.multiply(wAliquotaICMS.divide(BigDecimal(100.00))).setScale(2, BigDecimal:: ROUND_FLOOR)
+
+    if (wValorICMS <= 0) {
+      wBaseCalculoICMS = BigDecimal(0.00)
+    }
+
+    wBaseCalculoIPI = wQuantidade.multiply(wValorUnitario).setScale(2, BigDecimal:: ROUND_FLOOR)
+    wAliquotaIPI = wddol.pi2.setScale(2, BigDecimal:: ROUND_FLOOR)
+    wValorIPI = wBaseCalculoIPI.multiply(wAliquotaIPI.divide(BigDecimal(100.00))).setScale(2, BigDecimal:: ROUND_FLOOR)
+
+    if (wValorIPI <= 0) {
+      wBaseCalculoIPI = BigDecimal(0.00)
+    }
+
+    wqCom = wddol.qpsr
+    wvUnCom = wddol.mvalun
+    wvProd = wqCom.multiply(wvUnCom)
+    wqTrib = wqCom
+    wvUnTrib = wvUnCom
+    wvDesc = BigDecimal(0.00)
+
+    if (wComplementoICMS) {
+      wqCom = "0.00"
+      wvUnCom = "0.00"
+      wvProd = "0.00"
+      wqTrib = "0.00"
+      wvUnTrib = "0.00"
+      wvDesc = "0.00"
+    }
+
+    sb.append("<det nItem=\"" + (i++) + "\">")
+    sb.append("<prod>")
+    sb.append(montaTag("cProd", wddol.ipsr.trim()))
+    sb.append(montaTag("cEAN", "SEM GTIN"))
+    sb.append(montaTag("xProd", wddol.npsr.trim()))
+    sb.append(montaTag("NCM", "00000000"))
+    sb.append(montaTag("CEST", "0000000"))
+    sb.append(montaTag("CFOP", wddol.cit.trim()))
+    sb.append(montaTag("uCom", "UND"))
+    sb.append(montaTag("qCom", wqCom))
+    sb.append(montaTag("vUnCom", wvUnCom))
+    sb.append(montaTag("vProd", wvProd))
+    sb.append(montaTag("cEANTrib", "SEM GTIN"))
+    sb.append(montaTag("uTrib", "UND"))
+    sb.append(montaTag("qTrib", wqTrib))
+    sb.append(montaTag("vUnTrib", wvUnTrib))
+    // sb.append(montaTag("vDesc", wvDesc))
+    sb.append(montaTag("indTot", "1"))
+    sb.append("</prod>")
+    sb.append("<imposto>")
+    sb.append("<ICMS>")
+    wcst = "090"
+    if (wcst == "090") {
+      sb.append("<ICMS90>")
+      sb.append(montaTag("orig", "0"))
+      sb.append(montaTag("CST", "90"))
+      sb.append(montaTag("modBC", "3"))
+      sb.append(montaTag("vBC", wBaseCalculoICMS))
+      sb.append(montaTag("pICMS", wAliquotaICMS))
+      sb.append(montaTag("vICMS", wValorICMS))
+      sb.append("</ICMS90>")
+
+      wTotvBC = wTotvBC.add(wBaseCalculoICMS)
+      wTotvICMS = wTotvICMS.add(wValorICMS)
+    }
+    sb.append("</ICMS>")
+    sb.append("<IPI>")
+    sb.append(montaTag("cEnq", "999"))
+    if (wValorIPI <= 0) {
+      sb.append("<IPINT>")
+      sb.append(montaTag("CST", "53"))
+      sb.append("</IPINT>")
+    } else {
+      sb.append("<IPITrib>")
+      sb.append(montaTag("CST", "50"))
+      sb.append(montaTag("vBC", wBaseCalculoIPI))
+      sb.append(montaTag("pIPI", wAliquotaIPI))
+      sb.append(montaTag("vIPI", wValorIPI))
+      sb.append("</IPITrib>")
+
+      wTotvIPI += wValorIPI
+      wTotvNF += wValorIPI
+    }
+    sb.append("</IPI>")
+    sb.append("<PIS>")
+    sb.append("<PISNT>")
+    sb.append(montaTag("CST", "08"))
+    sb.append("</PISNT>")
+    sb.append("</PIS>")
+    sb.append("<COFINS>")
+    sb.append("<COFINSNT>")
+    sb.append(montaTag("CST", "08"))
+    sb.append("</COFINSNT>")
+    sb.append("</COFINS>")
+    sb.append("</imposto>")
+    sb.append("</det>")
+  }
+  return sb.toString()
+}
+
+function getTotal() {
+  import("java.lang.StringBuilder")
+  import("java.math.BigDecimal")
+
+  sb = StringBuilder()
+  sb.append("<total>")
+  sb.append("<ICMSTot>")
+  sb.append(montaTag("vBC", wTotvBC.setScale(2, BigDecimal:: ROUND_FLOOR)))
+  sb.append(montaTag("vICMS", wTotvICMS.setScale(2, BigDecimal:: ROUND_FLOOR)))
+  sb.append(montaTag("vICMSDeson", wTotvICMSDeson.setScale(2, BigDecimal:: ROUND_FLOOR)))
+  sb.append(montaTag("vFCPUFDest", wTotvFCPUFDest.setScale(2, BigDecimal:: ROUND_FLOOR)))
+  sb.append(montaTag("vICMSUFDest", wTotvICMSUFDest.setScale(2, BigDecimal:: ROUND_FLOOR)))
+  sb.append(montaTag("vICMSUFRemet", wTotvICMSUFRemet.setScale(2, BigDecimal:: ROUND_FLOOR)))
+  sb.append(montaTag("vFCP", wTotvFCP.setScale(2, BigDecimal:: ROUND_FLOOR)))
+  sb.append(montaTag("vBCST", wTotvBCST.setScale(2, BigDecimal:: ROUND_FLOOR)))
+  sb.append(montaTag("vST", wTotvST.setScale(2, BigDecimal:: ROUND_FLOOR)))
+  sb.append(montaTag("vFCPST", wTotvFCPST.setScale(2, BigDecimal:: ROUND_FLOOR)))
+  sb.append(montaTag("vFCPSTRet", wTotvFCPSTRet.setScale(2, BigDecimal:: ROUND_FLOOR)))
+  sb.append(montaTag("vProd", wTotvProd.setScale(2, BigDecimal:: ROUND_FLOOR)))
+  sb.append(montaTag("vFrete", wTotvFrete.setScale(2, BigDecimal:: ROUND_FLOOR)))
+  sb.append(montaTag("vSeg", wTotvSeg.setScale(2, BigDecimal:: ROUND_FLOOR)))
+  sb.append(montaTag("vDesc", wTotvDesc.setScale(2, BigDecimal:: ROUND_FLOOR)))
+  sb.append(montaTag("vII", wTotvII.setScale(2, BigDecimal:: ROUND_FLOOR)))
+  sb.append(montaTag("vIPI", wTotvIPI.setScale(2, BigDecimal:: ROUND_FLOOR)))
+  sb.append(montaTag("vIPIDevol", wTotvIPIDevol.setScale(2, BigDecimal:: ROUND_FLOOR)))
+  sb.append(montaTag("vPIS", wTotvPIS.setScale(2, BigDecimal:: ROUND_FLOOR)))
+  sb.append(montaTag("vCOFINS", wTotvCOFINS.setScale(2, BigDecimal:: ROUND_FLOOR)))
+  sb.append(montaTag("vOutro", wTotvOutro.setScale(2, BigDecimal:: ROUND_FLOOR)))
+  sb.append(montaTag("vNF", wTotvNF.setScale(2, BigDecimal:: ROUND_FLOOR)))
+  sb.append("</ICMSTot>")
+  sb.append("</total>")
+
+  return sb.toString()
+}
+
+function getTransp() {
+
+  wret = "<transp>"
+  wret += montaTag("modFrete", "1")
+  wret += "</transp>"
+
+  return wret
+
+}
+
+function getPag() {
+
+  wret = "<pag>"
+  wret += "<detPag>"
+  wret += montaTag("tPag", "90")
+  wret += montaTag("vPag", "0.00")
+  wret += "</detPag>"
+  wret += "</pag>"
+
+  return wret
+}
+
+function getInfAdic() {
+
+  wret = "<infAdic>"
+  //wret += montaTag("infCpl", "NOTA DE COMPLEMENTO DE ICMS REFERENTE A NOTA FISCAL DE No 00176306 DATA: 2025-04-01")
+  wret += montaTag("infCpl", ddoc0_mc_nfe_observacoes_fn(wrow))
+  wret += "</infAdic>"
+
+  return wret
+}
+
+
+sb = StringBuilder()
+
+sb.append("formato=xml" + EOL)
+sb.append("<infNFe Id=\"NFe" + wId + "\" versao=\"4.00\">")
+sb.append(getIde())
+sb.append(getEmit())
+sb.append(getDest())
+sb.append(getDet())
+sb.append(getTotal())
+sb.append(getTransp())
+sb.append(getPag())
+sb.append(getInfAdic())
+sb.append("</infNFe>")
+
+return sb.toString()
+
+// EOF

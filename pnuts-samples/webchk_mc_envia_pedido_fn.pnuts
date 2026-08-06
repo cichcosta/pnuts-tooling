@@ -1,0 +1,175 @@
+// webchk_mc_envia_pedido_fn(widoct, widoc, wpedFat)
+// Funcao para enviar pedidos do CheckOutWEB
+// HENRIQUE: 2019-06-13
+
+import("java.util.*")
+
+// Work
+wdatetime = x_mc_br_get_date_server_fn()
+wdate = wdatetime.substring(0, 10)
+wtime = wdatetime.substring(11, 16)
+wuser = MLogin::getUser().trim()
+wnodo = MLogin::getUserNodo().trim()
+cursor = MConnection::getMCursor()
+zglobals.PDVWEB_TOKEN = ""
+
+wsel = StringBuilder()
+mapLin = HashMap()
+listaDePedidos = Vector()  
+listaDeItensPedido = Vector()
+
+println(">>>>>>>>>>>>>>>>> FUCAO - WEBCHK_MC_ENVIA_PEDIDO_FN - INICIO"); flush()
+
+function criaMapItensPedido(wddol, seq) {
+
+   println(" function - criaMapItensPedido --> INICIO"); flush();
+
+   import("java.util.HashMap")
+   map = HashMap();
+   mvalun = Double::parseDouble(wddol.get("mvalor") + "") / Double::parseDouble(wddol.get("qpsr").toString());
+   
+   // setar cc_ped
+   wcc_ped = wddol.get("idoc").toString().split("/")[1].trim();
+   // verifica NPA
+   if (wddol.idoct.trim().equals("NPA")) {
+      wcc_ped = wddol.idoct.trim() + wcc_ped;
+   } 
+   
+   map.put("cc_fil", wddol.get("idoc").toString().split("/")[0].trim());
+   map.put("cc_ped", wcc_ped);
+   map.put("cn_ite", seq);
+   map.put("cc_psr", wddol.get("ipsr").toString().trim());
+    
+   // Verifica se o produto é um kit, caso seja nao passa a referencia para o campo cc_psr_ref 
+   iixp = wddol.get("iixp").toString().trim();
+   ccPsrRef = ""
+   wipst = getSQLValue("SELECT ipst FROM bpsrt0 WITH(NOLOCK) WHERE iorg = 'TEC' AND ipsr ='" + iixp + "' AND ipsrlp = '*'");
+   if(wipst != null && !wipst.trim().equals("KTP")) {
+      ccPsrRef = iixp;
+   }
+    
+   map.put("cc_psr_ref", ccPsrRef);
+   map.put("qt_ite", wddol.get("qpsr"));
+   map.put("vl_ite_uni", mvalun);
+    
+   total = Double::parseDouble(map.get("vl_ite_uni").toString()) * Double::parseDouble(map.get("qt_ite").toString());
+   
+   map.put("pc_ite_des", 0);
+   map.put("vl_ite_des", 0);
+   map.put("vl_ite_tot", total);
+   map.put("st_ped_ite", "PD");
+   
+   println(" function - criaMapItensPedido --> FINAL"); flush();
+   return map;  
+
+}
+
+function criaMapaPedidos(wddoc) {
+
+   println(" function - criaMapaPedidos --> INICIO"); flush();
+
+   import("java.util.HashMap")
+   map = HashMap();
+   maiorParcela = 0;
+
+   wqry = " SELECT cdocp FROM ppzpt0 WITH(NOLOCK) WHERE iorg = 'TEC' AND idoct = '" + wddoc.get("idoct") + "' AND idoc = '" + wddoc.get("idoc") + "' "   
+   println("WQRY: --> WPPZP: " + wqry); flush();
+   vppzp = getRows("PPZP", wqry);
+      
+   if(vppzp.size() > 0 && !vppzp.isEmpty()) {
+      
+      foreach wppzp (vppzp.elements()) {
+
+         wbctx = " SELECT tparms FROM bctxt0 WITH(NOLOCK) WHERE ictx = 'BCTX*CDOCP' AND ivalk = '" + wppzp.getString("cdocp") + "' "
+         println("WBCTX: --> WTPARMS: " + wbctx); flush();
+         wtparms = getSQLValue(wbctx)
+            
+         auxiliar = Integer::valueOf(wtparms.split(";")[1]);
+
+         if(auxiliar > maiorParcela) { 
+            maiorParcela = auxiliar;
+         }
+      }
+   
+   } else {
+      maiorParcela = 12
+   }
+
+   // setar cc_ped
+   wcc_ped = wddoc.get("idoc").toString().split("/")[1].trim();
+   // verifica NPA
+   if (wddoc.idoct.trim().equals("NPA")) {
+      wcc_ped = wddoc.idoct.trim() + wcc_ped;
+   } 
+      
+   map = HashMap();
+   map.put("cc_fil", wddoc.get("idoc").toString().split("/")[0].trim());
+   map.put("cc_ped", wcc_ped);
+   map.put("dt_ped", wddoc.get("ddoc").toString().trim());
+   map.put("hr_ped", wddoc.get("zhst").toString().trim());
+   map.put("vl_ped", wddoc.get("mvalor"));
+   map.put("qt_ped_ite",1);
+   map.put("qt_max_par",maiorParcela);
+   map.put("bl_ped_fat",wpedFat );
+   map.put("cc_ped_fat","");
+   map.put("cc_cli_ins_fed", wddoc.get("tidfisc").toString().trim().replaceAll("[^A-Z0-9]",""));
+   map.put("nm_cli", wddoc.get("nent").toString().split("/")[0].trim());
+   map.put("cc_emp_vdr", wddoc.get("ient2").toString().trim());
+   map.put("st_ped","PD");
+   
+   println(" function - criaMapaPedidos --> FINAL"); flush();
+   println(" criaMapaPedidos --> " + map.toString()); flush();
+   return map
+}
+
+//PedidoO
+wsel.append(" SELECT a.*, b.nent, b.tidfisc ")
+wsel.append("   FROM ddoct0 a WITH(NOLOCK) ")
+wsel.append("  INNER JOIN bentt0 b ON b.ientt = a.ientt AND b.ient = a.ient ")
+wsel.append("  WHERE a.iorg  = 'TEC' ")
+wsel.append("    AND a.idoct = '" + widoct.trim() + "' ")
+wsel.append("    AND a.idoc  = '" + widoc.trim() + "' ")
+wsel.append("  ORDER by a.zk desc ")
+println("WSEL --> WDDOC: " + wsel.toString()); flush();
+wddoc = getRow("DDOC", wsel.toString());
+
+// clrar wsel
+wsel.delete(0, wsel.length())
+
+if (wddoc.wdcode != 100) {
+   println("WDDOC.IDOC -->" + wddoc.idoc.trim()); flush();
+   
+   // Linhas de documentos
+   wsel.append("SELECT * ")
+   wsel.append("  FROM ddolt0 WITH(NOLOCK)")
+   wsel.append(" WHERE iorg  = '" + wddoc.get("iorg") + "'");
+   wsel.append("   AND ientt = '" + wddoc.get("ientt") + "'");
+   wsel.append("   AND ient  = '" + wddoc.get("ient") + "'");
+   wsel.append("   AND idoct = '" + wddoc.get("idoct") + "'");
+   wsel.append("   AND idoc  = '" + wddoc.get("idoc") + "'");
+   wsel.append("   AND qpsr  > 0 ");
+   println("WSEL --> WDDOL: " + wsel.toString()); flush();
+   vddol = getRows("DDOL", wsel.toString())
+   
+   seq = 1
+   // clrar wsel
+   wsel.delete(0, wsel.length())
+   
+   if (vddol.size() > 0) {
+     foreach wddol(vddol.elements()) {
+        mapLin = criaMapItensPedido(wddol, seq++);    
+        listaDeItensPedido.add(mapLin);
+     }
+   }
+   
+   ped = criaMapaPedidos(wddoc)
+   ped.put("itens", listaDeItensPedido);
+   listaDePedidos.add(ped);
+   
+   // enviaParaRecurso(listaDePedidos, "pedido")
+   pdvweb_mc_send_to_resource_fn(listaDePedidos.toArray(), "pedido");
+  
+}
+
+println(">>>>>>>>>>>>>>>>> FUCAO - WEBCHK_MC_ENVIA_PEDIDO_FN - FINAL"); flush()
+

@@ -1,0 +1,295 @@
+// FUNCAO: bpsru_mc_rel_analise_abc_fn()
+
+import("java.time.Instant");
+import("java.io.*")
+
+wdatetime = x_mc_br_get_date_server_fn();
+wdate = wdatetime.substring(0, 10);
+wuser = MLogin:: getUser().trim();
+cursor = MConnection:: getMCursor();
+row = wrows.elementAt(0);
+wnow = Instant:: now();
+
+println(">>>>>>>>>>>>>>>>>>>>>>>>>> bpsru_mc_rel_analise_abc_fn() - INICIO"); flush()
+
+if (!x_mc_get_access3_fn("LOGABC-0001", "")) {
+  throwError("Operação Cancelada! Usuário não autorizado!")
+}
+
+QUANT_MINIMA_DIAS = 0;
+wfile = StringBuffer();
+wlinha = "";
+
+function week_day(wdata) {
+  import("java.time.format.TextStyle");
+  import("java.time.LocalDate");
+  import("java.util.Locale");
+
+  if (wdata.trim() == "") return ""
+
+  textStyle = TextStyle:: FULL;
+  local = Locale("pt", "BR");
+  localDate = LocalDate:: parse(wdata);
+  return localDate.getDayOfWeek().getDisplayName(textStyle, local).toString();
+}
+
+function getSalesDaysCount(wiuorg, wipsr, wini, wfim) {
+  return bpsru_mc_abc_utils_opt_fn("getSalesDaysCount", wiuorg, wipsr, wini, wfim, zglobals.ABC_VENDAS_CACHE_KEY, "");
+}
+
+function getStandardDeviation(wiuorg, wipsr, wdini, wdfim) {
+  return bpsru_mc_abc_utils_opt_fn("getStandardDeviation", wiuorg, wipsr, wdini, wdfim, zglobals.ABC_VENDAS_CACHE_KEY, "");
+}
+
+
+// carregar parametros globais
+PARAMS = bpsru_mc_abc_utils_opt_fn("loadParams", "", "", "", "", "", "");
+println("Parametros carregados: " + PARAMS.size()); flush();
+
+if (PARAMS.containsKey("ABC*QUANT*MINIMA*DIAS")) {
+  QUANT_MINIMA_DIAS = INT(PARAMS.get("ABC*QUANT*MINIMA*DIAS").qqcoef1);
+}
+
+// Critérios
+wxform = MForm:: getDialogForm(m, "REL_LOG_ABC", "MC", "Acompanhamento Analise ABC", 3)
+wxform.iorg = "TEC"
+wxform.iuorgt = "UO"
+wxform.iuorg = ""
+wxform.iuorgt2 = "AC"
+wxform.iuorg2 = ""
+wxform.ipsr = ""
+wxform.dini = ""
+wxform.dfim = ""
+wxform.c1 = "S"
+wxform.wtiporel = ""
+
+expandForm(wxform, false)
+
+cursor.commitWork()
+wxform.showForm()
+cursor.beginWork()
+if (wxform.getLastCmd().equals("CLOSEWINDOW")) { throwError("MIN-000001W") }
+
+wiorg = wxform.iorg.trim()
+wiuorgt = wxform.iuorgt.trim()
+wiuorg = wxform.iuorg.trim()
+wiuorgt2 = wxform.iuorgt2.trim()
+wcanal = wxform.iuorg2.trim()
+wipsr = wxform.ipsr.trim()
+wdini = wxform.dini.trim()
+wdfim = wxform.dfim.trim()
+wc1 = wxform.c1.trim()
+wwtiporel = wxform.wtiporel.trim()
+
+if (getSQLNumber("SELECT COUNT(*) FROM bctxt0 WITH (NOLOCK) WHERE ictx = 'BCTX*REL*TP*ABC' AND ivalk != '' AND ivalk = '" + wc1 + "'") < 1) {
+  throwError("Operação Cancelada! Tipo de relatório invalido.")
+}
+
+P = ";"
+
+/* Gerar base de vendas para em tabela temporarias */
+bpsru_mc_temp_analise_giro_fn(wiorg, wiuorg, wcanal, wipsr, wdini, wdfim);
+
+// recupera a quantidade de dias de venda
+wdiasvenda = getSalesDaysCount(wiuorg, wipsr, wdini, wdfim);
+
+WN = "\n"
+wselect = ""
+wgroup = ""
+worder = ""
+
+if (wc1 == "A") {
+
+  // Cabeçalho Rel Sintetico
+  wcab = ""
+  wcab += "Unid. Venda." + P
+  wcab += "Unid. Org." + P
+  wcab += "Canal Venda" + P
+  wcab += "CFOP Venda" + P
+  wcab += "Data Analise" + P
+  wcab += "Data Venda" + P
+  wcab += "Em. Consultor" + P
+  wcab += "Tipo Nota" + P
+  wcab += "Num. Nota" + P
+  wcab += "Tipo. Produto" + P
+  wcab += "Cod. Produto" + P
+  wcab += "Descr. Produto" + P
+  wcab += "Num. Dias Semana" + P
+  wcab += "Dias Semana" + P
+  wcab += "Remover Dia" + P
+  wcab += "Qtde. Ruptura" + P
+  wcab += "Qtde. Venda" + P
+  wcab += "Qtde. Devol." + P
+  wcab += EOL
+  wfile.append(wcab)
+
+  wselect += " SELECT a.* "
+
+  wgroup = ""
+  worder += " ORDER BY SUM(a.qpsr_ven - a.qpsr_dev) DESC, a.ddoc DESC "
+}
+
+if (wc1 == "D") {
+
+  // Cabeçalho Rel Sintetico
+  wcab = ""
+  wcab += "Unid. Org." + P
+  wcab += "Data Venda" + P
+  wcab += "Tipo. Produto" + P
+  wcab += "Cod. Produto" + P
+  wcab += "Descr. Produto" + P
+  wcab += "Num. Dias Semana" + P
+  wcab += "Dias Semana" + P
+  wcab += "Qtde. Rup. Dia" + P
+  wcab += "Qtde. Itens" + P
+  wcab += EOL
+  wfile.append(wcab)
+
+  wselect += " SELECT "
+  wselect += " a.iorg, "
+  wselect += " a.iuorg, "
+  wselect += " a.ddoc, "
+  wselect += " a.ipst, "
+  wselect += " a.ipsr, "
+  wselect += " a.npsr, "
+  wselect += " a.week_day, "
+  wselect += " SUM(a.qrup) AS qrup, "
+  wselect += " SUM(a.qpsr_ven - a.qpsr_dev) AS qpsr "
+
+  wgroup += " GROUP BY a.iorg, a.iuorg, a.ddoc, a.ipst, a.ipsr, a.npsr, a.week_day "
+  worder += " ORDER BY SUM(a.qpsr_ven - a.qpsr_dev) DESC, a.ddoc DESC "
+}
+
+if (wc1 == "S") {
+
+  // Cabeçalho Rel Sintetico
+  wcab = ""
+  wcab += "Data Inicio" + P
+  wcab += "Unid. Org." + P
+  wcab += "Tipo. Produto" + P
+  wcab += "Cod. Produto" + P
+  wcab += "Descr. Produto" + P
+  wcab += "Qtde. Itens" + P
+  wcab += EOL
+  wfile.append(wcab)
+
+  wselect += " SELECT "
+  wselect += "     a.iorg, "
+  wselect += "     a.dt_start, "
+  wselect += "     a.iuorg, "
+  wselect += "     a.zk_psr, "
+  wselect += "     a.ipst, "
+  wselect += "     a.ipsr, "
+  wselect += "     a.npsr, "
+  wselect += "     a.ipsrlp, "
+  wselect += "     SUM(a.qpsr_ven - a.qpsr_dev) AS qpsr "
+
+  wgroup += WN + " GROUP BY a.iorg, a.dt_start, a.iuorg, a.zk_psr, a.ipst, a.ipsr, a.npsr, a.ipsrlp "
+  worder = ""
+}
+wsel = ""
+wsel += WN + wselect
+wsel += WN + " FROM dbo.abc_vendas_cache AS a "
+// wsel += WN + " LEFT JOIN #tt_bctx AS dw WITH (NOLOCK) "
+// wsel += WN + "     ON "
+// wsel += WN + "         dw.ictx = 'BCTX*PARAM*LOG' "
+// wsel += WN + "         AND dw.ivalk = 'ABC*TEMP*GIRO*' + a.iuorg "
+wsel += WN + " WHERE "
+wsel += WN + "     a.cache_key = '" + zglobals.ABC_VENDAS_CACHE_KEY + "' "
+wsel += WN + "     AND a.cache_date = '" + zglobals.ABC_VENDAS_CACHE_DATE + "' "
+wsel += WN + "     AND a.iorg = '" + wiorg + "' "
+if (wc1 == "S") {
+  wsel += WN + "     AND a.remove_day = 0 "
+  wsel += WN + "     AND a.qrup = 0 "
+
+  if (wdiasvenda > QUANT_MINIMA_DIAS) {
+
+    wsel += WN + "     AND a.ddoc NOT IN ( "
+    wsel += WN + "    " + getStandardDeviation(wiuorg, wipsr, wdini, wdfim)
+    wsel += WN + "     ) "
+  }
+}
+wsel += WN + wgroup
+wsel += WN + " /*bpsru_mc_rel_analise_abc_fn() SELECT 1*/ "
+println("VDDOL: " + wsel); flush()
+vddol = getRows("DDOL", wsel);
+
+foreach wddol(vddol.elements()) {
+
+  if (wc1 == "S") {
+
+    // Preenche as linhas
+    wlinha += wddol.dt_start.trim() + P
+    wlinha += wddol.iuorg.trim() + P
+    wlinha += wddol.ipst.trim() + P
+    wlinha += wddol.ipsr.trim() + P
+    wlinha += wddol.npsr.trim() + P
+    wlinha += formatNumber(wddol.qpsr, "N00").trim() + P
+  }
+  if (wc1 == "D") {
+
+    // Preenche as linhas
+    wlinha += wddol.iuorg.trim() + P
+    wlinha += wddol.ddoc.trim() + P
+    wlinha += wddol.ipst.trim() + P
+    wlinha += wddol.ipsr.trim() + P
+    wlinha += wddol.npsr.trim() + P
+    wlinha += formatNumber(wddol.week_day, "N00").trim() + P
+    wlinha += week_day(wddol.ddoc.trim()) + P
+    wlinha += formatNumber(wddol.qrup, "N00").trim() + P
+    wlinha += formatNumber(wddol.qpsr, "N00").trim() + P
+  }
+  if (wc1 == "A") {
+
+    wremove_day = "N";
+    if (wddol.remove_day.toString() == "1") wremove_day = "S"
+
+    // Preenche as linhas
+    wlinha += wddol.iuorg_doc.trim() + P
+    wlinha += wddol.iuorg.trim() + P
+    wlinha += wddol.actv.trim() + P
+    wlinha += wddol.ctcf.trim() + P
+    wlinha += wddol.dt_start.trim() + P
+    wlinha += wddol.ddoc.trim() + P
+    wlinha += wddol.ient2.trim() + P
+    wlinha += wddol.idoct.trim() + P
+    wlinha += wddol.idoc.trim() + P
+    wlinha += wddol.ipst.trim() + P
+    wlinha += wddol.ipsr.trim() + P
+    wlinha += wddol.npsr.trim() + P
+    wlinha += formatNumber(wddol.week_day, "N0").trim() + P
+    wlinha += week_day(wddol.ddoc.trim()) + P
+    wlinha += wremove_day + P
+    wlinha += formatNumber(wddol.qrup, "N0").trim() + P
+    wlinha += formatNumber(wddol.qpsr_ven, "N0").trim() + P
+    wlinha += formatNumber(wddol.qpsr_dev, "N0").trim() + P
+  }
+
+  wlinha += EOL
+
+  wfile.append(wlinha)
+
+  wlinha = ""
+}
+
+//Prepara Impressão e Abertura em Excel
+fileName = "/rel_abc_" + wnow.toEpochMilli().toString();
+wfile = wfile.toString()
+wtemp = getLoginProperty("JTEMP")
+wdir = getLoginProperty("user.dir")
+wos = getProperty("os.name")
+wfilenameObj = wtemp + fileName + ".csv"
+wfileObj = MFile(wfilenameObj)
+wfileObj.setBytes(wfile.getBytes())
+wfileObj.saveFile(wfilenameObj)
+
+x_mc_convert_csv_to_xls_fn(wfilenameObj)
+
+wcmd = "cmd.exe /c "
+
+// system(wcmd + " start excel " + wtemp + "\\" + fileName + ".xls")
+mjex0_mc_start_file_fn(wtemp + "\\" + fileName + ".xls")
+
+println(">>>>>>>>>>>>>>>>>>>>>>>>>> bpsru_mc_rel_analise_abc_fn() - FIM"); flush()
+
+// EOF

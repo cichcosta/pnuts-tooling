@@ -1,0 +1,256 @@
+// FUNC: bpsru_mc_abc_utils_opt_fn(wop, w1, w2, w3, w4, w5, w6)
+// Utilitário p/rotinas de ABC
+
+if (w1 == null) { w1 = ""; }
+if (w2 == null) { w2 = ""; }
+if (w3 == null) { w3 = ""; }
+if (w4 == null) { w4 = ""; }
+if (w5 == null) { w5 = ""; }
+if (w6 == null) { w6 = ""; }
+
+function _loadParams() {
+
+  import("java.util.HashMap");
+  PARAMS = HashMap();
+
+  wsel = "";
+  wsel += " DROP TABLE IF EXISTS #tt_bctx; ";
+  wsel += " SELECT b.* ";
+  wsel += " INTO #tt_bctx ";
+  wsel += " FROM bctxt0 AS b WITH (NOLOCK) ";
+  wsel += " WHERE ";
+  wsel += "     b.ictx IN ('BCTX*PARAM*LOG', 'BCTX*MARKETING', 'BCTX*CIT') ";
+  wsel += "     AND b.ivalk != '' ";
+  x = executeSQL(wsel);
+
+  wsel = " SELECT * FROM #tt_bctx WHERE ictx = 'BCTX*PARAM*LOG' ";
+  vparams = getRows("BCTX", wsel);
+
+    foreach wparam(vparams.elements()) {
+    PARAMS.put(wparam.ivalk.trim(), wparam);
+  }
+
+  return PARAMS;
+}
+
+function _executeTSQL(wtext) {
+
+  wsel = "\n DECLARE @max_attempts INT = 5;          ";
+  wsel += "\n DECLARE @attempts INT = 0;              ";
+  wsel += "\n DECLARE @errorMessage NVARCHAR(1000);   ";
+  wsel += "\n SET @errorMessage = '';                 ";
+  wsel += "\n WHILE @attempts < @max_attempts         ";
+  wsel += "\n BEGIN                                   ";
+  wsel += "\n     BEGIN TRY                           ";
+  wsel += "\n         BEGIN TRANSACTION;             ";
+  wsel += "\n            " + wtext;
+  wsel += "\n         COMMIT TRANSACTION;            ";
+  wsel += "\n         BREAK;       ";
+  wsel += "\n     END TRY          ";
+  wsel += "\n     BEGIN CATCH      ";
+  wsel += "\n         IF ERROR_NUMBER() = 1205    ";
+  wsel += "\n         BEGIN                       ";
+  wsel += "\n             SET @attempts += 1;     ";
+  wsel += "\n             WAITFOR DELAY '00:00:05';  ";
+  wsel += "\n         END       ";
+  wsel += "\n         ELSE      ";
+  wsel += "\n         BEGIN     ";
+  wsel += "\n         ROLLBACK TRANSACTION;     ";
+  wsel += "\n         SET @errorMessage = 'Erro ' + CAST(ERROR_NUMBER() AS NVARCHAR(10)) + ': ' + ERROR_MESSAGE(); ";
+  wsel += "\n             BREAK; ";
+  wsel += "\n         END ";
+  wsel += "\n     END CATCH ";
+  wsel += "\n END ";
+  wsel += "\n SELECT @errorMessage; ";
+
+  wresult = getSQLValue(wsel);
+
+  if (wresult.trim() != "") {
+    println(wresult); flush();
+    return 0;
+  }
+
+  return 1;
+}
+
+function _getRuptura(wiorg, wiuorg, wipsr, wipsrlp, wdini, wdfim) {
+  println("function _getRuptura"); flush();
+
+  wsel = "";
+  wsel += " SELECT count(*) ";
+  wsel += " FROM bpset0 WITH(NOLOCK) ";
+  wsel += "     WHERE ";
+  wsel += "     iorg = '" + wiorg.trim() + "' ";
+  wsel += "     AND ipsr = '" + wipsr.trim() + "' ";
+  wsel += "     AND ipsrlp = '" + wipsrlp.trim() + "' ";
+  wsel += "     AND iuorgt2 = 'UO' ";
+  wsel += "     AND iuorg2 = '" + wiuorg.trim() + "' ";
+  wsel += "     AND cpse = 'RPU' ";
+  wsel += "     AND dpse BETWEEN '" + wdini + "' AND '" + wdfim + "' ";
+
+  return getSQLNumber(wsel);
+}
+
+function _getSalesDaysCount(wiuorg, wipsr, wini, wfim, wcacheKeyEsc, wcacheDate) {
+  println("function _getSalesDaysCount"); flush();
+
+  wsel = "";
+  wsel += " SELECT COUNT(DISTINCT m.ddoc) AS total_days ";
+  wsel += " FROM dbo.abc_vendas_cache AS m WITH (NOLOCK) ";
+  wsel += " WHERE ";
+  wsel += "     m.cache_key = '" + wcacheKeyEsc + "' ";
+  wsel += "     AND m.cache_date = '" + wcacheDate + "' ";
+  wsel += "     AND m.iuorg = '" + wiuorg.trim() + "' ";
+  wsel += "     AND m.ipsr = '" + wipsr.trim() + "' ";
+  wsel += "     AND m.ddoc BETWEEN '" + wini + "' AND '" + wfim + "' ";
+
+  return getSQLNumber(wsel);
+}
+
+function _getStandardDeviation(wiuorg, wipsr, wini, wfim, wcacheKeyEsc, wcacheDate) {
+  println("function _getStandardDeviation"); flush();
+
+  import("java.time.LocalDate")
+
+  wqtdias = 0;
+  wtopmais = 0;
+  wtopmenos = 0;
+  PARAMS = _loadParams();
+
+  if (PARAMS.containsKey("ABC*TEMP*GIRO*" + wiuorg.trim())) {
+
+    wqtdias = INT(PARAMS.get("ABC*TEMP*GIRO*" + wiuorg.trim()).qqcoef1);
+    wtopmais = INT(PARAMS.get("ABC*TEMP*GIRO*" + wiuorg.trim()).qqcoef2);
+    wtopmenos = INT(PARAMS.get("ABC*TEMP*GIRO*" + wiuorg.trim()).qqcoef3);
+  }
+
+  // caso período não tenha sido repassado, identifica via setup
+  if (wini.equals("")) wini = LocalDate:: parse(today()).minusDays(wqtdias).toString();
+  if (wfim.equals("")) wfim = today();
+
+  WN = "\n";
+  wsel = "";
+  wsel += WN + " DROP TABLE IF EXISTS #tt_ranked_dates; "
+  wsel += WN + " "
+  wsel += WN + " WITH cte_dt_series AS ( "
+  wsel += WN + "     SELECT CAST('" + wini + "' AS DATE) AS date_value "
+  wsel += WN + "     UNION ALL "
+  wsel += WN + "     SELECT DATEADD(DAY, 1, date_value) "
+  wsel += WN + "     FROM cte_dt_series "
+  wsel += WN + "     WHERE DATEADD(DAY, 1, date_value) <= '" + wfim + "' "
+  wsel += WN + " ), "
+  wsel += WN + "  "
+  wsel += WN + " cte_dates AS ( "
+  wsel += WN + "     SELECT CONVERT(VARCHAR(10), date_value, 23) AS date_value "
+  wsel += WN + "     FROM cte_dt_series "
+  wsel += WN + " ), "
+  wsel += WN + "  "
+  wsel += WN + " cte_vendas AS ( "
+  wsel += WN + "     SELECT "
+  wsel += WN + "         dt.date_value, "
+  wsel += WN + "         ISNULL(SUM(m.qpsr_ven - m.qpsr_dev), 0) AS qtd "
+  wsel += WN + "     FROM cte_dates AS dt "
+  wsel += WN + "     LEFT JOIN dbo.abc_vendas_cache AS m WITH (NOLOCK) "
+  wsel += WN + "         ON "
+  wsel += WN + "             dt.date_value = m.ddoc "
+  wsel += WN + "             AND m.cache_key = '" + wcacheKeyEsc + "' "
+  wsel += WN + "             AND m.cache_date = '" + wcacheDate + "' "
+  wsel += WN + "             AND m.iuorg = '" + wiuorg.trim() + "' "
+  wsel += WN + "             AND m.ipsr = '" + wipsr.trim() + "' "
+  wsel += WN + "             AND m.ddoc BETWEEN '" + wini + "' AND '" + wfim + "' "
+  wsel += WN + "     GROUP BY dt.date_value "
+  wsel += WN + " ), "
+  wsel += WN + "  "
+  wsel += WN + " cte_ranked_dates AS ( "
+  wsel += WN + "     SELECT "
+  wsel += WN + "         date_value, "
+  wsel += WN + "         qtd, "
+  wsel += WN + "         ROW_NUMBER() OVER (ORDER BY qtd DESC, date_value ASC) AS rn_maior, "
+  wsel += WN + "         ROW_NUMBER() OVER (ORDER BY qtd ASC, date_value ASC) AS rn_menor "
+  wsel += WN + "     FROM cte_vendas "
+  wsel += WN + " ) "
+  wsel += WN + "  "
+  wsel += WN + " SELECT date_value AS ddoc "
+  wsel += WN + " INTO #tt_ranked_dates "
+  wsel += WN + " FROM cte_ranked_dates "
+  wsel += WN + " WHERE rn_maior <= " + wtopmais
+  wsel += WN + " UNION ALL "
+  wsel += WN + " SELECT date_value AS ddoc "
+  wsel += WN + " FROM cte_ranked_dates "
+  wsel += WN + " WHERE rn_menor <= " + wtopmenos
+  wsel += WN + " OPTION (MAXRECURSION 0); "
+  x = executeSQL(wsel);
+
+  return " SELECT ISNULL(tt.ddoc, '') FROM #tt_ranked_dates tt ";
+}
+
+function _getDaysWeekendCount(wiuorg, wipsr, wini, wfim, wcacheKeyEsc, wcacheDate) {
+  println("function _getDaysWeekendCount"); flush();
+
+  wtopmais = 0;
+  wtopmenos = 0;
+  wweekend1 = 0;
+  wweekend2 = 0;
+  PARAMS = _loadParams();
+
+  if (PARAMS.containsKey("ABC*TEMP*GIRO*" + wiuorg.trim())) {
+
+    wtopmais = INT(PARAMS.get("ABC*TEMP*GIRO*" + wiuorg.trim()).qqcoef2);
+    wtopmenos = INT(PARAMS.get("ABC*TEMP*GIRO*" + wiuorg.trim()).qqcoef3);
+    wweekend1 = INT(PARAMS.get("ABC*TEMP*GIRO*" + wiuorg.trim()).qqcoef4);
+    wweekend2 = INT(PARAMS.get("ABC*TEMP*GIRO*" + wiuorg.trim()).qqcoef5);
+  }
+
+  WN = "\n";
+  wsel = "";
+  wsel += WN + " WITH cte_daily_date AS ( ";
+  wsel += WN + "     SELECT CAST('" + wini + "' AS DATE) AS date_value ";
+  wsel += WN + "     UNION ALL ";
+  wsel += WN + "     SELECT DATEADD(DAY, 1, date_value) ";
+  wsel += WN + "     FROM cte_daily_date ";
+  wsel += WN + "     WHERE DATEADD(DAY, 1, date_value) <= '" + wfim + "' ";
+  wsel += WN + " ), ";
+  wsel += WN + " cte_date_day_of_week AS ( ";
+  wsel += WN + "     SELECT ";
+  wsel += WN + "         CONVERT(VARCHAR, date_value, 23) AS date_value, ";
+  wsel += WN + "         DATEPART(DW, date_value) AS day_of_week ";
+  wsel += WN + "     FROM cte_daily_date ";
+  wsel += WN + " ) ";
+  wsel += WN + " SELECT COUNT(DISTINCT r.date_value) AS total_days ";
+  wsel += WN + " FROM cte_date_day_of_week AS r ";
+  wsel += WN + " WHERE  ";
+  wsel += WN + "     r.day_of_week IN (" + wweekend1 + ", " + wweekend2 + ") ";
+  if (_getSalesDaysCount(wiuorg, wipsr, wini, wfim, wcacheKeyEsc, wcacheDate) > wtopmais + wtopmenos) {
+
+    wsel += WN + "     AND r.date_value NOT IN ( ";
+    wsel += WN + "     " + _getStandardDeviation(wiuorg, wipsr, wini, wfim, wcacheKeyEsc, wcacheDate)
+    wsel += WN + "     ) ";
+  }
+  wsel += WN + " OPTION (MAXRECURSION 0); ";
+
+  return getSQLNumber(wsel);
+}
+
+if (wop == "loadParams") { return _loadParams(); }
+if (wop == "executeTSQL") { return _executeTSQL(w1); }
+if (wop == "getRuptura") { return _getRuptura(w1, w2, w3, w4, w5, w6); }
+if (wop == "getDaysWeekendCount") {
+
+  wcacheKeyEsc = ("" + w5).replace("'", "''");
+  wcacheDate = zglobals.ABC_VENDAS_CACHE_DATE;
+  return _getDaysWeekendCount(w1, w2, w3, w4, wcacheKeyEsc, wcacheDate);
+}
+if (wop == "getSalesDaysCount") {
+
+  wcacheKeyEsc = ("" + w5).replace("'", "''");
+  wcacheDate = zglobals.ABC_VENDAS_CACHE_DATE;
+  return _getSalesDaysCount(w1, w2, w3, w4, wcacheKeyEsc, wcacheDate);
+}
+if (wop == "getStandardDeviation") {
+
+  wcacheKeyEsc = ("" + w5).replace("'", "''");
+  wcacheDate = zglobals.ABC_VENDAS_CACHE_DATE;
+  return _getStandardDeviation(w1, w2, w3, w4, wcacheKeyEsc, wcacheDate);
+}
+
+return null;

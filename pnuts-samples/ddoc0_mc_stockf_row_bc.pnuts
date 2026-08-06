@@ -1,0 +1,643 @@
+// Nome.....: ddoc0_mc_stockf_row_bc()
+// Objetivo.: 
+// Histórico:
+// 2010-09-01 - ANDRÉ FLOQUET – acrescentar nova função de acesso
+// 2010-10-14 - VAGNER SANTIAGO – acrescentar a NRD na verificação de excedente do documento fiscal
+// 2010-10-14 - OZANA SPINOSA - Comentada a linha : //wtotalnvd = wrow.mvalor
+// 2010-10-28 - MARCELO MIRANDA - Criticas para confirmação de NRD/NVD
+// 2010-11-12 - MARCELO MIRANDA - inversão da critica de valor unitário de 'exists <>' para not 'exists ='
+// 2011-08-19 - OZANA SPINOSA - Terminar Operação nas Linhas do Doc Origem da TNS de entrada de Software (Jesferson)
+// 2012-02-06 - LILIANE CHAVES - NAda feito.
+// 2012-04-12 - OZANA SPINOSA - Alterado select para validar qtde na devolução se está maior do que doc fiscal
+// 2017-05-12 - OZANA SPINOSA - Não confirmar transferencia valor zerado help 196478 
+// 2022-04-25 - HÉLIO MARQUES - NPP.001134 - CON - VALIDAÇÃO DE CHAVE DE ACESSO LANÇAMENTO DE TNF: Alterado condicionais para solicitação da chave e validação.
+// 2025-06-03 - OZANA SPINOSA - - NPP.002748 - VALIDAÇÃO DE EXISTENCIA DE CFOP NA CONFIRMAÇÃO DA TNF
+//**********************************************************************************************************************
+
+wnodo = MLogin:: getUserNodo().trim()
+wuser = MLogin:: getUser().trim()
+wdatetime = x_mc_br_get_date_server_fn()
+wdate = wdatetime.substring(0, 10)
+cursor = MConnection:: getMCursor()
+
+println(">>-> FUNCAO: ddoc0_mc_stockf_row_bc - INICIO "); flush();
+
+wrow = wrows.elementAt(0)
+wqry = StringBuilder();
+
+wzk = formatNumber(wrow.zk, "N00000000000000")
+
+// 2017-05-12 - OZANA SPINOSA - Não confirmar transferencia valor zerado help 196478 
+if (inList(wrow.idoct.trim(), ["TNF"]) && inList(wrow.cr.trim(), ["AX", "MX"])) {
+  wsel = " select a.idoct, a.idoc, b.ipst, a.ipsr, a.ndoc, a.mvalor"
+  wsel += "  from ddolt0 a WITH (NOLOCK), bpsrt0 b WITH (NOLOCK) "
+  wsel += " where a.ipsr = b.ipsr "
+  wsel += "    and a.ientt  = '" + wrow.ientt.trim() + "' "
+  wsel += "    and a.ient   = '" + wrow.ient.trim() + "' "
+  wsel += "    and a.idoct  = '" + wrow.idoct.trim() + "' "
+  wsel += "    and a.idoc   = '" + wrow.idoc.trim() + "' "
+  //wsel += "    and (a.cit = '*' OR a.cit = '') "
+  wsel += "    and a.cit in ('*','IV','')"
+  vidoc = getRows("DDOC", wsel)
+  foreach widoc(vidoc.elements()) {
+    throwError("Não Permitido confirmar TNF com CFOP * ou vazio. Gentileza conferir CFOP do documento .\n")
+  }
+}
+
+// Trava para não confirmar NPV pelas Linhas
+if (wrow.idoct.trim().equals("NPV")) {
+
+  // verifica se exite produto com serialização Obrigatoria
+  wqry.append(" SELECT TOP 1 psr.ipsr ");
+  wqry.append("   FROM bpsrt0 psr ");
+  wqry.append("  INNER JOIN ddolt0 lin WITH(NOLOCK) ");
+  wqry.append("     ON lin.iorg = psr.iorg ");
+  wqry.append("    AND lin.ipsr = psr.ipsr ");
+  wqry.append("    AND lin.ipsrlp = psr.ipsrlp ");
+  wqry.append("    AND psr.cep0 = '1' /* Por enquanto s'o para Cod de rastreio 1 */ ");
+  wqry.append("  WHERE lin.iorg = 'TEC' ");
+  wqry.append("    AND lin.idoct = '" + wrow.idoct.trim() + "' ");
+  wqry.append("    AND lin.idoc = '" + wrow.idoc.trim() + "' ");
+  wqry.append(" /* ddol1_mc_stockf_row_bc - SELECT 00 */ ");
+  println(" CEP0 -> " + wqry.toString()); flush();
+  wIpsrCep0 = getSQLValue(wqry.toString());
+
+  wqry.delete(0, wqry.length());
+
+  if (!wIpsrCep0.trim().equals("")) {
+    if (!x_mc_get_access_fn("DDOC0-0422", "")) {
+      throwError("Operação Cancelada! Produto " + wIpsrCep0.trim() + " exige serialização.");
+    } else {
+      ddoc0_pr_insert_ddoe_fn(wrow, "CF", "", "CONFIRMAR MANUAL ", wrow.mvalor);
+    }
+  }
+}
+
+// 2017-05-12 - OZANA SPINOSA - Não confirmar transferencia valor zerado help 196478 
+if (inList(wrow.idoct.trim(), ["NTE", "NTS"])) {
+  wsel = " select a.idoct, a.idoc, b.ipst, a.ipsr, a.ndoc, a.mvalor"
+  wsel += "  from ddolt0 a WITH (NOLOCK), bpsrt0 b WITH (NOLOCK) "
+  wsel += " where a.ipsr = b.ipsr "
+  wsel += "    and a.ientt  = '" + wrow.ientt.trim() + "' "
+  wsel += "    and a.ient   = '" + wrow.ient.trim() + "' "
+  wsel += "    and a.idoct  = '" + wrow.idoct.trim() + "' "
+  wsel += "    and a.idoc   = '" + wrow.idoc.trim() + "' "
+  wsel += "    and a.mvalor = 0 "
+  vidoc = getRows("DDOC", wsel)
+  println("sel   " + wsel); flush();
+  foreach widoc(vidoc.elements()) {
+    if (widoc.mvalor == 0) {
+      throwError("Produto " + widoc.ipsr + " com valor zero. Não é permitido confirmar Transferências com valor zerado .\n")
+    }
+  }
+}
+
+// Alerta de frete
+if (wrow.ccl.trim() == "FOB") {
+  if ((wrow.idoct.trim() == "TNF") && (wrow.ientt.trim() == "FN")) {
+    //cursor.commitWork()
+    showMessage("Inserir Conhecimento de transporte!")
+    //cursor.beginWork()
+  }
+}
+
+//gravar automaticamente a chave de acesso nas tnf de movimentação interna
+if (wrow.idoct.trim() == "TNF" && (inList(wrow.iuorgt2.trim(), ["AC"])) && (inList(wrow.ctcf.trim(), ["1152", "2152", "1152A", "2152A"])) && wrow.cr.trim() == "MX" && (inList(wrow.ientt.trim(), ["UN"]))) {
+  wsel = " select zk "
+  wsel += "   from ddoct0 "
+  wsel += "  where iorg  = '" + wrow.iorg.trim() + "' "
+  wsel += "    and ientt = '" + wrow.ientt.trim() + "' "
+  wsel += "    and cstc not in ('PD','XA') "
+  wsel += "    and idoct = ('NNF') "
+  wsel += "    and idoct2 = '" + wrow.idoct2 + "' "
+  wsel += "    and idoc2  = '" + wrow.idoc2 + "' "
+  wsel += "    and iuorg  = '" + wrow.ient + "' "
+  wddocr = getRow("DDOC", wsel)
+
+  if (wddocr.wdcode != 100) {
+    wzknnf = formatNumber(wddocr.zk, "N00000000000000") //zk da NNF referente
+    wchave = x_mc_select_extension_fn("c", "DDOCTX", wzknnf, "widnfe")
+
+    wzk = formatNumber(wrow.zk, "N00000000000000") //zk da tnf
+    x_mc_update_extension_fn("c", "DDOCTX", wzk, "widnfe", wchave)
+    ddoc0_pr_insert_ddoe_fn(wrow, "CGA", "", "Chave Grav Aut CF", wrow.mvalor)
+
+  }
+}
+
+//RMA F03 - PISTOLAR CHAVE TNF
+//if (wrow.idoct.trim() == "TNF" && (inList(wrow.iuorgt2.trim(), ["AC"])) && (inList(wrow.iuorg2.trim(), ["1009"])) && (inList(wrow.iuorg.trim(), ["F03"])) && wrow.ientt.trim() != "UN") {
+//Conforme Solicitação NPP.001134 para permanecer somente duas condições das condicionais acima:
+if ((wrow.idoct.trim() == "TNF") && (wrow.ientt.trim() != "UN")) {
+  //wobs = wrow.getAssociatedText("DDOC0-3").trim()
+  wobs = x_mc_select_extension_fn("c", "DDOCTX", wzk, "widnfe")
+  wqtc = wobs.replaceAll("[A-Z0-9]", "")
+  if (wobs == "" || wobs.length() != 44 || wqtc != "") {
+    showMessage("Observações vazio ou inválido. \n Favor preencher com chave da NF de origem.")
+    wtipo = ""
+    //cursor.commitWork()
+    wnnf = MUtil:: getStringInput(m, "Digite o número da chave NF de origem.", "Chave NF", wtipo)
+    //cursor.beginWork()
+    if (wnnf.trim() == "") {
+      throwError("Operação Cancela! Campo da chave vazio.")
+    } else {
+      if (wnnf.trim().length() != 44) {
+        throwError("Operação Cancela! Quantidade de caracteres inválido.")
+      } else {
+        wqtc = wnnf.trim().replaceAll("[A-Z0-9]", "")
+        if (wqtc != "") {
+          throwError("Operação Cancela! Favor digitar apenas números.")
+        }
+      }
+    }
+    // valida chave antes de salvar
+    ddocl_mc_valid_chave_nfe_fn(wnnf)
+
+    wrow.setAssociatedText(wnnf, "DDOC0-3")
+    wzk = formatNumber(wrow.zk, "N00000000000000")
+    x_mc_update_extension_fn("c", "DDOCTX", wzk, "widnfe", wnnf)
+    ddoc0_pr_insert_ddoe_fn(wrow, "ICA", "", "Inserida Chave da NF", wrow.mvalor)
+  }
+}
+
+
+// Testa de documento esta confirmado
+if (wrow.cstc.trim() == "PD") {
+  throwError("O documento não está confirmado.")
+}
+
+// Testa se existe alguma linha confirmada fornecimento
+wsel = "Select zk "
+wsel += "  from ddolt0"
+wsel += " where iorg  = '" + wrow.iorg + "' "
+wsel += "   and idoct = '" + wrow.idoct + "' "
+wsel += "   and idoc  = '" + wrow.idoc + "' "
+wsel += "   and ientt = '" + wrow.ientt + "' "
+wsel += "   and ient  = '" + wrow.ient + "' "
+wsel += "   and csto  = 'CF' "
+wddol = getRows("DDOL0", wsel)
+
+
+// Registra data para ruptura
+if ((wrow.idoct.trim() == "NQE") || (wrow.idoct.trim() == "NNF" && inList(wrow.ctcf.trim(), ["1202"])) || (wrow.idoct == "TNF" && inList(wrow.ctcf.trim(), ["1102", "1403", "2102", "2403", "1152", "2152", "2152c", "2409", "1902", "2923ag", "1906", "1152c"]))) {
+  devrl_mc_ins_evento_fn(wrow)
+}
+
+if (!wddol.isEmpty()) { throwError("Documento possui linhas confirmadas, deve ser confirmado pelas linhas.") }
+
+if (wrow.idoct.trim() != "NOC") {
+  wflag = x_mc_br_validar_acesso_fn(m.getEnt(), "STOCKF_ROW", MLogin:: getUserNodo())
+}
+
+
+// Terminar Operação nas Linhas do Doc Origem da TNS de entrada de Software (Jesferson)
+if ((wrow.idoct.trim() == "TNS") && (wrow.cit.trim() == "2933")) {
+
+  wsel = " select * "
+  wsel += "  from ddolt0 "
+  wsel += "  where iorg  = '" + wrow.iorg + "' "
+  wsel += "    and idoct = '" + wrow.idoct2 + "' "
+  wsel += "    and idoc  = '" + wrow.idoc2 + "' "
+  wsel += "    and csto  = 'CF' "
+  vddol2 = getMRows("DDOL", wsel)
+  
+  
+  foreach wddol2(vddol2.elements()) {
+    wddol2.dsto = wdate
+    wddol2.csto = "CT"
+    wddol2.updateRow(wddol2)
+    wddol2.setZCommand("STOCKT_ROW", "AF", " ")
+  }
+
+  wsel = " select * "
+  wsel += "  from ddoct0 "
+  wsel += "  where iorg  = '" + wrow.iorg + "' "
+  wsel += "    and idoct = '" + wrow.idoct2 + "' "
+  wsel += "    and idoc  = '" + wrow.idoc2 + "' "
+  wsel += "    and csto  = 'CF' "
+  vddoc2 = getMRows("DDOC", wsel)
+  
+  foreach wddoc2(vddoc2.elements()) {
+    wddoc2.dsto = wdate
+    wddoc2.csto = "CT"
+    wddoc2.updateRow(wddoc2)
+    wddoc2.setZCommand("STOCKT_ROW", "AF", " ")
+    m.getBrowse().refreshRowWithZK(wddoc2.getField("zk"))
+    wrow.refreshRow()
+  }
+}
+
+// Verifica se o usuário que confirmou a TNF é o mesmo do que gerou a NQE
+wsel = "SELECT DISTINCT a.idoct, a.idoc "
+wsel += "  FROM ddoct0 a "
+wsel += "         JOIN ddoet0 b "
+wsel += "           ON a.zutl   = b.zutl  "
+wsel += "          AND a.idoct2 = 'TNF' "
+wsel += "         JOIN ddoet0 c "
+wsel += "           ON a.idoct = c.idoct "
+wsel += "          AND a.idoc  = c.idoc "
+wsel += " WHERE a.idoct = '" + wrow.idoct.trim() + "' "
+wsel += "   AND a.idoc  = '" + wrow.idoc.trim() + "' "
+wsel += "   AND b.cdoe  = 'S' "
+wsel += "   AND c.idoct = 'NQE' "
+vnqe = getRows("DDOL0", wsel)
+
+if (vnqe.size() > 0) {
+  throwError("Operação Cancelada. Usuário não autorizado a confirmar a ENTRADA, somente a SAÍDA.")
+}
+
+
+if (wrow.idoct.trim() == "NNF" && !x_mc_get_access_fn("DDOC0-0403", "")) {
+  throwError("Operação cancelada. Usuário não autorizado a confirmar esse tipo de documento. Contactar Suporte.")
+}
+
+if (wrow.idoct.trim() == "VPA" && !x_mc_get_access_fn("DDOC0-0220", "")) {
+  throwError("Operação cancelada. Usuário não autorizado a confirmar esse tipo de documento.")
+}
+
+if (wrow.idoct == "NVD" && !x_mc_get_access_fn("DDOC0-0043", "")) {
+  throwError("Usuário não autorizado.")
+}
+
+if (wrow.idoct == "NRT" && !x_mc_get_access_fn("DDOC0-0044", "")) {
+  throwError("Usuário não autorizado.")
+}
+
+if (wrow.idoct == "NPV" && !x_mc_get_access_fn("DDOC0-0045", "")) {
+  throwError("Usuário não autorizado.")
+}
+
+if (wrow.idoct == "NOS" && !x_mc_get_access_fn("DDOC0-0046", "")) {
+  throwError("Usuário não autorizado.")
+}
+
+if (wrow.idoct == "NPC" && !x_mc_get_access_fn("DDOC0-0047", "")) {
+  throwError("Usuário não autorizado.")
+}
+
+if (wrow.idoct == "TNF" && inList(wrow.csto, ["PD", "CE"]) && !x_mc_get_access_fn("DDOC0-0048", "")) {
+  throwError("Usuário não autorizado.")
+}
+
+if (inList(wrow.idoct.trim(), ["NRE", "NRS"]) && !x_mc_get_access_fn("DDOC0-0049", "")) {
+  throwError("Usuário não autorizado.")
+}
+
+if (inList(wrow.idoct, ["NAE", "NAS", "NAV"]) && !x_mc_get_access_fn("DDOC0-0050", "")) {
+  throwError("Usuário não autorizado.")
+}
+
+if (inList(wrow.idoct, ["NEE", "NES"]) && !x_mc_get_access_fn("DDOC0-0051", "")) {
+  throwError("Usuário não autorizado.")
+}
+
+if (inList(wrow.idoct, ["NMP", "NMS", "NME"]) && !x_mc_get_access_fn("DDOC0-0052", "")) {
+  throwError("Usuário não autorizado.")
+}
+
+if (inList(wrow.idoct.trim(), ["NVD", "NRD"])) {
+
+  //Critica de valor total de devoluções maior que documentos fiscal original    
+  wsel = "SELECT df.mvalor "
+  wsel += "  FROM   ddoct0 df with (nolock)"
+  wsel += " WHERE  df.iorg  = 'TEC' "
+  wsel += "   AND df.idoct  = '" + wrow.idoct2 + "' "
+  wsel += "   AND df.idoc   = '" + wrow.idoc2 + "' "
+  wsel += "   ORDER BY df.ddoc DESC "
+  println(wsel); flush()
+  wtotaldf = getSQLNumber(wsel)
+
+  wsel = "SELECT SUM(nvd.mvalor) AS tnvd "
+  wsel += "  FROM   ddoct0 nvd with (nolock) "
+  wsel += " WHERE  nvd.iorg  = 'TEC' "
+  wsel += "   AND nvd.idoct   = '" + wrow.idoct + "' "
+  wsel += "   AND nvd.idoct2  = '" + wrow.idoct2 + "' "
+  wsel += "   AND nvd.idoc2   = '" + wrow.idoc2 + "' "
+  wsel += "   AND nvd.ientt   = '" + wrow.ientt + "' "
+  wsel += "   AND nvd.ient    = '" + wrow.ient + "' "
+  wsel += "   AND nvd.cstc NOT IN ('PD','XA') "
+  wsel += "   AND nvd.csto NOT IN ('PD','XA') "
+  wsel += " GROUP BY nvd.ddoc, nvd.idoc2 "
+  wsel += " ORDER BY nvd.ddoc DESC "
+  println(wsel); flush()
+  wtotalnvd = getSQLNumber(wsel)
+
+  println("wtotaldf:  " + round(wtotaldf, 0)); flush()
+  println("wtotalnvd: " + round(wtotalnvd, 0)); flush()
+
+  //wtotalnvd = wrow.mvalor  
+
+  if (round(wtotalnvd, 0) > round(wtotaldf, 0) && wrow.iuorg.trim() != "F06") {
+    throwError("Valor devolvido excede o valor do documento fiscal : " + wrow.idoc2)
+  }
+
+  //Critica para devolução de produtos que não existem no documento fiscal
+  wsel = " select a.zk "
+  wsel += "   from ddolt0 a with (nolock) "
+  wsel += "  where not exists ( select b.zk "
+  wsel += "                       from ddolt0 b with (nolock) "
+  wsel += "                      where b.ipsr  = a.ipsr "
+  wsel += "                        and b.idoct = '" + wrow.idoct2 + "' "
+  wsel += "                        and b.idoc  = '" + wrow.idoc2 + "' ) "
+  wsel += "    and a.iorg  = '" + wrow.iorg + "' "
+  wsel += "    and a.idoct = '" + wrow.idoct + "' "
+  wsel += "    and a.idoc  = '" + wrow.idoc + "' "
+  wsel += "    and a.ientt = '" + wrow.ientt + "' "
+  wsel += "    and a.ient  = '" + wrow.ient + "' "
+  vddol = getRows("DDOL0", wsel)
+
+  if (vddol.size() != 0) { throwError("Existe produto na devolução não pertencente ao documento fiscal.") }
+
+  //Valor unitário do produto diferente ao do documento fiscal
+  wsel = " select a.zk "
+  wsel += "   from ddolt0 a with (nolock) "
+  wsel += "  where not exists ( select b.zk "
+  wsel += "                       from ddolt0 b with (nolock) "
+  wsel += "                      where b.ipsr   = a.ipsr "
+  wsel += "                        and b.idoct  = '" + wrow.idoct2 + "' "
+  wsel += "                        and b.idoc   = '" + wrow.idoc2 + "' "
+  wsel += "                        and ROUND(b.mvalun,2) = ROUND(a.mvalun,2) ) "
+  wsel += "    and a.iorg  = '" + wrow.iorg + "' "
+  wsel += "    and a.idoct = '" + wrow.idoct + "' "
+  wsel += "    and a.idoc  = '" + wrow.idoc + "' "
+  wsel += "    and a.ientt = '" + wrow.ientt + "' "
+  wsel += "    and a.ient  = '" + wrow.ient + "' "
+  vddol = getRows("DDOL0", wsel)
+  if (vddol.size() != 0) {
+    throwError("Existe produto com valor unitário na devolução divergente ao documento fiscal..")
+  }
+
+  wsel = " select a.zk "
+  wsel += "   from ddolt0 a with (nolock) "
+  wsel += "  where  exists ( select sum(b.qpsr) "
+  wsel += "                       from ddolt0 b with (nolock) "
+  wsel += "                      where b.ipsr  = a.ipsr "
+  wsel += "                        and b.idoct = '" + wrow.idoct2 + "' "
+  wsel += "                        and b.idoc   = '" + wrow.idoc2 + "' "
+  wsel += "                      group by b.ipsr "
+  wsel += "                     having sum(b.qpsr) < a.qpsr ) "
+  wsel += "    and a.iorg  = '" + wrow.iorg + "' "
+  wsel += "    and a.idoct = '" + wrow.idoct + "' "
+  wsel += "    and a.idoc  = '" + wrow.idoc + "' "
+  wsel += "    and a.ientt = '" + wrow.ientt + "' "
+  wsel += "    and a.ient  = '" + wrow.ient + "' "
+
+  vddol = getRows("DDOL0", wsel)
+  if (vddol.size() != 0) {
+    throwError("Existe produto na devolução com quantidade superior ao documento fiscal!")
+  }
+
+}
+
+if (inList(wrow.idoct.trim(), ["TNF", "TCR"]) && !inList(wrow.idoct2.trim(), ["NPC"])) {
+
+  wfl = wrow.idoc.substring(0, 3)
+
+  wsel = " SELECT count(*) "
+  wsel += "   FROM bctxt0 "
+  wsel += "  WHERE ictx = 'WMS*FILIAIS' "
+  wsel += "    AND ivalk = '" + wfl + "' "
+  wflwms = getSQLNumber(wsel)
+
+  if (wflwms == 0) {
+
+    // Pede CPF/CNPJ da TNF
+    //cursor.commitWork()
+    wtidfisc = MUtil:: getStringInput(m, "Validação Nota Fiscal: ", "CPF/CNPJ:", "")
+    //cursor.beginWork()
+
+    if (wtidfisc.trim() == "") { throwError("CPF/CNPJ Inválido.") }
+    if (wtidfisc.length() != 11 && wtidfisc.length() != 14) { throwError("CPF/CNPJ inválido!!!\n" + wtidfisc) }
+    if (wtidfisc.indexOf('.') == -1 && wtidfisc.indexOf('-') == -1) { wtidfisc = x_mc_br_format_tidfisc_fn(wtidfisc) }
+
+    // Seleciona o terceiro  pelo CPF/CNPJ informado
+    wsel = " select tidfisc, ientt, ient, nent "
+    wsel += " from bentt0 "
+    wsel += " where tidfisc = '" + wtidfisc + "' "
+    wsel += "   and ientt   = '" + wrow.ientt.trim() + "' "
+    wsel += "   and cst    <> 'X0' "
+    wbent = getRow("BENT", wsel)
+    if (wbent.wdcode == 100) { throwError("CPF/CNPJ não cadastrado.") }
+    wientt = wbent.ientt.trim()
+    wient = wbent.ient.trim()
+
+    if (wientt != wrow.ientt.trim() || wient != wrow.ient.trim()) {
+      throwError("Código Terceiro difere do Documento: " + wientt + " - " + wient + " -- " + wrow.ientt + " - " + wrow.ient)
+    }
+  }
+}
+
+// Testa Linha por linha do NPV para verificar se tem estoque - Alterado por Camila 09-05-06
+wtexto = ""
+if (inList(wrow.idoct.trim(), ["NPV", "NPR", "NTS"])) {
+  wsel = " select a.* "
+  wsel += "  from ddolt0 a "
+  wsel += " inner join bpsrt0 b ON a.iorg = b.iorg AND a.ipsr = b.ipsr "
+  wsel += " where a.iorg  = '" + wrow.iorg + "' "
+  wsel += "   and a.idoct = '" + wrow.idoct + "' "
+  wsel += "   and a.idoc  = '" + wrow.idoc + "' "
+  wsel += "   and a.ientt = '" + wrow.ientt + "' "
+  wsel += "   and a.ient  = '" + wrow.ient + "' "
+  wsel += "   and b.ccl = 'P' "
+  wsel += "   and b.ipst  not in (select ivalk from bctxt0 where ictx = 'MULTI*IPST' and ivalk != '') "
+  vddol = getRows("DDOL0", wsel)
+  
+  foreach wddol(vddol.elements()){
+    wsel = " select sum(b.qactual) "
+    wsel += " from  ppsrt0 b "
+    wsel += " where b.iorg    = '" + wddol.iorg + "' "
+    wsel += "   and b.ipsr    = '" + wddol.ipsr + "' "
+    wsel += "   and b.iuorgt2 = '" + wddol.iuorgt2 + "' "
+    wsel += "   and b.iuorg2  = '" + wddol.iuorg2 + "' "
+    wqactual = getSQLNumber(wsel)
+
+    if (wddol.qpsr > wqactual && wddol.ipsr != "FRTNORMA" && !inList(MLogin:: getUserNodo(), ["0000", "100"])) {
+      if (wddol.qpsr > wqactual) {
+        wtexto += "Produto " + wddol.ipsr + " - " + wddol.ndoc + " não tem estoque suficiente para fornecer."
+        wtexto += "\n"
+      }
+    }
+
+    if (wtexto != "") {
+      throwError(wtexto + "\nOperação Cancelada")
+    }
+  }
+
+  //Trava para só permitir Confirmar Emissão pelo Grupo=100(Diretoria)
+  if (wrow.idoct == "NIP" && !x_mc_get_access_fn("DDOC0-0053", "")) {
+    throwError("Usuário não autorizado.\nSomente a Diretoria pode confirmar.")
+  }
+  //insere controle dos itens de patrimonio
+  if (inList(wrow.idoct.trim(), ["TNF", "NNF"])) {
+    if (inList(wrow.ctcf.trim(), ["5949I", "1551", "2551"])) {
+      iipt0_mc_auto_insert_patri_fn(wrow.idoct.trim(), wrow.idoc.trim())
+    }
+  }
+
+  //Exige Validação da NDI de Devolução
+  if (inList(wrow.idoct.trim(), ["NDI"])) {
+    ddocp_mc_valida_integridade_fn(wrow, "no")
+  }
+
+  //Verifica se existe NPV de adiantamento que está esperando peça para conserto
+  if (wrow.idoct.trim() == "TNF" && inList(wrow.idoct2.trim(), ["NTS", "NTE"])) {
+    ddoc0_mc_ver_prod_nad_nos_fn(wrow)
+  }
+
+  // Gera NDI de Devolução de KPB
+  if (wrow.idoct.trim() == "NVD" && wrow.iuorg.trim() == "F00") {
+    wsel = " select a.*, b.ipst "
+    wsel += "  from ddolt0 a ,bpsrt0 b"
+    wsel += " where a.iorg  = '" + wrow.iorg + "' "
+    wsel += "   and a.idoct = '" + wrow.idoct + "' "
+    wsel += "   and a.idoc  = '" + wrow.idoc + "' "
+    wsel += "   and a.ientt = '" + wrow.ientt + "' "
+    wsel += "   and a.ient  = '" + wrow.ient + "' "
+    wsel += "   and a.iorg  = b.iorg "
+    wsel += "   and a.ipsr  = b.ipsr "
+    wsel += "   and b.ipst  in ('KPB','KPN')  "
+    vddol = getMRows("DDOL0", wsel)
+
+    if (vddol.size() > 0) {
+      // Work
+      wdatetime = x_mc_br_get_date_server_fn()
+      wdate = wdatetime.substring(0, 10)
+      wtime = wdatetime.substring(11, 16)
+      wiorg = wrow.iorg.trim()
+      wiuorgt = wrow.iuorgt.trim()
+      wiuorg = wrow.iuorg.trim()
+      wiuorgt2 = wrow.iuorgt2.trim()
+      wiuorg2 = wrow.iuorg2.trim()
+      wctcf_nri = "MX-NDI"
+      wirct_nri = ""
+      widoct_nri = "NDI"
+
+
+      // Encontra sequencial NDI
+      wddoc = getMRow("DDOC0")
+      wddoc.iorg = wiorg
+      wddoc.ientt = "*"
+      wddoc.ient = wiorg
+      wddoc.idoct = widoct_nri
+      wddoc.idoc = wiuorg.trim() + "/%"
+      wddoc.iuorg = wiuorg.trim()
+      widoc_nri = MUtil:: seqNumber("idoc", wddoc.idoc, wddoc)
+    }
+    
+    
+    foreach wddol(vddol.elements()){
+      wsel = " select * "
+      wsel += "  from ddolt0 a "
+      wsel += " where a.iorg    = '" + wddol.iorg + "' "
+      wsel += "   and a.idoct   = '" + wddol.idoct2 + "' "
+      wsel += "   and a.idoc    = '" + wddol.idoc2 + "' "
+      wsel += "   and a.iixp    = '" + wddol.ipsr + "' "
+      wsel += "   and a.iuorgt2 = 'AR' "
+      wsel += "   and a.iuorg2  = 'B00' "
+      vddol2 = getMRows("DDOL", wsel)
+      foreach wddol2(vddol2.elements()){
+        wwddol = wddol2.Copy()
+        wwddol.iorg = wiorg
+        wwddol.iuorg2 = wiuorg2
+        wwddol.iuorgt2 = wiuorgt2
+        wwddol.ientt = "*"
+        wwddol.ient = wiorg
+        wwddol.ddoc = wdate
+        wwddol.ddoces = wdate
+        wwddol.dcnt = wdate
+        wwddol.cr = "MX"
+        wwddol.cci = "ND"
+        wwddol.ccf = "N"
+        wwddol.ci = "N"
+        wwddol.ci2 = ""
+        wwddol.zcst = "us"
+        wwddol.cstc = "PD"
+        wwddol.dstc = wdate
+        wwddol.csto = "PD"
+        wwddol.dsto = wdate
+        wwddol.cdc = ""
+        wwddol.pdc = 0
+        wwddol.mvaldc = 0
+        wwddol.idoct = widoct_nri
+        wwddol.idoc = widoc_nri
+        wwddol.ctcf = wctcf_nri
+        wwddol.irct1 = wirct_nri
+        wwddol.idoct2 = wrow.idoct2
+        wwddol.idoc2 = wrow.idoc2
+        wwddol.iuorgt2 = wddol2.iuorgt2
+        wwddol.iuorg2 = wddol2.iuorg2
+        wwddol.insertRow()
+        wwddol.setZCommand("INSERT_ROW", "AF", " ")
+      }
+      // Recalcula NDI
+      executeProcedure("ddocpcal", [wiorg, '*', wiorg, widoct_nri, widoc_nri, "RECALC_ROW", 0])
+    }
+
+
+    if (vddol.size() > 0) {
+
+      // Mostra o Documento de Requisição no Browse
+      wsel = " select * "
+      wsel += "   from ddoct0 "
+      wsel += "  where iorg  = '" + wiorg.trim() + "' "
+      wsel += "    and ientt = '*' "
+      wsel += "    and ient  = '" + wiorg.trim() + "' "
+      wsel += "    and idoct = '" + widoct_nri + "' "
+      wsel += "    and idoc  = '" + widoc_nri + "' "
+      wddocr = getMRow("DDOC", wsel)
+
+
+    }
+    // Confirma 
+    wddocr.cstc = "E0"
+    wddocr.dstc = wdate
+    wddocr.updateRow(wddocr)
+    wddocr.setZCommand("VERIFY_ROW", "AF", " ")
+    wddocr.refreshRow()
+
+    // Confirma 
+    wddocr.cstc = "E0"
+    wddocr.dstc = wdate
+    wddocr.updateRow(wddocr)
+    wddocr.setZCommand("STOCKE_ROW", "AF", " ")
+    wddocr.refreshRow()
+
+    m.getBrowse().addRow(wddocr)
+
+  }
+}
+
+if (wrow.idoct.trim() == "TNF" && wrow.idoct2.trim() == "NSA") {
+
+  wsel = " select  a.ientt, a.ient, a.idoct, a.idoc "
+  wsel += " from  ddoct0 a "
+  wsel += " where  a.iorg = 'TEC'  "
+  wsel += " and a.idoct2 = '" + wrow.idoct2.trim() + "'  "
+  wsel += " and a.idoc2 = '" + wrow.idoc2.trim() + "'  "
+  wsel += " and a.idoct = 'NEA'  "
+  wsel += " and a.ientt = 'UN' "
+  wnea = getRow("DDOCNEA", wsel)
+
+  if (wnea.wdcode != 100) {
+
+    wsel = " update ddoct0 "
+    wsel += " set csto = 'CT' "
+    wsel += " where ientt = '" + wnea.ientt.trim() + "' "
+    wsel += " and ient =   '" + wnea.ient.trim() + "'  "
+    wsel += " and idoct =  '" + wnea.idoct.trim() + "' "
+    wsel += " and idoc =   '" + wnea.idoc.trim() + "'  "
+    x = executeSQL(wsel)
+
+    wsel = " update ddolt0 "
+    wsel += " set csto = 'CT' "
+    wsel += " where ientt = '" + wnea.ientt.trim() + "' "
+    wsel += " and ient =    '" + wnea.ient.trim() + "'  "
+    wsel += " and idoct =   '" + wnea.idoct.trim() + "' "
+    wsel += " and idoc =    '" + wnea.idoc.trim() + "'  "
+    x = executeSQL(wsel)
+  }
+}
+
+println(">>-> FUNCAO: ddoc0_mc_stockf_row_bc - FINAL "); flush();
+
+// EOF

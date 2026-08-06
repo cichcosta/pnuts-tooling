@@ -1,0 +1,482 @@
+x_mc_inserir_log_fn("BPSRU", "bpsru_mc_log_analise_abc_tt_fn", "BPSRUBR3")
+// FUNC: bpsru_mc_log_analise_abc_tt_fn()
+// Export to CSV e Abre no Excel
+// 2011-12-23 - acrescentar with nolock nos selects
+// 2011-12-23 - considerar F07 similiar à F00 e F03
+// 2012-01-19 - MARCELO MIRANDA - Ajuste no calculo de rupturaS e media de vendas da revenda
+// 2012-01-19 - MARCELO MIRANDA - Inclusão de teste de produto e tipo de produto para calculo de ponto de resuprimento e estoque ideal
+// 2012-05-02 - MARCELO MIRANDA - Variavel iuorg escrita errada
+// 2016-01-08 - JOHN LUCAS - Colocar soma das filiais F13 e F22 igual ao da F01 - chamado 95078.
+
+import("java.util.HashMap");
+
+// Work
+wdatetime = x_mc_br_get_date_server_fn();
+wdate = wdatetime.substring(0, 10);
+wuser = MLogin:: getUser().trim();
+cursor = MConnection:: getMCursor();
+
+// Global Params
+PARAMS = HashMap();
+
+wiorg = "TEC";
+wiuorgt = "";
+wiuorg = "";
+wcanal = "";
+wipsr = "";
+wdini = "";
+wdfim = "";
+
+// Função para formatar valor no formato brasileiro (99.999,99)
+function formatNumero(wnum, wmasc) {
+  wreturn = formatNumber(wnum, wmasc).replace('.', ',')
+  wreturn = wreturn.replace(' ', '.')
+  return wreturn
+}
+
+// possibilita usuário executar essa rotina
+if (wuser.trim() != "mintaref") {
+
+  if (!x_mc_get_access_fn("LOGABC-0001", "")) {
+    throwError("Operação Cancelada! Usuário não Autorizado.");
+  }
+
+  // Critérios de Impressão
+  wxform = MForm:: getDialogForm(m, "LOG_ABC", "MC", "Critérios de Impressão", 3)
+  wxform.iorg = "TEC"
+  wxform.iuorgt = "UO"
+  wxform.iuorg = ""
+  wxform.ipsr = ""
+  wxform.dini = ""
+  wxform.dfim = ""
+
+  cursor.commitWork() // <-- NOVO
+  wxform.showForm()
+  cursor.beginWork()  // <-- NOVO
+
+  if (wxform.getLastCmd().equals("CLOSEWINDOW")) { throwError("MIN-000001W") }
+
+  wiuorgt = wxform.iuorgt.trim();
+  wiuorg = wxform.iuorg.trim();
+  wipsr = wxform.ipsr.trim();
+  wdini = wxform.dini.trim();
+  wdfim = wxform.dfim.trim();
+
+  if (wipsr.trim().equals("") && wiuorg.trim().equals("")) {
+    throwError("Operação Cancelada! Produto ou Filial são necessários para Análise ABC.");
+  }
+}
+
+// carregar parametros globais
+PARAMS = bpsru_mc_abc_utils_opt_fn("loadParams", "", "", "", "", "", "");
+println("Parametros carregados: " + PARAMS.size()); flush();
+
+QUANT_MINIMA_DIAS = INT(PARAMS.get("ABC*QUANT*MINIMA*DIAS").qqcoef1);
+
+//realizar nova tentativa ao dar erro de deadlock
+function executeTSQL(wtext) {
+  return bpsru_mc_abc_utils_opt_fn("executeTSQL", wtext, "", "", "", "", "");
+}
+
+function getRuptura(wiorg, wiuorg, wipsr, wipsrlp, wdini, wdfim) {
+  return bpsru_mc_abc_utils_opt_fn("getRuptura", wiorg, wiuorg, wipsr, wipsrlp, wdini, wdfim);
+}
+
+function getDaysWeekendCount(wiuorg, wipsr, wini, wfim) {
+  return bpsru_mc_abc_utils_opt_fn("getDaysWeekendCount", wiuorg, wipsr, wini, wfim, zglobals.ABC_VENDAS_CACHE_KEY, "");
+}
+
+function getSalesDaysCount(wiuorg, wipsr, wini, wfim) {
+  return bpsru_mc_abc_utils_opt_fn("getSalesDaysCount", wiuorg, wipsr, wini, wfim, zglobals.ABC_VENDAS_CACHE_KEY, "");
+}
+
+function getStandardDeviation(wiuorg, wipsr) {
+  return bpsru_mc_abc_utils_opt_fn("getStandardDeviation", wiuorg, wipsr, "", "", "", "");
+}
+
+// Início do processamento
+wperc = 0.0000
+wperca = 0.0000
+wabcPR = 0.00
+wabcEI = 0.00
+wabcCL = 0.00
+wmed = 0.00
+
+if (zglobals.containsKey("WIPSR_ABC") && zglobals.WIPSR_ABC != "") {
+  wipsr = zglobals.WIPSR_ABC
+  zglobals.WIPSR_ABC = ""
+}
+
+wsel = ""
+wsel += " /* bpsru_mc_log_analise_abc_tt_fn() UPDATE 2 */ "
+wsel += " UPDATE e "
+wsel += " SET "
+wsel += "     e.c1 = 'E', "
+wsel += "     e.qval3 = 0, "
+wsel += "     e.qstkmin = 0.00, "
+wsel += "     e.qstkmax = 0.00, "
+wsel += "     e.zprc = -1 "
+wsel += " FROM bpsrt0 AS a WITH (ROWLOCK) "
+wsel += " INNER JOIN ppsrt0 AS e WITH (ROWLOCK) "
+wsel += "     ON "
+wsel += "         a.iorg = e.iorg "
+wsel += "         AND a.ipst = e.ipst "
+wsel += "         AND a.ipsr = e.ipsr "
+wsel += "         AND a.ipsrlp = e.ipsrlp "
+wsel += " WHERE "
+wsel += "     a.iorg = 'TEC' "
+wsel += "     AND a.ipsr BETWEEN '00000' AND '99999' "
+wsel += "     AND a.ttext != 'X' "
+wsel += "     AND a.ipst != 'AGR' "
+wsel += "     AND LEFT(a.ccl, 1) IN ('P', 'E') "
+if (wiuorg.trim() != "") { wsel += "     AND e.iuorg2 LIKE '_" + wiuorg.substring(1) + "'" }
+if (wipsr.trim() != "") { wsel += "     AND a.ipsr = '" + wipsr + "'" }
+
+println(wsel); flush()
+x = executeTSQL(wsel)
+cursor.commitWork()
+cursor.beginWork()
+
+wsel = " update PPSRTX with(rowlock) set zdec = 0.00  where zcomp IN ('Ruptura', 'Media_VD_UD', 'Media_VD_UD_CD') /*bpsru_mc_log_analise_abc_tt_fn() UPDATE 3*/ "
+if (wipsr.trim() == "" && wiuorg.trim() == "") {
+  x = executeTSQL(wsel)
+}
+
+cursor.commitWork()
+cursor.beginWork()
+
+/* Gerar base de vendas para em tabela temporarias */
+bpsru_mc_temp_analise_giro_fn(wiorg, wiuorg, wcanal, wipsr, wdini, wdfim);
+wcacheDate = zglobals.ABC_VENDAS_CACHE_DATE;
+wcacheKeyEsc = ("" + zglobals.ABC_VENDAS_CACHE_KEY).replace("'", "''");
+
+// recupera a quantidade de dias de venda
+wdiasvenda = getSalesDaysCount(wiuorg, wipsr, wdini, wdfim);
+
+WN = "\n"
+wsel = ""
+wsel += WN + " SELECT "
+wsel += WN + "     a.iorg, "
+wsel += WN + "     a.dt_start, "
+wsel += WN + "     a.iuorg, "
+wsel += WN + "     a.zk_psr, "
+wsel += WN + "     a.ipst, "
+wsel += WN + "     a.ipsr, "
+wsel += WN + "     a.ipsrlp, "
+wsel += WN + "     SUM(a.qrup) AS qrup, "
+wsel += WN + "     SUM(a.remove_day) AS remove_days, "
+wsel += WN + "     SUM(a.qpsr_ven - a.qpsr_dev) AS qpsr "
+wsel += WN + " FROM dbo.abc_vendas_cache AS a WITH (NOLOCK) "
+wsel += WN + " LEFT JOIN #tt_bctx AS dw WITH (NOLOCK) "
+wsel += WN + "     ON "
+wsel += WN + "         dw.ictx = 'BCTX*PARAM*LOG' "
+wsel += WN + "         AND dw.ivalk = 'ABC*TEMP*GIRO*' + a.iuorg "
+wsel += WN + " WHERE "
+wsel += WN + "     a.cache_key = '" + wcacheKeyEsc + "' "
+wsel += WN + "     AND a.cache_date = '" + wcacheDate + "' "
+wsel += WN + "     AND a.iorg = 'TEC' "
+wsel += WN + "     AND a.remove_day = 0 "
+wsel += WN + "     AND a.qrup = 0 "
+if (wdiasvenda > QUANT_MINIMA_DIAS) {
+
+  wsel += WN + "     AND a.ddoc NOT IN ( "
+  wsel += WN + getStandardDeviation(wiuorg, wipsr)
+  wsel += WN + "     ) "
+}
+wsel += WN + " GROUP BY "
+wsel += WN + "     a.iorg, a.dt_start, a.iuorg, a.zk_psr, a.ipst, a.ipsr, a.ipsrlp "
+wsel += WN + " /*bpsru_mc_log_analise_abc_tt_fn() SELECT 1*/ "
+println("VDDOL: " + wsel); flush()
+vddol = getRows("DDOL", wsel);
+
+foreach wddol(vddol.elements()) {
+
+  wabcgirotempo = 0;
+
+  wfilial = wddol.iuorg.substring(1, 3);
+
+  println(">>>>>>>>>>>>>> Entrou for Filial >>>>>>>>>>>>>>>>" + wfilial); flush();
+
+  // Período Curva ABC Giro
+  if (PARAMS.containsKey("ABC*TEMP*GIRO*" + wddol.iuorg)) {
+    wabcgirotempo = INT(PARAMS.get("ABC*TEMP*GIRO*" + wddol.iuorg).qqcoef1);
+  }
+  if (wabcgirotempo == 0) {
+    throwError("Tempo Calculo Giro ABC não encontrado. ABC*TEMP*GIRO*" + wddol.iuorg);
+  }
+  wdfim = wdate
+  wdini = wddol.dt_start
+
+  println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Data ini " + wdini); flush();
+  println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>   " + wddol.ipsr); flush();
+
+  wperca = 0.0000;
+  wdiasremover = 0;
+
+  // Recupera quantidade de dias com ruptura no período
+  wqruptura = getRuptura(wiorg, wddol.iuorg, wddol.ipsr, wddol.ipsrlp, wdini, wdfim);
+
+  // Recupera quantidade de dias a remover (finais de semana)
+  wfinalsemana = getDaysWeekendCount(wddol.iuorg, wddol.ipsr, wdini, wdfim);
+
+  // Recuera quantidade de dias a remover com Vendas fora do padrão
+  wqmaiordesvio = PARAMS.get("ABC*TEMP*GIRO*" + wddol.iuorg.trim()).qqcoef2;
+  wqmenordesvio = PARAMS.get("ABC*TEMP*GIRO*" + wddol.iuorg.trim()).qqcoef3;
+
+  wdiasremover = wqruptura + wfinalsemana
+  if (wdiasvenda > QUANT_MINIMA_DIAS) {
+    wdiasremover = wdiasremover + wqmaiordesvio + wqmenordesvio;
+  }
+
+  println("Dias a remover: " + wdiasremover); flush();
+  if ((wabcgirotempo - wdiasremover) <= 0) {
+    wmed = 0.00
+  } else {
+
+    wmed = round((wddol.qpsr / (wabcgirotempo - wdiasremover)), 2);
+    println("(" + wddol.qpsr + "/(" + wabcgirotempo + " - " + wdiasremover + "))"); flush();
+  }
+
+  // Estimada UO
+  wsel = ""
+  wsel += " Select IIF(sum(qscurso) > 0, (sum(qactual) - sum(qscurso)), sum(qactual)) as qactual "
+  wsel += "   from ppsrt0 with (nolock) "
+  wsel += "  where iorg   = '" + wiorg.trim() + "' "
+  wsel += "    and ipsr   = '" + wddol.ipsr + "' "
+  wsel += "    and ipsrlp = '" + wddol.ipsrlp + "' "
+  wsel += "    and iuorgt2 = 'AR' "
+  if (inList(wddol.iuorg.trim(), ["W03", "W07"])) {
+    wsel += " and iuorg2 = '" + wddol.iuorg.trim() + "' "
+  } else {
+    wsel += " and iuorg2 in ('N" + wfilial + "','L" + wfilial + "') "
+  }
+  wsel += "   and ipst = '" + wddol.ipst + "' "
+  wsel += " /*bpsru_mc_log_analise_abc_tt_fn() SELECT 4*/ "
+  println(wsel); flush()
+  west = getRow("PPSR", wsel);
+
+  wsel = ""
+  wsel += "select isnull(min(a.ivalk), ' ') ivalk "
+  wsel += "  from #tt_bctx a "
+  wsel += " where a.ictx = 'BCTX*PARAM*LOG' "
+  wsel += "   and a.ivalk = 'ABC*GIRO*" + wddol.iuorg.trim() + "*" + wddol.ipsr + "'"
+  wsel += " /*bpsru_mc_log_analise_abc_tt_fn() SELECT 5*/ "
+  println(wsel); flush()
+  wivalk = getSQLValue(wsel)
+  println("1: " + wivalk + " - \n" + wsel); flush();
+
+  if (wivalk.trim() == "") {
+
+    wsel = ""
+    wsel += "select isnull(min(a.ivalk), ' ') ivalk "
+    wsel += "  from #tt_bctx a "
+    wsel += " where a.ictx = 'BCTX*PARAM*LOG' "
+    wsel += "   and a.ivalk = 'ABC*GIRO*" + wddol.iuorg.trim() + "*X' "
+    wsel += " /*bpsru_mc_log_analise_abc_tt_fn() SELECT 5.1*/ "
+    println(wsel); flush()
+    wivalk = getSQLValue(wsel)
+  }
+
+  if (wivalk.trim() == "" && PARAMS.containsKey("ABC*GIRO*" + wddol.iuorg.trim() + "*" + wddol.ipst.trim())) {
+    wivalk = PARAMS.get("ABC*GIRO*" + wddol.iuorg.trim() + "*" + wddol.ipst.trim()).ivalk
+  }
+
+  if (wivalk.trim() == "" && PARAMS.containsKey("ABC*GIRO*" + wddol.iuorg.trim() + "*X")) {
+    wivalk = PARAMS.get("ABC*GIRO*" + wddol.iuorg.trim() + "*X").ivalk
+  }
+
+  if (wivalk.trim() == "") {
+
+    wsel = ""
+    wsel += "select isnull(min(ivalk), ' ') ivalk "
+    wsel += "  from #tt_bctx a "
+    wsel += " where a.ictx = 'BCTX*PARAM*LOG' "
+    wsel += "   and a.ivalk like 'ABC*GIRO*" + wddol.iuorg.trim() + "%' "
+    wsel += "   and a.tclass='classe' "
+    wsel += "   and a.qqcoef1 <= " + wmed
+    wsel += " /*bpsru_mc_log_analise_abc_tt_fn() SELECT 7*/ "
+    println(wsel); flush();
+    wivalk = getSQLValue(wsel)
+    println("3:   " + wsel); flush();
+  }
+
+  println("4:   " + wsel); flush();
+  println("41:   " + wivalk); flush();
+
+  // CD Quem Abastece esse Produto Nessa Loja Para Pegar Tempo de Transporte
+  wTTR = 0.00
+  wsel = " select iuorg2 "
+  wsel += "   from bpskt0 with(nolock) "
+  wsel += "  where iorg    = '" + wddol.iorg + "' "
+  wsel += "    and ipsr    = '" + wddol.ipsr.trim() + "' "
+  wsel += "    and ipsrlp  = '" + wddol.ipsrlp.trim() + "' "
+  wsel += "    and iuorgt  = 'UO' "
+  wsel += "    and iuorg   = '" + wddol.iuorg.trim() + "' "
+  wsel += "  order by iuorgt, iuorg "
+  println(wsel); flush()
+  wCD = getSQLValue(wsel)
+  println("5:   " + wsel); flush();
+
+  if (wCD.trim() != "") {
+
+    if (PARAMS.containsKey("ABC*TT*" + wCD.trim() + "*" + wddol.iuorg.trim())) {
+      wTTR = PARAMS.get("ABC*TT*" + wCD.trim() + "*" + wddol.iuorg.trim()).qqcoef1
+    }
+  }
+  println("52: " + wTTR); flush();
+
+  if (INT(wabcgirotempo - wdiasremover) > 0) {
+
+    wmarket = getSQLValue(" /*bpsru_mc_log_analise_abc_tt_fn() SELECT 9*/ SELECT zchar FROM bpsrtx with (nolock) WHERE zcomp = 'market' AND zkent = " + wddol.zk_psr);
+    vetmarket = wmarket.split(";");
+
+    wconsulta = false
+
+    wsel = ""
+    wsel += "select max(qqcoef1) from #tt_bctx with (nolock) where ictx = 'BCTX*MARKETING' "
+    wsel += " and '" + wdate + "' between dini and dfim"
+    wsel += " /*bpsru_mc_log_analise_abc_tt_fn() SELECT 10*/ "
+
+    win = " and ivalk in ("
+
+        foreach wmkt(vetmarket) {
+
+      if (wmkt.trim() != "") {
+        win += " '" + wmkt + "',"
+        wconsulta = true
+      }
+    }
+
+    if (wconsulta) {
+      win = win.substring(0, win.length() - 1)
+      win += ") "
+      println(wsel + win); flush()
+      wqqcoef = getSQLNumber(wsel + win)
+    } else {
+      wqqcoef = 0.00
+    }
+    wcoef = 1.0000
+
+    wcoef = PARAMS.get("UP*ABASTECIMENTO").qqcoef1
+    if (wqqcoef > 0) {
+      wcoef = wqqcoef
+    }
+
+    if (PARAMS.containsKey(wivalk)) {
+
+      wprint = ""
+      wprint += WN + "wivalk:   " + wivalk
+      wprint += WN + "wTTR:   " + wTTR
+      wprint += WN + "wmed:   " + wmed
+      wprint += WN + "wcoef:   " + wcoef
+      wprint += WN + "wabcPR:   " + PARAMS.get(wivalk).qqcoef2
+      wprint += WN + "wabcEI:   " + PARAMS.get(wivalk).qqcoef3
+      println(wprint); flush()
+
+      wabcPR = round(((PARAMS.get(wivalk).qqcoef2 + wTTR) * wmed * wcoef), 2)
+      wabcEI = round(((PARAMS.get(wivalk).qqcoef3 + wTTR) * wmed * wcoef), 2)
+    }
+  } else {
+
+    wabcPR = 0.00
+    wabcEI = 1.00
+  }
+
+  if (PARAMS.containsKey(wivalk)) {
+    wabcCL = PARAMS.get(wivalk).ivalk.substring(13, 14)
+  }
+
+  // Arredonda para Cima
+  if (INT(wabcPR) < wabcPR) { wabcPR = INT(wabcPR) + 1 }
+  if (INT(wabcEI) < wabcEI) { wabcEI = INT(wabcEI) + 1 }
+
+  // Define Armazém
+  wiuorg2 = "N" + wddol.iuorg.substring(1, 3)
+
+  if (inList(wddol.iuorg.substring(0, 1), ["W"])) {
+    wiuorg2 = wddol.iuorg.trim()
+  }
+
+  println(">>" + wddol.iuorg.trim() + " - " + wddol.ipsr.trim() + " - " + wddol.qpsr); flush();
+  println(">>" + wddol.iuorg.trim() + " - " + wabcPR + " - " + wabcEI + " - " + wabcCL); flush();
+
+  warredRuptura = INT(wqruptura);
+
+  wqrupturaString = ""
+  wqrupturaString = warredRuptura.toString();
+  println(" ************ ruptura >>" + wqrupturaString); flush();
+
+  println(" ************************************ Data :  " + wdatetime.substring(0, 10)); flush();
+
+  wsel = "update ppsrt0 with(rowlock) "
+  wsel += "   set c1      = '" + wabcCL + "', "
+  wsel += "       qval3   = " + wddol.qpsr + ", "
+  wsel += "       qstkmin = " + wabcPR + ", "
+  wsel += "       qstkmax = " + wabcEI + ", "
+  wsel += "       cinv    = " + wqrupturaString + ", "
+  wsel += "       zprc = -1 "
+  wsel += " where iorg    = '" + wiorg + "' "
+  wsel += "   and ipsr    = '" + wddol.ipsr + "' "
+  wsel += "   and ipsrlp  = '" + wddol.ipsrlp + "' "
+  wsel += "   and iuorgt2 = 'AR' "
+  wsel += "   and iuorg2  = '" + wiuorg2 + "' "
+  wsel += "   and ipst    = '" + wddol.ipst + "' "
+  wsel += " /*bpsru_mc_log_analise_abc_tt_fn() UPDATE 5*/ "
+  println(wsel); flush()
+  x = executeTSQL(wsel)
+
+  // Recupera ZK para gravar extensão
+  wsel = " select zk from  ppsrt0 with(rowlock) "
+  wsel += " where iorg    = '" + wiorg + "' "
+  wsel += "   and ipsr    = '" + wddol.ipsr + "' "
+  wsel += "   and ipsrlp  = '" + wddol.ipsrlp + "' "
+  wsel += "   and iuorgt2 = 'AR' "
+  wsel += "   and iuorg2  = '" + wiuorg2 + "' "
+  wsel += "   and ipst    = '" + wddol.ipst + "' "
+  wsel += " /*bpsru_mc_log_analise_abc_tt_fn() SELECT 11*/ "
+  println(wsel); flush()
+  wZKppsrt = getSQLNumber(wsel)
+
+  wzk = formatNumber(wZKppsrt, "N00000000000000")
+
+  //Grava evento de erro na extensão
+  if (x == 0) {
+
+    x_mc_update_extension_fn("c", "PPSRTX", wzk, "ErroRup", "erro")
+    cursor.commitWork()
+    cursor.beginWork()
+    continue;
+  } else {
+    x_mc_update_extension_fn("c", "PPSRTX", wzk, "ErroRup", "ok")
+  }
+
+  // Grava Ruptura na extensão
+  x_mc_update_extension_fn("n", "PPSRTX", wzk, "Ruptura", wqruptura)
+  x_mc_update_extension_fn("c", "PPSRTX", wzk, "Ruptura", wiuorg2)
+
+  // Grava MED UND na extensão
+  x_mc_update_extension_fn("n", "PPSRTX", wzk, "Media_VD_UD", wmed)
+  x_mc_update_extension_fn("c", "PPSRTX", wzk, "Media_VD_UD", wiuorg2)
+
+  x_mc_update_extension_fn("n", "PPSRTX", wzk, "Media_VD_UD_CD", wmed)
+  x_mc_update_extension_fn("c", "PPSRTX", wzk, "Media_VD_UD_CD", wiuorg2)
+
+  cursor.commitWork()
+  cursor.beginWork()
+}
+
+cursor.commitWork()
+cursor.beginWork()
+
+println("Análise ABC... Inicio: " + wdatetime.toString().trim() + " - Final: " + x_mc_br_get_date_server_fn().toString().trim()); flush();
+
+// processa média de vendas VAREJO
+bpsru_mc_med_v_varj_abc_tt_fn(wipsr)
+
+// processa média de vendas pos CD
+bpsru_mc_med_v_varj_abc_tt_fn(wipsr);
+
+// Calcula Estatísticas Mult CD (Valder 2017-06-19)
+bpsru_mc_log_analise_abc_cd_fn(wipsr);
+
+// EOF

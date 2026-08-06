@@ -1,0 +1,124 @@
+//********************************************************************************
+// Nome......: ddoll_mc_set_consertado_fn()
+// Descricao.: Indicar que os produtos da OS foram consertados
+// CÍCERO HENRIQUE: 2026-03-03
+//********************************************************************************
+
+println(">>>>>>>>>>>>>>>>>>>> FUNCTION - DDOLL_MC_SET_CONSERTADO_FN - INICIO <<<<<<<<<<<<<<<<<<<<<<"); flush();
+
+// Work
+wdatetime = x_mc_br_get_date_server_fn();
+wdate = wdatetime.substring(0, 10);
+wtime = wdatetime.substring(11, 16);
+cursor = MConnection:: getMCursor();
+wuser = MLogin:: getUser();
+wnodo = MLogin:: getUserNodo();
+
+DROW = wrows.elementAt(0);
+
+// Critérios de Impressão
+wxform = MForm:: getDialogForm(m, "DDOCL_CONSERT", "MC", "Indica Produto Consertado", 3)
+wxform.wconsert = "N"
+
+cursor.commitWork() // <-- NOVO
+wxform.showForm()
+cursor.beginWork()  // <-- NOVO
+
+if (wxform.getLastCmd().equals("CLOSEWINDOW")) { throwError("MIN-000001W") }
+
+consertado = wxform.wconsert.trim();
+
+// recupera dados da NOS dos itens
+WN = "\n"
+wsel = ""
+wsel += WN + "SELECT d.* "
+wsel += WN + "FROM ddoct0 d WITH(NOLOCK) "
+wsel += WN + "WHERE "
+wsel += WN + "    d.iorg = '" + DROW.iorg.trim() + "' "
+wsel += WN + "    AND d.idoct = '" + DROW.idoct.trim() + "' "
+wsel += WN + "    AND d.idoc = '" + DROW.idoc.trim() + "' "
+wnos = getRow("DDOC", wsel)
+
+if (wnos.wdcode != 100) {
+
+  if (inList("XA", [wnos.cstc.trim(), wnos.csto.trim()]))
+    throwError("Operação cancelada! Existe stats XA no documento.");
+
+  if (!inList(wnos.c1.trim(), ["M", "P"]))
+    throwError("Operação cancelada! Comando permitido apenas para OS tipo M e P.");
+}
+
+// Registrar equipamento consertado
+if (inList(consertado.trim(), ["S", "N"])) {
+
+  foreach wrow(wrows.elements()) {
+
+    // TODO: validar item, qtd, NOS e CL. e NOS tipo M após a implementação que gera os dados para validação.
+    // Analisar devolução
+    wsel = ""
+    wsel += WN + " SELECT COUNT(*) AS total "
+    wsel += WN + " FROM dbo.ddoct0 AS nos WITH (NOLOCK) "
+    wsel += WN + " INNER JOIN dbo.ddolt0 AS ios WITH (NOLOCK) "
+    wsel += WN + "     ON "
+    wsel += WN + "         nos.iorg = ios.iorg "
+    wsel += WN + "         AND nos.ientt = ios.ientt "
+    wsel += WN + "         AND nos.ient = ios.ient "
+    wsel += WN + "         AND nos.idoct = ios.idoct "
+    wsel += WN + "         AND nos.idoc = ios.idoc "
+    wsel += WN + "         AND ios.ipsr = '" + wrow.ipsr.trim() + "' "
+    wsel += WN + " INNER JOIN dbo.ddolt0 AS dev WITH (NOLOCK) "
+    wsel += WN + "     ON "
+    wsel += WN + "         nos.iorg = dev.iorg "
+    wsel += WN + "         AND nos.ientt = dev.ientt "
+    wsel += WN + "         AND nos.ient = dev.ient "
+    wsel += WN + "         AND nos.idoct2 = dev.idoct2 "
+    wsel += WN + "         AND nos.idoc2 = dev.idoc2 "
+    wsel += WN + "         AND ios.ipsr = dev.ipsr "
+    wsel += WN + "         AND dev.idoct IN ('NRD', 'NVD') "
+    wsel += WN + " INNER JOIN dbo.ddolt0 AS nnf WITH (NOLOCK) "
+    wsel += WN + "     ON "
+    wsel += WN + "         dev.iorg = nnf.iorg "
+    wsel += WN + "         AND dev.ientt = nnf.ientt "
+    wsel += WN + "         AND dev.ient = nnf.ient "
+    wsel += WN + "         AND dev.idoct = nnf.idoct2 "
+    wsel += WN + "         AND dev.idoc = nnf.idoc2 "
+    wsel += WN + "         AND dev.ipsr = nnf.ipsr "
+    wsel += WN + "         AND nnf.idoct = 'NNF' "
+    wsel += WN + " WHERE "
+    wsel += WN + "     nos.iorg = '" + DROW.iorg.trim() + "' "
+    wsel += WN + "     AND nos.idoct = '" + DROW.idoct.trim() + "' "
+    wsel += WN + "     AND nos.idoc = '" + DROW.idoc.trim() + "' "
+    wsel += WN + "     AND RIGHT(RTRIM(nnf.cit), 3) = '202'; "
+    wdevol = getSQLNumber(wsel);
+
+    if (wdevol > 0) throwError("Operação Cancelada! já existe nota de devolução vinculada a essa NOS.");
+
+    // Analisar troca em garantia
+    wsel += WN + " SELECT COUNT(*) AS total "
+    wsel += WN + " FROM dbo.ddoct0 AS nos WITH (NOLOCK) "
+    wsel += WN + " INNER JOIN dbo.ddoct0 AS nnf WITH (NOLOCK) "
+    wsel += WN + "     ON "
+    wsel += WN + "         nos.iorg = nnf.iorg "
+    wsel += WN + "         AND nos.ientt = nnf.ientt "
+    wsel += WN + "         AND nos.ient = nnf.ient "
+    wsel += WN + "         AND nos.idoct2 = nnf.idoct2 "
+    wsel += WN + "         AND nos.idoc2 = nnf.idoc2 "
+    wsel += WN + "         AND nnf.idoct = 'NNF' "
+    wsel += WN + " WHERE "
+    wsel += WN + "     nos.iorg = '" + DROW.iorg.trim() + "' "
+    wsel += WN + "     AND nos.idoct = '" + DROW.idoct.trim() + "' "
+    wsel += WN + "     AND nos.idoc = '" + DROW.idoc.trim() + "' "
+    wsel += WN + "     AND RIGHT(RTRIM(nnf.ctcf), 3) = '949'; "
+    wtroca = getSQLNumber(wsel);
+
+    if (wtroca > 0) throwError("Operação Cancelada! já existe nota de troca em garantia vinculada a essa NOS.");
+
+    println("Documento: " + wrow.idoct.trim() + ": " + wrow.idoc.trim() + " - " + wrow.ipsr.trim()); flush();
+
+    x_mc_update_extension_fn("c", "DDOLTX", wrow.zk, "wconsertado", consertado.trim())
+
+    ddoc0_pr_insert_ddoe_fn(wnos, "ICI", "N", "Item " + wrow.ipsr.trim() + " Consertado: " + consertado.trim(), wrow.mvalor)
+  }
+}
+
+println(">>>>>>>>>>>>>>>>>>>> FUNCTION - DDOLL_MC_SET_CONSERTADO_FN - FIM <<<<<<<<<<<<<<<<<<<<<<"); flush();

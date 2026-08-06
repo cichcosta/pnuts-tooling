@@ -1,0 +1,119 @@
+//********************************************************************************
+// Nome.....: ddoc0_mc_copy_row_cfpsr_fn(wrow)
+// Objetivo.: Rateio ICMS ST no Custo do Estoque
+// Histórico:
+// 2017-05-02 - VALDER CANTIDIO   – Desenvolvimento
+// 2025-02-20 - OZANA SPINOSA - NPP.002588 - PARAMETRIZAÇÃO DE SISTEMA PARA ATENDIMENTO AS REGRAS DA LISTA DE ITENS SEM SIMILAR NACIONAL
+//********************************************************************************
+
+
+//row = wrows.elementAt(0)
+
+// Work
+wdatetime = x_mc_br_get_date_server_fn()
+wdate = wdatetime.substring(0, 10)
+wtime = wdatetime.substring(11, 16)
+wuser = MLogin:: getUser()
+cursor = MConnection:: getMCursor()
+
+worigemlessin = ""
+
+// Variáveis
+wdatetime = x_mc_br_get_date_server_fn()
+wdate = wdatetime.substring(0, 10)
+wtime = wdatetime.substring(11, 16)
+wiorg = row.iorg.trim()
+wiuorgt = row.iuorgt.trim()
+wiuorg = row.iuorg.trim()
+wientt = row.ientt.trim()
+wient = row.ient.trim()
+wcr = "AX"
+widoct = "DAE"
+widoc = row.idoc.trim() + "S"
+wctcf = wcr + "-COM"
+wufuo = getSQLValue("select testado from bentt0 where ientt = '*' and ient = 'TEC' and iuorgt = 'UO' and iuorg = '" + wiuorg + "' ")
+wuffn = getSQLValue("select testado from bentt0 where ientt = '" + wientt + "' and ient = '" + wient + "' ")
+wxstk = "+T  +FV"
+
+
+// Carrega Linhas
+wsel = " select a.* "
+wsel += "   from ddolt0 a "
+wsel += "  where a.iorg  = '" + row.iorg + "' "
+wsel += "    and a.ientt = '" + row.ientt + "' "
+wsel += "    and a.ient  = '" + row.ient + "' "
+wsel += "    and a.idoct = '" + row.idoct + "' "
+wsel += "    and a.idoc  = '" + row.idoc + "' "
+wsel += "    and a.qpsr  > 0 "
+wsel += "  order by  a.iorg, a.ientt, a.ient, a.idol, a.zk, a.ipsr, a.ipsrlp, a.ndoc "
+wvddol = getMRows("DDOL0", wsel)
+wsize = wvddol.size()
+if (wsize == 0) { throwError("Documento não possui linhas.") }
+
+foreach wddol(wvddol.elements()) {
+
+  //Atualiza parâmetros tributários no cadastro de produto
+  wcd = wiuorg
+  wipsr = wddol.ipsr
+  wcfop = wddol.ctcf.trim()
+  wpar = ""
+
+  if (x_mc_select_extension_fn("c", "ddoctx", row.zk, "wexternalplatform") == "MAINO" && wddol.cfpsr.trim() != "") {
+    wcstXML = wddol.cfpsr.trim()
+  } else {
+
+    cursor.commitWork()
+
+    // Identificação Produto
+    wdfform = MForm:: getDialogForm(m, "DDOC0CFPSR", "ME", "Informação Fiscais", 3)
+    wdfform.ipsr = wddol.ipsr
+    wdfform.ndoc = wddol.ndoc
+    wdfform.qpsr = wddol.qpsr
+    wdfform.mvalun = wddol.mvalun
+
+    wdfform.showForm()
+
+    if (wdfform.getLastCmd().equals("CLOSEWINDOW")) { throwError("Operação Cancelada.") }
+
+    cursor.beginWork()
+
+    wcstoper = wdfform.cfpsr.trim().substring(1, 3)
+
+    worigemlessin = x_mc_get_origem_lessin_fn(wipsr, row.ddoces, wiuorg, row.ctcf, "COMPRA", "w2")
+
+    if (worigemlessin != "") {
+      wcstXML = (worigemlessin + wcstoper)
+    } else {
+      wcstXML = wdfform.cfpsr.trim()
+    }
+  }
+  // Valida CD Origem
+  wsel = "select count(zk) "
+  wsel += "  from bctxt0 "
+  wsel += " where ictx  = 'BCTX*CFPSR' "
+  wsel += "   and ivalk = '" + wcstXML + "' and ivalk > ''"
+  w = getSQLNumber(wsel)
+  if (w != 1) { throwError("CST Nota Origem inválido.") }
+
+  //Grava a cst operação
+  wsel = " update ddolt0 "
+  wsel += "    set cfpsr  = '" + wcstXML + "', "
+  wsel += "        zcst  = 'ro' "
+  wsel += "  where zk    = " + wddol.zk
+  x = executeSQL(wsel)
+
+  //Atualiza parâmetros tributários no cadastro de produto
+  wcd = wiuorg
+  wipsr = wddol.ipsr
+  wprefixo = wcstXML.substring(0, 1)
+
+  wcfop = wddol.ctcf.trim()
+  wpar = ""
+
+  bpsrn_mc_param_trib_compra_fn(wcd, wipsr, wprefixo, row.ddoces, wufuo, wcfop, wpar, widoct)
+
+
+  //bpsrn_mc_up_par_trib_compra_fn(wcd,wipsr,wprefixo,row.ddoces, wufuo)
+}
+
+// EOF

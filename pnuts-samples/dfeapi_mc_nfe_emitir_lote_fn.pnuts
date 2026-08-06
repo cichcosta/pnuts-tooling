@@ -1,0 +1,456 @@
+x_mc_inserir_log_fn("EDOC", "dfeapi_mc_nfe_emitir_lote_fn", "DDOCREDC")
+import("java.util.HashMap")
+import("br.com.unigex.Util")
+import("org.json.JSONObject")
+
+util = Util()
+cursor = MConnection:: getMCursor()
+wMsgRet = ""
+
+row = wrows.elementAt(0)
+
+wXmlAgrupado = ""
+wQuebraXML = "___8___"
+wQuebraDoc = ":::"
+wQuebraDadosDoc = ";__;"
+
+// Globais para dados Transp
+zglobals.WNOME = ""
+zglobals.WENDTRA = ""
+zglobals.WUFTRA = ""
+zglobals.WCNPJTRA = ""
+zglobals.WIETRA = ""
+zglobals.WMUNTRA = ""
+zglobals.WIENTTRA = ""
+zglobals.WCCL = ""
+
+// Requisitar dados da tranportadora
+wdfform = MForm:: getDialogForm(m, "DDOCNFEIMPL", "ME", "Importação", 3)
+wdfform.setEnt(m.getEnt())
+wdfform.setRow(getMRow("DDOC"))
+wdfform.setAction("VALIDATE_FORM")
+wdfform.ientt = "FN"
+wdfform.ient = ""
+wdfform.nent = ""
+wdfform.wccl = row.ccl.trim()
+
+if (inList(row.cit.trim(), ["6933", "5933"])) {
+  wdfform.wccl = "CIF"
+}
+
+expandForm(wdfform, false)
+cursor.commitWork()
+wdfform.showForm()
+cursor.beginWork()
+if (wdfform.getLastCmd().equals("CLOSEWINDOW")) { throwError("Operação Cancelada.") }
+
+wccl = wdfform.wccl.trim()
+wientttra = wdfform.ientt.trim()
+wienttra = wdfform.ient.trim()
+wnome = wdfform.nent.trim()
+
+if (!wienttra.isEmpty()) {
+
+  // Recupera dados da Transportadora
+  wsel = " SELECT ientt, ient, nent, tidfisc, tidfisc2, "
+  wsel += "        tmorad, tmail, testado, tmunicip "
+  wsel += "   FROM bentt0 WITH(NOLOCK) "
+  wsel += "  WHERE ientt  = '" + wientttra + "' "
+  wsel += "    AND ient   = '" + wienttra + "' "
+  wsel += "    AND c1 = 'TR' "
+  println(" WSEL --> BENT: " + wsel.toString()); flush()
+  wntra = getMRow("BENT", wsel)
+
+  if (!inList(wntra, ["", "null", "NULL"])) {
+
+    zglobals.WNOME = wntra.nent.trim()
+    zglobals.WENDTRA = wntra.tmorad.trim() + " " + wntra.tmail.trim()
+    zglobals.WUFTRA = wntra.testado.trim()
+    zglobals.WCNPJTRA = wntra.tidfisc.trim().replaceAll("[^A-Z0-9]", "")
+    zglobals.WIETRA = wntra.tidfisc2.trim().replaceAll("[^0-9]", "")
+    zglobals.WMUNTRA = wntra.tmunicip.trim()
+    zglobals.WIENTTRA = wntra.ient.trim()
+    zglobals.WCCL = wccl.trim()
+  }
+}
+
+function postRequest(wheaders, wurl, wbody, wtimeout, wmsgErro) {
+  import("java.util.HashMap")
+    catch (Exception, function(e) {
+    wret = HashMap()
+    wret.put("status", 500)
+    wret.put("method", null)
+    println(wmsgErro + ": " + e.toString()); flush()
+    return wret
+  })
+  return dfeapi_mc_post_request_fn(wheaders, wurl, null, wbody, wtimeout)
+}
+
+function autorizada_lote(wrow, wbodyJson) {
+  wzk = formatNumber(wrow.zk, "N00000000000000")
+  wprotocolo = wbodyJson.getString("protocolo")
+  wXmlDestinatario = wbodyJson.get("xmlDestinatario")
+  wchave = wbodyJson.getString("chave")
+  wrecibo = wbodyJson.optString("recibo", "")
+
+  x_mc_update_extension_fn("c", "DDOCTX", wzk, "widnfe", wchave)
+  x_mc_update_extension_fn("c", "DDOCTX", wzk, "wprotenv", wprotocolo)
+  x_mc_update_extension_fn("c", "DDOCTX", wzk, "wrecenv", wrecibo)
+
+  cursor.commitWork()
+  cursor.beginWork()
+
+  wret = getSQLValue("Select a.tflag from minnfe a with (nolock) where a.zk = " + wzk).trim()
+  if (wret == "")
+    x = executeSQL("insert into minnfe values (" + wzk + ",'2','" + wXmlDestinatario + "') ")
+
+  cursor.commitWork()
+  cursor.beginWork()
+
+  ddoc0_mc_nfe_upd_nfe_fn(wrow)
+
+  cursor.commitWork()
+  cursor.beginWork()
+
+  wrow.refreshRow()
+
+  if (x_mc_get_access3_fn("DDOC0-0416", "") && !((wrow.idoct2 == "NPV" && wrow.iixp2.contains("NTS")) || wrow.idoct2 == "NTS")) {
+
+    wgerarec = false
+
+    wsel = " SELECT a.* "
+    wsel += "   FROM ppzpt0 a"
+    wsel += "  Where a.iorg  = '" + wrow.iorg.trim() + "' "
+    wsel += "    and a.idoct = '" + wrow.idoct2.trim() + "' "
+    wsel += "    and a.idoc  = '" + wrow.idoc2.trim() + "' "
+    wsel += "    and a.iprot = 'NDP' "
+    vppzp = getRows("PPZP", wsel)
+        
+    foreach wlinha(vppzp.elements()) {
+      ppzpy_mc_pay_row_aut_log_fn(wlinha)
+      wrow.refreshRow()
+    }
+
+    wsel = "  update dtemt0 with(rowlock) set ddocv = dtem "
+    wsel += "  Where iorg  = '" + wrow.iorg.trim() + "' "
+    wsel += "    and idoct = '" + wrow.idoct2.trim() + "' "
+    wsel += "    and idoc  = '" + wrow.idoc2.trim() + "' "
+    wsel += "    and itemt = 'NDP' "
+    x = executeSQL(wsel)
+
+    cursor.commitWork()
+    cursor.beginWork()
+
+    wsel = " SELECT a.* "
+    wsel += "   FROM ppzpt0 a"
+    wsel += "  Where a.iorg  = '" + wrow.iorg.trim() + "' "
+    wsel += "    and a.idoct = '" + wrow.idoct2.trim() + "' "
+    wsel += "    and a.idoc  = '" + wrow.idoc2.trim() + "' "
+    wsel += "    and a.iprot = 'NDP' "
+    vppzp = getRows("PPZP", wsel)
+        
+    foreach wlinha(vppzp.elements()) {
+      zglobals.DDOCL_GERA_BOL_ROWS = getRows("PPZP", "SELECT a.* FROM ppzpt0 a where a.zk = " + wlinha.zk)
+      zglobals.DDOCL_GERA_BOL = true
+
+      MLogin:: setPrintPreview(true)
+      class PT.Minimal.actions.MHandleCommand(m.getFormParent(), null, m, m.getFormParent(), null, "BOLETO_ITAU");
+      MLogin:: setPrintPreview(false)
+    }
+
+    wsel = "SELECT * "
+    wsel += "  FROM ddoct0 "
+    wsel += "  WHERE iorg  = '" + wrow.iorg.trim() + "' "
+    wsel += "    AND idoct = '" + wrow.idoct2.trim() + "' "
+    wsel += "    AND idoc  = '" + wrow.idoc2.trim() + "' "
+    wped = getMRow("DDOC", wsel)
+
+    wsel = " SELECT a.* "
+    wsel += "   FROM ppzpt0 a"
+    wsel += "  Where a.iorg  = '" + wrow.iorg.trim() + "' "
+    wsel += "    and a.idoct = '" + wrow.idoct2.trim() + "' "
+    wsel += "    and a.idoc  = '" + wrow.idoc2.trim() + "' "
+    vppzp = getRows("PPZP", wsel)
+        
+    foreach wlinha(vppzp.elements()) {
+      if (!inList(wlinha.iprot.trim(), ["NDP", "BND", "TDB", "TFN", "TVA", "TVD", "TCO", "TCC"]) && wlinha.cdoce.trim() == "01") {
+        wgerarec = true
+      }
+    }
+    if (wgerarec) {
+      zglobals.DDOCL_GERA_REC_ROWS = wped
+      zglobals.DDOCL_GERA_REC = true
+
+      MLogin:: setPrintPreview(true)
+      class PT.Minimal.actions.MHandleCommand(m.getFormParent(), null, m, m.getFormParent(), null, "PRINT_REC_F00");
+      MLogin:: setPrintPreview(false)
+    }
+  }
+
+  cursor.commitWork()
+  cursor.beginWork()
+
+  wrow.refreshRow()
+
+  if (!x_mc_get_access3_fn("EDOC-0003", "") && !(wrow.idoct2.trim() == "NTS" || wrow.iixp2.contains("NTS-"))) {
+    dfeapi_mc_nfe_faz_impressao_fn(wrow)
+  }
+}
+
+function denegada_lote(wrow, wbodyJson) {
+
+  wzk = formatNumber(wrow.zk, "N00000000000000")
+  wchave = wbodyJson.getString("chave")
+  wsituacao = wbodyJson.get("situacao").toString()
+  wmotivo = wbodyJson.getString("motivo")
+
+  x_mc_update_extension_fn("c", "DDOCTX", wzk, "widnfe", wchave)
+  x_mc_update_extension_fn("c", "DDOCTX", wzk, "wprotenv", "")
+  x_mc_update_extension_fn("c", "DDOCTX", wzk, "wrecenv", "")
+
+  cursor.commitWork()
+  cursor.beginWork()
+
+  wsel = "select top 1 zkddoc "
+  wsel += "  from ddoctg "
+  wsel += " where zkddoc = " + wzk
+  wddoctg = getRow("DDOC", wsel)
+  if (wddoctg.wdcode == 100) {
+    executeSQL("insert into ddoctg (zkddoc, t7, t8) values (" + wzk + ", '" + wsituacao + "', '" + wmotivo + "')")
+  } else {
+    executeSQL("update ddoctg with(rowlock) set t7 = '" + wsituacao + "', t8 = '" + wmotivo + "'  where zkddoc = " + wzk)
+  }
+
+  cursor.commitWork()
+  cursor.beginWork()
+
+  ddoc0_mc_nfe_upd_nfe_fn(wrow)
+  wrow.refreshRow()
+}
+
+// Percorre as linhas selecionadas para montar uma string com os xml e a informação
+// dos documento que originaram o xml
+wj = 0
+wQtdLinhas = 0
+foreach wf(wrows.elements()){ wQtdLinhas++ }
+
+foreach wr(wrows.elements()){
+
+  // verifica se o tipo de documento é NNF
+  if (wr.idoct.trim() != "NNF") {
+    throwError("Tipo de documento inválido.")
+  }
+
+  //Valida reflexo de estoque
+  wsel = " select a.xstk "
+  wsel += "   from ctrnt0 a with(nolock) "
+  wsel += "  where a.iorg  = '" + wr.iorg + "'"
+  wsel += "    and a.ctcf  = '" + wr.ctcf + "'"
+  wsel += "    and a.cr    = '" + wr.cr + "'"
+  wsel += "    and a.idoct = '" + wr.idoct + "'"
+  wsel += "    and '" + wr.ddoc + "' between a.dini and a.dfim "
+  println(wsel); flush()
+  wxstk = getSQLValue(wsel).trim()
+
+  wsel = "  select count(*) "
+  wsel += "  from ddolt0 with(nolock) "
+  wsel += "  where iorg  = '" + wr.iorg.trim() + "' "
+  wsel += "    and idoct = '" + wr.idoct.trim() + "' "
+  wsel += "    and idoc  = '" + wr.idoc.trim() + "' "
+  wsel += "    and xstk  <> '" + wxstk + "'  "
+  wexiste = getSQLNumber(wsel)
+
+  if (wexiste > 0) {
+    throwError("Nota fiscal " + wr.idoc.trim() + " com reflexo de estoque divegente.")
+  }
+
+  // Variavel recebe o XML da nota
+  wXmlAgrupado += edoc_mc_gerar_xml_400_lote_fn(wr)
+
+  wXmlAgrupado += wQuebraDoc
+  wXmlAgrupado += wr.iorg.trim() + wQuebraDadosDoc
+  wXmlAgrupado += wr.iuorgt.trim() + wQuebraDadosDoc
+  wXmlAgrupado += wr.iuorg.trim() + wQuebraDadosDoc
+  wXmlAgrupado += wr.idoct.trim() + wQuebraDadosDoc
+  wXmlAgrupado += wr.idoc.trim() + wQuebraDadosDoc
+  wXmlAgrupado += wr.ientt.trim() + wQuebraDadosDoc
+  wXmlAgrupado += wr.ient.trim()
+  if (wj < wQtdLinhas - 1) {
+    wXmlAgrupado += wQuebraXML
+  }
+  wj++
+}
+
+wXmlDividido = wXmlAgrupado.split(wQuebraXML)
+
+for (i = 0; i < wXmlDividido.length; i++) {
+
+  // Obtem o xml da string
+  wXml = wXmlDividido[i].split(wQuebraDoc)[0]
+
+  // Obtem os dados do documento
+  wiorg = wXmlDividido[i].split(wQuebraDoc)[1].split(wQuebraDadosDoc)[0]
+  wiuorgt = wXmlDividido[i].split(wQuebraDoc)[1].split(wQuebraDadosDoc)[1]
+  wiuorg = wXmlDividido[i].split(wQuebraDoc)[1].split(wQuebraDadosDoc)[2]
+  widoct = wXmlDividido[i].split(wQuebraDoc)[1].split(wQuebraDadosDoc)[3]
+  widoc = wXmlDividido[i].split(wQuebraDoc)[1].split(wQuebraDadosDoc)[4]
+  wientt = wXmlDividido[i].split(wQuebraDoc)[1].split(wQuebraDadosDoc)[5]
+  wient = wXmlDividido[i].split(wQuebraDoc)[1].split(wQuebraDadosDoc)[6]
+
+  wsel = "select a.* "
+  wsel += "  from ddoct0 a "
+  wsel += " where a.iorg = '" + wiorg + "' "
+  wsel += "   and a.iuorg = '" + wiuorg + "' "
+  wsel += "   and a.ientt = '" + wientt + "' "
+  wsel += "   and a.ient = '" + wient + "' "
+  wsel += "   and a.idoct = '" + widoct + "' "
+  wsel += "   and a.idoc = '" + widoc + "' "
+  wrow = getMRow("DDOC", wsel)
+
+  wzk = formatNumber(wrow.zk, "N00000000000000")
+  wDocumento = widoct + " " + widoc
+
+  // Deleta o registro da tabela minnfe
+  executeSQL("delete from minnfe where zk = " + wzk)
+
+  // converte o XML em JSON
+  wnota = dfeapi_mc_nfe_xml_to_json_fn(wXml)
+  println(wnota); flush()
+
+  wconfig = dfeapi_mc_get_config_fn(wrow)
+  wurl = wconfig.get("url") + "/nfe/v1/emissao"
+  wuuid = wconfig.get("token")
+
+  wheaders = HashMap()
+  wheaders.put("content-type", "application/json")
+
+  // ---------------------------------------------------------------------------
+  // CONSULTA NOTA FISCAL NA API DFE
+  // ---------------------------------------------------------------------------
+  wurl_consulta = wconfig.get("url") + "/nfe/v1/consulta"
+  wbody_consulta = JSONObject()
+  wbody_consulta.put("uuid", wuuid)
+  wbody_consulta.put("serie", 1)
+  wbody_consulta.put("numero", INT(widoc.trim().split("/")[1].trim()))
+
+  wpost = postRequest(wheaders, wurl_consulta, wbody_consulta.toString(), 10000, "Erro na consulta da nota na API DFE")
+  wstatus = wpost.get("status")
+
+  if (wstatus == 200) {
+    wbodyTxt = wpost.get("method").getResponseBodyAsString()
+    println("RETORNO CONSULTA DFE: " + wbodyTxt); flush()
+    wbodyJson = JSONObject(wbodyTxt)
+    wsituacaoProcessamento = wbodyJson.optString("situacaoProcessamento", "")
+
+    if (wsituacaoProcessamento == "AUTORIZADA") {
+      println("Nota ja autorizada na API DFE. Prosseguindo com fluxo de autorizacao."); flush()
+      autorizada_lote(wrow, wbodyJson)
+      continue
+    } else if (wsituacaoProcessamento == "DENEGADA") {
+      wsituacao = wbodyJson.get("situacao").toString()
+      wmotivo = wbodyJson.getString("motivo")
+      println("Nota denegada na API DFE."); flush()
+      denegada_lote(wrow, wbodyJson)
+      wMsgRet += wDocumento + ": " + wsituacao + " - " + wmotivo + "\n"
+      continue
+    } else if (wsituacaoProcessamento == "REJEITADA") {
+      wsituacao = wbodyJson.get("situacao").toString()
+      wmotivo = wbodyJson.getString("motivo")
+      wMsgRet += wDocumento + ": " + wsituacao + " - " + wmotivo + "\n"
+      continue
+    }
+  } else if (wstatus == 400) {
+    wbodyTxt = wpost.get("method").getResponseBodyAsString()
+    println("Consulta DFEAPI retornou 400. Partindo para emissao. Retorno: " + wbodyTxt); flush()
+  } else {
+    werrBody = ""
+    if (wpost.get("method") != null) {
+      werrBody = wpost.get("method").getResponseBodyAsString()
+    }
+    println("Consulta DFEAPI retornou status " + wstatus + ". Partindo para emissao. Retorno: " + werrBody); flush()
+  }
+
+  // ---------------------------------------------------------------------------
+  // EMISSAO DA NOTA FISCAL
+  // ---------------------------------------------------------------------------
+  wbody = JSONObject()
+  wbody.put("uuid", wuuid)
+  wbody.put("idlote", wzk)
+  wbody.put("sincrono", "true")
+  wbody.put("nota", JSONObject(wnota))
+
+  wpost = postRequest(wheaders, wurl, wbody.toString(), 30000, "Erro no envio da nota para API DFE")
+
+  println(wpost.get("status")); flush()
+
+  if (wpost.get("status") == 200) {
+
+    wbodyTxt = wpost.get("method").getResponseBodyAsString()
+    println(wbodyTxt); flush()
+
+    wbodyJson = JSONObject(wbodyTxt)
+    wsituacao = wbodyJson.get("situacao").toString()
+    wsituacaoProcessamento = wbodyJson.optString("situacaoProcessamento", "")
+    wmotivo = wbodyJson.getString("motivo")
+    wchave = wbodyJson.getString("chave")
+    wrecibo = ""
+
+    x_mc_update_extension_fn("c", "DDOCTX", wzk, "widnfe", wchave)
+    x_mc_update_extension_fn("c", "DDOCTX", wzk, "wrecenv", wrecibo)
+
+    wsel = "select top 1 zkddoc "
+    wsel += "  from ddoctg "
+    wsel += " where zkddoc = " + wzk
+    wddoctg = getRow("DDOC", wsel)
+    if (wddoctg.wdcode == 100) {
+      executeSQL("insert into ddoctg (zkddoc, t7, t8) values (" + wzk + ", '" + wsituacao + "', '" + wmotivo + "')")
+    } else {
+      executeSQL("update ddoctg with(rowlock) set t7 = '" + wsituacao + "', t8 = '" + wmotivo + "'  where zkddoc = " + wzk)
+    }
+
+    cursor.commitWork()
+    cursor.beginWork()
+
+    if (wsituacao == "100" || wsituacaoProcessamento == "AUTORIZADA") {
+      autorizada_lote(wrow, wbodyJson)
+    } else if (wsituacaoProcessamento == "DENEGADA") {
+      denegada_lote(wrow, wbodyJson)
+      wMsgRet += wDocumento + ": " + wsituacao + " - " + wmotivo + "\n"
+    } else {
+      wMsgRet += wDocumento + ": " + wsituacao + " - " + wmotivo + "\n"
+    }
+
+  } else if (wpost.get("status") == 400) {
+
+    showMessage(JSONObject(wpost.get("method").getResponseBodyAsString()).getString("message"))
+    x_fm_log_erro_edoc_fn("", wrow)
+
+  } else {
+    werrBody = ""
+    if (wpost.get("method") != null) {
+      werrBody = wpost.get("method").getResponseBodyAsString()
+    }
+    wMsgRet += wDocumento + ": Erro " + wpost.get("status") + " - " + werrBody + "\n"
+  }
+
+}
+
+foreach wr2(wrows.elements()){
+  wr2.refreshRow()
+}
+
+if (wMsgRet != "") {
+  showText(m, "", wMsgRet)
+}
+
+// Limpa Globais após processo
+zglobals.WNOME = ""
+zglobals.WENDTRA = ""
+zglobals.WUFTRA = ""
+zglobals.WCNPJTRA = ""
+zglobals.WIETRA = ""
+zglobals.WMUNTRA = ""
+zglobals.WCCL = ""
+zglobals.WIENTTRA = ""
+
+//EOF

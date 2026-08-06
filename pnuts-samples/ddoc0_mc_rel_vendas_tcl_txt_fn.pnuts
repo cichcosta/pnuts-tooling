@@ -1,0 +1,212 @@
+ x_mc_inserir_log_fn("DDOC0", "VENDAS_TCL", "OUTPUT")
+// Func: ddoc0_mc_rel_vendas_tcl_txt_fn()
+
+// Work
+wdatetime = x_mc_br_get_date_server_fn()
+wdate = wdatetime.substring(0, 10)
+wtime = wdatetime.substring(11, 19)
+wdini = MDate(wdate).inicioMes().toString()
+wdfim = MDate(wdate).fimMes().toString()
+
+wlinhas = ""
+wbody = StringBuffer()
+wnodo = MLogin:: getUserNodo()
+cursor = MConnection:: getMCursor()
+wsel = StringBuilder()
+TAB  = char(9)
+
+P = ";"
+
+// Função para formatar valor no formato brasileiro (99.999,99)
+function formatNumero(wnum, wmasc) {
+   wreturn = formatNumber(wnum, wmasc).replace('.', ',')
+   wreturn = wreturn.replace(' ', '.')
+   return wreturn
+}
+
+// Critérios de Impressão
+wxform = MForm:: getDialogForm(m, "VENDAS_TCL", "ME", "Critérios de Impressão", 3)
+wxform.iuorg0 = ""
+wxform.iuorgt = "UO"
+wxform.iuorg = ""
+wxform.iuorgt2 = "AC"
+wxform.iuorg2 = ""
+wxform.ipsr = ""
+wxform.dini = wdini
+wxform.dfim = wdfim
+
+cursor.commitWork() // <-- NOVO
+wxform.showForm()
+cursor.beginWork()  // <-- NOVO
+
+if (wxform.getLastCmd().equals("CLOSEWINDOW")) { throwError("MIN-000001W") }
+wiuorg = wxform.iuorg.trim()
+wdini = wxform.dini.trim()
+wdfim = wxform.dfim.trim()
+wregion = wxform.iuorg0.trim()
+wcanal = wxform.iuorg2.trim()
+wipsr = wxform.ipsr.trim()
+
+// Válida se regional informada
+if (wregion != "") {
+
+   // regional obrigatoria
+   wsel.append(" SELECT DISTINCT a.iuorg0 ")
+   wsel.append("   FROM benxt0 a WITH(NOLOCK) ")
+   wsel.append("  WHERE a.ccx = 'RG' ")
+   wsel.append("    AND a.iuorgt = 'UO' ")
+   wsel.append("    AND a.iuorgt0 = 'RG' ")
+   wsel.append("    AND a.iuorg0 = '" + wregion.trim() + "' ")
+   println(" -->>>>>> WREG: " + wsel.toString()); flush()
+   wreg = getSQLValue(wsel.toString())
+   
+   // clear wsel
+   wsel.delete(0, wsel.length())
+
+   if (wreg == "") {
+      throwError(" Operação Cancelada! É necessário informar uma Regional Válida. ")
+   }
+}
+
+if (wdini == "") { throwError("Operação Cancelada! Data Inicial não foi Informada.") }
+if (wdfim == "") { throwError("Operação Cancelada! Data Final não foi Informada.") }
+
+wtempes = x_mc_calc_dif_tempo_fn("day", wdini, wdfim)
+
+if (Integer:: parseInt(wtempes) > 90) { throwError("Operação Cancelada! Período não pode ser superior a 90 Dias.") }
+
+// CNPJ Loja, CPF Vendedor, Código Produto, Descrição Produto, Quantidade, Data Venda, Número Nota Fiscal, Série e CFOP
+// Cabeçalho
+wlinhas += "REGIONAL" + TAB
+wlinhas += "LOJA" + TAB
+wlinhas += "CNPJ LOJA" + TAB
+wlinhas += "VENDEDOR" + TAB
+wlinhas += "CPF VENDEDOR" + TAB
+wlinhas += "CANAL" + TAB
+wlinhas += "COD. PRODUTO" + TAB
+wlinhas += "DESCRI. PROD" + TAB
+wlinhas += "QUANTIDADE" + TAB
+wlinhas += "DATA" + TAB
+wlinhas += "TP. DOC" + TAB
+wlinhas += "NUM. DOC" + TAB
+wlinhas += "SÉRIE" + TAB
+wlinhas += "CFOP" + TAB
+wlinhas += "CHAVE DE ACESSO" + TAB
+wlinhas += EOL
+wlinhas += EOL
+
+wbody.append(wlinhas);
+wlinhas = ""
+
+//Busca Dados no Banco
+wsel.append(" SELECT a.zk, dbo.benxuoreg(dbo.benxposxn('TEC', a.ientt2, a.ient2, a.ddoces, 'UORG')) as iuorg0, ")
+wsel.append("        dbo.benxposxn('TEC', a.ientt2, a.ient2, a.ddoces, 'UORG') as iuorg, ")
+wsel.append("        (SELECT tidfisc FROM bentt0 WHERE iuorgt = 'UO' AND iuorg = ")
+wsel.append("        dbo.benxposxn('TEC', a.ientt2, a.ient2, a.ddoces, 'UORG')) as cnpj, ")
+wsel.append("        dbo.benxposxn('TEC', a.ientt2, a.ient2, a.ddoces, 'ACTV') as canal, ")
+wsel.append("        bentxn(a.ientt2, a.ient2, '*', '*', a.ddoces) as nent, ")
+wsel.append("        a.ientt2, a.ient2, (SELECT tidfisc FROM bentt0 WHERE ientt = 'EM' AND ient = a.ient2 ) as cpf, ")
+wsel.append("        a.ddoces, a.idoct, a.idoc, b.qpsr, p.cmarca, p.ipst, p.ipsr, p.npsr, s.ipsn, a.cit ")
+wsel.append("   FROM ddoct0 a WITH(NOLOCK) ")
+wsel.append("  INNER JOIN ddolt0 b WITH(NOLOCK) ")
+wsel.append("     ON a.iorg = b.iorg ")
+wsel.append("    AND a.idoct = b.idoct ")
+wsel.append("    AND a.idoc = b.idoc ")
+wsel.append("    AND a.ientt = b.ientt ")
+wsel.append("    AND a.ient = b.ient ")
+wsel.append("  INNER JOIN bctxt0 c WITH(NOLOCK) ")
+wsel.append("     ON c.ivalk = a.cit ")
+wsel.append("    AND c.ictx = 'BCTX*CIT' ")
+wsel.append("  INNER JOIN bpsrt0 p WITH(NOLOCK) ")
+wsel.append("     ON b.iorg = p.iorg ")
+wsel.append("    AND b.ipsr = p.ipsr ")
+wsel.append("    AND p.cmarca = 'TCL' ")
+wsel.append("  INNER JOIN ppsnt0 s WITH(NOLOCK) ")
+wsel.append("     ON b.iorg = s.iorg ")
+wsel.append("    AND b.idoct = s.idoct ")
+wsel.append("    AND b.idoc = s.idoc ")
+wsel.append("    AND b.ipsr = s.ipsr ")
+wsel.append("    AND s.ipsn NOT LIKE 'VL%' ")
+wsel.append("  WHERE a.iorg = 'TEC' ")
+wsel.append("    AND a.idoct IN('NCF', 'NNF') ")
+wsel.append("    AND b.cstc NOT IN('XA', 'PD') ")
+wsel.append("    AND a.csto NOT IN('XA', 'PD') ")
+wsel.append("    AND c.tclass like 'V;%' ")
+wsel.append("    AND a.ddoces BETWEEN '" + wdini + "' AND '" + wdfim + "' ")
+
+// filtra  código de produto
+if (wipsr != "") {
+   wsel.append("    AND p.ipsr = '" + wipst.trim() + "' ")
+}
+// filtra regional
+if (wregion != "") {
+   wsel.append("    AND dbo.benxuoreg(dbo.benxposxn('TEC', a.ientt2, a.ient2, a.ddoces, 'UORG')) = '" + wregion.trim() + "' ")
+}
+// filtra filial
+if (wiuorg != "") {
+   wsel.append("    AND dbo.benxposxn('TEC', a.ientt2, a.ient2, a.ddoces, 'UORG') = '" + wiuorg.trim() + "' ")
+}
+// filtra canal de venda
+if (wcanal != "") {
+   wsel.append("    AND dbo.benxposxn('TEC', a.ientt2, a.ient2, a.ddoces, 'ACTV') = '" + wcanal.trim() + "' ")
+}
+
+wsel.append("  ORDER BY iuorg0, iuorg, canal, b.ient2 ")
+println("--->>>>>>>>>>>>>> VDDOC: " + wsel.toString()); flush()
+vddoc = getRows("DDOC", wsel.toString())
+
+// clear wsel
+wsel.delete(0, wsel.length())
+
+if (vddoc.size() <= 0) { throwError("Não existem registros que correspondam aos criterios introduzidos!!") }
+
+foreach wrow(vddoc.elements()) {
+
+   // Popula csv
+   wlinhas += wrow.iuorg0.trim() + TAB
+   wlinhas += wrow.iuorg.trim() + TAB
+   wlinhas += wrow.cnpj.trim().replaceAll("[^A-Z0-9]","") + TAB
+   wlinhas += wrow.nent.trim() + TAB
+   wlinhas += wrow.cpf.trim().replaceAll("[^0-9]","") + TAB
+   wlinhas += wrow.canal.trim() + TAB
+   wlinhas += wrow.ipsr.trim() + TAB
+   wlinhas += wrow.npsr.trim() + TAB
+   wlinhas += formatNumero(wrow.qpsr, "N#0.00") + TAB
+   wlinhas += wrow.ddoces.trim() + TAB
+   wlinhas += wrow.idoct.trim() + TAB
+
+   if (wrow.idoct.trim() == "NNF"){
+      wlinhas += wrow.idoc.trim().split("/")[1].replaceAll("[^0-9]","") + TAB
+   }else{
+      wlinhas += wrow.idoc.trim().split("/")[1] + TAB
+   }
+
+   wlinhas += wrow.ipsn.trim() + TAB
+   wlinhas += wrow.cit.trim() + TAB
+   
+   wIdExt   = x_mc_select_extension_fn("c","DDOCTX",formatNumber(wrow.zk, "N00000000000000"),"widnfe").trim()
+   
+   if(wIdExt.trim() != ""){
+      wlinhas += wIdExt + TAB
+   } else {
+      wlinhas += "" + TAB
+   }   
+   
+   wlinhas += EOL
+   println(wlinhas); flush();
+
+   wbody.append(wlinhas); wlinhas = ""
+
+}
+
+// Grava Arquivo
+wbody        = wbody.toString()
+wdir         = getLoginProperty("user.dir")
+wraiz        = bctx_mc_get_tparms_fn("PATH*FILES","PATH_EXPORT_RAIZ2").trim()
+wdefpath     = file_mc_escolhe_dir_fn(wraiz,"DIR","Selecione a pasta de output","OK")
+wfilenameObj = wdefpath + "/VENDAS_TCL.TXT"
+wfileObj     = MFile(wfilenameObj)
+wfileObj.setBytes(wbody.getBytes())
+wfileObj.saveFile(wfilenameObj)
+
+// EOL

@@ -1,0 +1,291 @@
+//**************************************************************************************************************************************
+// Função SPED Fiscal - Bloco E - bxpf9_mc_exp_sped_efd_e3_fn(wiorg,wiuorgt,wiuorg,wdini,wdfim) [Referência]
+//                                               bxpf9_mc_exp_sped_efd_e3new_fn(wiorg,wiuorgt,wiuorg,wdini,wdfim,wbloco,widoc,wientt,wient)  [Atual]
+// 2022-04-12 - HÉLIO MARQUES - NPP.001131 - CON - INCLUSÃO DO BLOCO E300 SPED FISCAL – F03 E F51
+//                                                 - Geração do Bloco somente para as filias que tem Inscrição Substituta na UF PI
+//                                                 - NNF PF ou  PJ sem Inscrição Estatual (ISENTO)                                               
+//                                                 - Os Registros 0015, C101, E300 e E310. A variávela wbloco utilizada para definir o momento da geração, respeitando a hierarquia dos registros
+// 2025-02-26 - OZANA SPINOSA - NPP.002697 - ADEQUAÇÃO DA BCTX*AUDI*UF - DIFAL - Cubo e Calculadora de MC
+//***************************************************************************************************************************************
+
+wfile = StringBuffer();
+wreg = "";
+S = "|";
+
+wCNPJ_E02 = "";
+wUF_E12 = "";
+wIE_E17 = "";
+
+wIEST = "";
+wGerouBloco0015 = false;
+wtotfrete = 0.00;
+wpICMSUFDest = 0.00;
+wTotvICMSUFDest = 0.00;
+
+wdatetime = x_mc_br_get_date_server_fn()
+wdate = wdatetime.substring(0, 10)
+wdtini = MDate(wdini).setFormat("dd/MM/yyyy").toString();
+wdtfim = MDate(wdfim).setFormat("dd/MM/yyyy").toString();
+
+//BEGIN
+
+wsel = "select a.iorg, a.iuorgt, a.iuorg, a.ddoces, a.idoct, a.idoc, a.ientt, a.ient, a.cser, a.ddoc, substring(a.cit,1,1) as cit, b.idoc2, b.idoct2, b.zk "
+wsel += "  from cflvt0 a with(Nolock), ddoct0 b with(Nolock)"
+wsel += " where a.iorg = '" + wiorg + "' "
+wsel += "   and a.iuorgt = '" + wiuorgt + "' "
+wsel += "   and a.iuorg = '" + wiuorg + "' "
+wsel += "   and a.ddoces between '" + wdini + "' and '" + wdfim + "' "
+wsel += "   and a.idoct = 'NNF' "
+wsel += "   and a.cit in ('6102','6108') "
+wsel += "   and b.iorg  = a.iorg "
+wsel += "   and b.idoct = a.idoct "
+wsel += "   and b.idoc  =  a.idoc "
+wsel += "   and b.ientt =  a.ientt "
+wsel += "   and b.ient  =  a.ient "
+wsel += "   and a.testado = 'PI' "
+
+if (wbloco == "C101") {
+  wsel += "   and a.idoc  = '" + widoc + "' "
+  wsel += "   and a.ientt = '" + wientt + "' "
+  wsel += "   and a.ient  = '" + wient + "' "
+}
+
+wsel += " group by a.iorg, a.iuorgt, a.iuorg, a.ddoces, a.idoct, a.idoc, a.ientt, a.ient, a.cser, a.ddoc, substring(a.cit,1,1), b.idoc2, b.idoct2, b.zk "
+wsel += " order by a.iorg, a.iuorgt, a.iuorg, a.ddoces, a.idoct, a.idoc, a.ientt, a.ient, a.cser, a.ddoc, substring(a.cit,1,1), b.idoc2, b.idoct2, b.zk  "
+vcflv = getRows("CFLV", wsel)
+wsize = vcflv.size()
+
+foreach wcflv(vcflv.elements()) {
+
+  //Dados do Emitente da Nota
+  wbent = edoc_mc_get_bent_fn("*", wcflv.iorg.trim(), wcflv.iuorgt.trim(), wcflv.iuorg.trim())
+  //Dados do Destinatario da Nota 
+  wbent2 = edoc_mc_get_destinatario_fn(wcflv);
+  //Obter a finalidade da NF-e: 1=NF-e normal; 2=NF-e complementar; 3=NF-e de ajuste; 4=Devolução de mercadoria.
+  wfinNFe = edoc_mc_get_finnfe_fn(wcflv)
+
+  //Verifica se no cadastro do Destinatario o campo de IE está preenchido como ISENTO
+  windIEDest_E16a = "1"
+  if (inList(wbent2.tidfisc2.trim().toUpperCase(), ["ISENTO", ""])) {
+    windIEDest_E16a = "9"
+  };
+
+  // Para atender o novo CNPJ Alfanumerico, trocamos a regex antiga "[^0-9]" pela nova "[^A-Z0-9]".
+  wCNPJ_E02 = wbent2.tidfisc.replaceAll("[^A-Z0-9]", "");
+  wUF_E12 = wbent2.testado.trim().toUpperCase();
+  wIE_E17 = wbent2.tidfisc2.replaceAll("[^0-9]", "");
+
+  //Inscrção Estadual de Substituto de acordo com o estado.
+  wsel = " select nctx "
+  wsel += " from bctxt0 with(nolock) "
+  wsel += " where ictx = 'IEST*UF' "
+  wsel += " and  ivalk = '" + wcflv.iuorg.trim() + "' "
+  wsel += " and   xord = '" + wUF_E12.trim() + "' "
+  wsel += " and   cst  = 'E0' "
+  println(wsel); flush()
+  wIEST = getSQLValue(wsel).replaceAll("[^0-9]", "");
+  //Conforme determinação do NPP.001131 geração do Bloco somente para as filias que tem Inscrição Substituta na UF PI
+  if ((wIEST.trim() != "") && (wUF_E12.trim() == "PI")) {
+
+    if (wIE_E17 == "" || wCNPJ_E02.length() < 14) {
+      windIEDest_E16a = "9"
+    }
+
+    //Obter o identificador de local de destino da operação. O primeiro digito para saber o destino da operação.
+    wcit = wcflv.cit.trim().substring(0, 1)
+
+    // Identificador de local de destino da Operação: 1=Interna;  2=Interestadual; 3=Exterior.
+    widDest = "1"
+    wexterior = false;
+    // Se wcit for 2 ou 6, CFOP de operações Interestadual
+    if (inList(wcit, ["2", "6"])) {
+      widDest = "2"
+      // Se wcit for 3 ou 7, CFOP de operações com Exterior
+    } else if (inList(wcit, ["3", "7"])) {
+      wexterior = true
+    }
+
+    // Indica operações com Consumidor final:  0=Normal; 1=Consumidor final;
+    windFinal = "1"
+    // Flag para determinar se destaca os dados do ICMS de operações interestadual para pessoa fisica
+    wInterNaoContribuinte = false;
+    if (windFinal == "1" && wbent.testado.trim() != wbent2.testado.trim() && !wexterior) {
+      widDest = "2" // Operação Interestadual   
+      if (wCNPJ_E02.length() < 14) {
+        wInterNaoContribuinte = true;
+      }
+    }
+
+    if (wInterNaoContribuinte || (windFinal == "1" && widDest == "2" && windIEDest_E16a == "9")) {
+
+      wsel = "Select a.mvalor, a.mvalun, a.cfpsr, a.qbfisc, a.qpsr, a.pi, a.iorg, a.idoct, a.idoc, a.ientt, a.ient, a.cci, a.ddoces "
+      wsel += "  From ddolt0 a with(Nolock) "
+      wsel += " Where a.iorg  = '" + wcflv.iorg.trim() + "' "
+      wsel += "   and a.ientt = '" + wcflv.ientt.trim() + "' "
+      wsel += "   and a.ient  = '" + wcflv.ient.trim() + "' "
+      wsel += "   and a.idoct = '" + wcflv.idoct.trim() + "' "
+      wsel += "   and a.idoc  = '" + wcflv.idoc.trim() + "' "
+      vddol = getRows("DDOL", wsel)
+
+      wvICMSUFDest = 0.00;
+				
+				foreach wddol(vddol.elements()) {
+
+        if ((!wGerouBloco0015) && (wbloco == "0015")) {
+          // ###  REGISTRO 0015:  ### 
+          //Bloco '0015' Acessa BCTX*UF do 'PI' para montar (0015-DADOS DO CONTRIBUINTE SUBSTITUTO OU RESPONSÁVEL PELO ICMS DESTINO)
+          //Composição do bloco: |0015|UF|INSC ST|
+          wregistro = "0015"
+          wreg = S + wregistro
+          wreg += S + wUF_E12.trim()
+          wreg += S + wIEST.trim()
+          wreg += S + EOL
+          wfile.append(wreg); wreg = ""; bxpf9_mc_exp_sped_efd_reg_fn(wregistro)
+          wGerouBloco0015 = true;
+
+          continue;
+        }
+        wGerouBloco0015 = true;
+
+        //Frete
+        wsel = "Select isnull(sum(a.mvalor),0) as mvalor, isnull(sum(a.mvalim),0) as mvalim "
+        wsel += "  From ddolt0 a, bpsrt0 b  "
+        wsel += " Where a.iorg    = '" + wddol.iorg.trim() + "' "
+        wsel += "   and a.idoct   = '" + wddol.idoct.trim() + "' "
+        wsel += "   and a.idoc    = '" + wddol.idoc.trim() + "' "
+        wsel += "   and a.ientt   = '" + wddol.ientt.trim() + "' "
+        wsel += "   and a.ient    = '" + wddol.ient.trim() + "' "
+        wsel += "   and b.ipst    = 'SRV' "
+        wsel += "   and a.iorg    = b.iorg "
+        wsel += "   and a.ipsr    = b.ipsr "
+        wddolf = getMRow("DDOL", wsel)
+        wtotfrete = wddolf.mvalor
+
+        //************************************************************************************************************************************************************
+        //else if ((wddol.cfpsrl.trim() == "060" || wddol.cfpsrl.trim() == "020") && inList(wrow.idoct.trim(), ["NNF"]) && inList(wrow.cit.trim(), ["6102", "6108"])) { HelioAqui
+        //Base  de Cálculo
+        //***************************************************************************************************************************************************************
+        if (wfinNFe == "2") {
+          wvBCUFDest = formatNumber((wddol.mvalor * wddol.qbfisc) + wtotfrete, "N0.00")
+          wpICMSUFDest = formatNumber(wddol.pi, "N0.00")
+        } else {
+          if (wddol.cci == "NDB") {
+            wvBCUFDest = formatNumber((wddol.mvalor * wddol.qbfisc) + wtotfrete, "N0.00")
+            wpICMSUFDest = formatNumber(wddol.pi, "N0.00")
+          } else {
+            wvBCUFDest = formatNumber(((wddol.qpsr * wddol.mvalun) * wddol.qbfisc) + wtotfrete, "N0.00")
+            wpICMSUFDest = formatNumber(17, "N0.00")
+          }
+        }
+        //***************************************************************************************************************************************************************
+
+        //Ano atual
+        wdataref = wdate.substring(0, 4)
+        //Define o percentual partilhado ICMS Interestadual
+        wpICMSInterPart = 40.00
+        switch (wdataref) {
+          case "2017": wpICMSInterPart = 60.00; break;
+          case "2018": wpICMSInterPart = 80.00; break;
+          case "2019": wpICMSInterPart = 100.00; break;
+        }
+
+        //Consulta ICMS UF Destino. 
+        wsel = " select qqcoef1 from bctxt0"
+        wsel += " where ictx = 'BCTX*AUDI*UF'"
+        wsel += " and   ivalk = '" + wbent2.testado.trim() + "'"
+        wsel += " and '" + wddol.ddoces.trim() + "' between dini and dfim"
+        wdifalUf = getSQLNumber(wsel);
+        wvaldifaliq = wdifalUf - toNumber(wpICMSUFDest);
+        if (wvaldifaliq < 0) {
+          wvaldifaliq = wvaldifaliq * -1;
+        }
+
+        //Valor do ICMS Interestadual para a UF de destino
+        wvICMSUFDest += round((toNumber(wvBCUFDest) * ((wvaldifaliq) / 100)) * (wpICMSInterPart / 100), 2); //"<vICMSUFDest>"
+        wTotvICMSUFDest += round(wvICMSUFDest, 2);
+
+      }
+
+      if (wbloco == "0015") { continue }
+
+      if (wbloco == "C101") {
+        // ###  REGISTRO C101:  ### 
+        // Bloco 'C101' - REGISTRO C101: INFORMAÇÃO COMPLEMENTAR DOS DOCUMENTOS FISCAIS QUANDO DAS OPERAÇÕES INTERESTADUAIS DESTINADAS AO CONSUMIDOR FINAL NÃO CONTRIBUINTE EC 87/15 (CÓDIGO 55) (Vendas de PF ou PJ sem IE)
+        //Composição do bloco: |C101|0|VALOR DIFAL|0|
+        wregistro = "C101"
+        wreg = S + wregistro
+        wreg += S + x_mc_br_format_number_fn("0", "N0.00", 3)
+        wreg += S + x_mc_br_format_number_fn(wvICMSUFDest, "N0.00", 3)
+        wreg += S + x_mc_br_format_number_fn("0", "N0.00", 3)
+        wreg += S + EOL
+        wfile.append(wreg); wreg = ""; bxpf9_mc_exp_sped_efd_reg_fn(wregistro)
+      }
+
+    }
+  }
+}
+
+if ((wbloco == "E300") && (wGerouBloco0015)) {
+  // ###  REGISTRO E300:  ### 
+  wregistro = "E300"
+  wreg = S + wregistro                            // Texto Fixo Contendo "E300" (4)
+  wreg += S + wUF_E12                          // 02 UF Sigla da unidade da federação a que se refere a apuração do ICMS Diferencial de Alíquota da UF de Origem/Destino C 002
+  wreg += S + x_mc_rmask_fn(wdtini)    // 03 DT_INI Data Inicial a que a apuração se refere N 008
+  wreg += S + x_mc_rmask_fn(wdtfim)   // 04 DT_FIN Data Final a que a apuração se refere N 008
+  wreg += S + EOL
+  wfile.append(wreg); wreg = ""; bxpf9_mc_exp_sped_efd_reg_fn(wregistro)
+
+  // ###  REGISTRO E310:  ### 
+  wregistro = "E310";
+  wcampo2 = "0";
+  if (wGerouBloco0015) { wcampo2 = "1" }; //Indicador demovimento:0 – Sem operações com ICMS Diferencial deAlíquota da UF de Origem/Destino;1 – Com op. de ICMS Dif. deAlíquota da UF de Origem/Destino
+  wcampo3 = 0.00;
+  wcampo4 = wTotvICMSUFDest;  //Valor total dos débitos por "Saídas e prestações com débitodo ICMS referente ao diferencial de alíquota devido à UF doRemetente/Destinatário" N - 02
+  wcampo5 = 0.00;
+  wcampo6 = 0.00;
+  wcampo7 = 0.00;
+  wcampo8 = wcampo3 + wcampo4 + wcampo5 - wcampo6 - wcampo7;
+  wcampo9 = 0.00;
+  wcampo10 = wcampo8 - wcampo9;
+  wcampo11 = 0.00;
+  wcampo12 = 0.00;
+  wcampo13 = 0.00;
+  wcampo14 = 0.00;
+  wcampo15 = 0.00;
+  wcampo16 = 0.00;
+  wcampo17 = 0.00;
+  wcampo18 = wcampo13 + wcampo14 + wcampo15 - wcampo16 - wcampo17;
+  wcampo19 = 0.00;
+  wcampo20 = wcampo18 - wcampo19;
+  wcampo21 = 0.00;
+  wcampo22 = 0.00;
+
+  wreg = S + wregistro
+  wreg += S + wcampo2
+  wreg += S + x_mc_br_format_number_fn(wcampo3, "N0.00", 3)
+  wreg += S + x_mc_br_format_number_fn(wcampo4, "N0.00", 3)
+  wreg += S + x_mc_br_format_number_fn(wcampo5, "N0.00", 3)
+  wreg += S + x_mc_br_format_number_fn(wcampo6, "N0.00", 3)
+  wreg += S + x_mc_br_format_number_fn(wcampo7, "N0.00", 3)
+  wreg += S + x_mc_br_format_number_fn(wcampo8, "N0.00", 3)
+  wreg += S + x_mc_br_format_number_fn(wcampo9, "N0.00", 3)
+  wreg += S + x_mc_br_format_number_fn(wcampo10, "N0.00", 3)
+  wreg += S + x_mc_br_format_number_fn(wcampo11, "N0.00", 3)
+  wreg += S + x_mc_br_format_number_fn(wcampo12, "N0.00", 3)
+  wreg += S + x_mc_br_format_number_fn(wcampo13, "N0.00", 3)
+  wreg += S + x_mc_br_format_number_fn(wcampo14, "N0.00", 3)
+  wreg += S + x_mc_br_format_number_fn(wcampo15, "N0.00", 3)
+  wreg += S + x_mc_br_format_number_fn(wcampo16, "N0.00", 3)
+  wreg += S + x_mc_br_format_number_fn(wcampo17, "N0.00", 3)
+  wreg += S + x_mc_br_format_number_fn(wcampo18, "N0.00", 3)
+  wreg += S + x_mc_br_format_number_fn(wcampo19, "N0.00", 3)
+  wreg += S + x_mc_br_format_number_fn(wcampo20, "N0.00", 3)
+  wreg += S + x_mc_br_format_number_fn(wcampo21, "N0.00", 3)
+  wreg += S + x_mc_br_format_number_fn(wcampo22, "N0.00", 3)
+  wreg += S + EOL
+  wfile.append(wreg); wreg = ""; bxpf9_mc_exp_sped_efd_reg_fn(wregistro)
+}
+
+return wfile.toString()
+
+//END

@@ -1,0 +1,58 @@
+// OBJETIVO: Criar Loja no CHECK
+// FUNCAO:   webchk_mc_exp_filial_fn()
+
+import("java.util.*")
+import("java.util.HashMap")
+
+// Globais
+zglobals.PDVWEB_TOKEN = ""
+
+lista = Vector()
+
+// Carrega Empregados
+wsel = " SELECT b.*, c.ngeos "
+wsel += "   FROM bentt0 b INNER JOIN bgeot0 c on c.igeob = b.testado and c.ngeo = b.tmunicip and c.igeoc = 'M' "
+wsel += "  WHERE b.ientt = '*' "
+wsel += "    AND b.ient = 'TEC' "
+wsel += "    AND b.iuorgt = 'UO' "
+// wsel += "    AND b.iuorg = 'F54' "
+wsel += "    AND EXISTS(SELECT a.ivalk FROM bctxt0 a with (NOLOCK) WHERE a.ictx = 'WEBCHK*FILIAL' AND a.ivalk = b.iuorg AND a.cst = 'PD') "
+wsel += "    AND b.cst = 'E0'  "
+println(">>>>>>> VBENT: " + wsel); flush()
+vbent = getRows("BENT", wsel)
+
+foreach wbent(vbent.elements()) {
+
+  println(">>>>>>> IUORG: " + wbent.iuorg.trim()); flush();
+
+  map = HashMap()
+  map.put("cc_fil", wbent.iuorg.trim())
+  map.put("nm_fil", wbent.nent.trim())
+
+  // Para atender o novo CNPJ Alfanumerico, trocamos a regex antiga "[^0-9]" pela nova "[^A-Z0-9]".
+  map.put("cc_ins_fed", wbent.tidfisc.replaceAll("[^A-Z0-9]", ""))
+  map.put("cc_reg_tri", "NORMAL")
+  map.put("st_fil", wbent.cst.trim())
+  map.put("tx_end_log", wbent.tmorad.trim())
+  map.put("tx_end_num", wbent.tmail.trim())
+  map.put("tx_end_cmp", wbent.tcend.trim())
+  map.put("tx_end_bai", wbent.tlocal.trim())
+  map.put("cc_end_cpt", wbent.icpt.replaceAll("[^0-9]", ""))
+  map.put("cc_end_est", wbent.testado.trim())
+  map.put("cc_end_mun_cod", wbent.ngeos.trim())
+  map.put("tx_end_mun_nom", wbent.tmunicip.trim())
+  map.put("cn_end_pai_cod", "1058")
+  map.put("tx_end_pai_nom", "BRASIL")
+  map.put("tx_end_tel", "(85) 4020-5000")
+  map.put("cc_ins_est", wbent.tidfisc2.replaceAll("[^0-9]", ""))
+  map.put("cc_ins_mun", "")
+  map.put("cc_cna_fis", "")
+
+  lista.add(map)
+}
+
+
+pdvweb_mc_send_to_resource_fn(lista.toArray(), "filial");
+
+
+// EOF

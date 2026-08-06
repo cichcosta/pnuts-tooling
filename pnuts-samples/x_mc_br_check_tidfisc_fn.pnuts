@@ -1,0 +1,119 @@
+// FUNCTON: x_mc_br_check_tidfisc_fn(wtidfisc)
+// CHECK_TIDFISC FN - validação do número de contribuinte
+// Versão Brasileira para checar CNPJ (alfanumérico) e CPF
+
+println("FUNCTION: X_MC_BR_CHECK_TIDFISC_FN - INICIO"); flush()
+isValid = false
+
+/* Converte um caractere do CNPJ (digito ou letra) para o valor numérico
+   conforme regra oficial do CNPJ alfanumérico: letras = ASCII - 48 */
+function wCnpjCharVal(wtidfisc, wpos) {
+    return wtidfisc.codePointAt(wpos) - 48
+}
+
+if (wtidfisc.trim() != "" &&
+   (wtidfisc.trim().length() == 18 ||
+    wtidfisc.trim().length() == 14) &&
+   (Character::isDigit(wtidfisc.charAt(0)) || Character::isLetter(wtidfisc.charAt(0)))) {
+
+   import("java.math.BigDecimal")
+
+   if (wtidfisc.trim().length() == 14) {
+
+      //  CPF (permanece 100% numérico, nada muda)
+      wtot = Character::digit(wtidfisc[0], 14) * 10 +
+             Character::digit(wtidfisc[1], 14) * 9 +
+             Character::digit(wtidfisc[2], 14) * 8 +
+             Character::digit(wtidfisc[4], 14) * 7 +
+             Character::digit(wtidfisc[5], 14) * 6 +
+             Character::digit(wtidfisc[6], 14) * 5 +
+             Character::digit(wtidfisc[8], 14) * 4 +
+             Character::digit(wtidfisc[9], 14) * 3 +
+             Character::digit(wtidfisc[10], 14) * 2
+
+      wcheck = Character::digit(wtidfisc[12], 14)
+   } else {
+
+      //  CNPJ (alfanumérico nos 12 primeiros caracteres)
+      wtot = wCnpjCharVal(wtidfisc, 0) * 5 +
+             wCnpjCharVal(wtidfisc, 1) * 4 +
+             wCnpjCharVal(wtidfisc, 3) * 3 +
+             wCnpjCharVal(wtidfisc, 4) * 2 +
+             wCnpjCharVal(wtidfisc, 5) * 9 +
+             wCnpjCharVal(wtidfisc, 7) * 8 +
+             wCnpjCharVal(wtidfisc, 8) * 7 +
+             wCnpjCharVal(wtidfisc, 9) * 6 +
+             wCnpjCharVal(wtidfisc, 11) * 5 +
+             wCnpjCharVal(wtidfisc, 12) * 4 +
+             wCnpjCharVal(wtidfisc, 13) * 3 +
+             wCnpjCharVal(wtidfisc, 14) * 2
+
+      wcheck = Character::digit(wtidfisc[16], 10)
+   }
+
+   wdigit = toBigDecimal(wtot).divide(11B, BigDecimal::ROUND_DOWN).intValue()
+   wdigit = 11 - (wtot - wdigit * 11)
+   if (wdigit >= 10) wdigit = 0
+
+   if (wcheck == wdigit) {
+
+      //Testa segundo dígito verificador
+      if (wtidfisc.trim().length() == 14) {
+
+         //  CPF
+         wtot = Character::digit(wtidfisc[0], 14) * 11 +
+                Character::digit(wtidfisc[1], 14) * 10 +
+                Character::digit(wtidfisc[2], 14) * 9 +
+                Character::digit(wtidfisc[4], 14) * 8 +
+                Character::digit(wtidfisc[5], 14) * 7 +
+                Character::digit(wtidfisc[6], 14) * 6 +
+                Character::digit(wtidfisc[8], 14) * 5 +
+                Character::digit(wtidfisc[9], 14) * 4 +
+                Character::digit(wtidfisc[10], 14) * 3 +
+                Character::digit(wtidfisc[12], 14) * 2
+
+         wcheck = Character::digit(wtidfisc[13], 14)
+      } else {
+
+         //  CNPJ
+         wtot = wCnpjCharVal(wtidfisc, 0) * 6 +
+                wCnpjCharVal(wtidfisc, 1) * 5 +
+                wCnpjCharVal(wtidfisc, 3) * 4 +
+                wCnpjCharVal(wtidfisc, 4) * 3 +
+                wCnpjCharVal(wtidfisc, 5) * 2 +
+                wCnpjCharVal(wtidfisc, 7) * 9 +
+                wCnpjCharVal(wtidfisc, 8) * 8 +
+                wCnpjCharVal(wtidfisc, 9) * 7 +
+                wCnpjCharVal(wtidfisc, 11) * 6 +
+                wCnpjCharVal(wtidfisc, 12) * 5 +
+                wCnpjCharVal(wtidfisc, 13) * 4 +
+                wCnpjCharVal(wtidfisc, 14) * 3 +
+                wCnpjCharVal(wtidfisc, 16) * 2
+
+         wcheck = Character::digit(wtidfisc[17], 10)
+      }
+
+      wdigit = toBigDecimal(wtot).divide(11B, BigDecimal::ROUND_DOWN).intValue()
+      wdigit = 11 - (wtot - wdigit * 11)
+      if (wdigit >= 10) wdigit = 0
+
+      if (wcheck == wdigit) {
+         isValid = true
+      } else {
+         println("checkdigit: " + wdigit + ", tidfisc: " + wcheck); flush()
+      }
+   } else {
+      println("checkdigit: " + wdigit + ", tidfisc: " + wcheck); flush()
+   }
+}
+
+println("isTidfisc " + wtidfisc + ": " + isValid); flush()
+if (isValid == false && wtidfisc.trim() != "") {
+   throwError("Calculo do digito verificador CPF/CNPJ invalido")
+}
+
+println("FUNCTION: X_MC_BR_CHECK_TIDFISC_FN - FINAL"); flush()
+return isValid
+
+// EOF
+

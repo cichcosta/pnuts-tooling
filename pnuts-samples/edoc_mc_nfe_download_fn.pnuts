@@ -1,0 +1,125 @@
+wrow = wrows.elementAt(0)
+
+/* wintegrador = getTparms("BCTX*PARAM*NFE", "INTEGRADOR*" + wrow.iorg.trim() + "*" + wrow.iuorg.trim()).trim()
+if (wintegrador.toUpperCase() == "DFEAPI") {
+    dfeapi_mc_nfe_download_fn()
+    return
+} */
+
+x_mc_inserir_log_fn("EDOC", "edoc_mc_nfe_download_fn", "DDOCREDC")
+import("java.util.HashMap")
+import("br.com.unigex.manageredoc.*")
+import("br.com.unigex.Util")
+
+// work
+wrow = wrows.elementAt(0)
+
+wrow2 = wrows.elementAt(wrows.size() - 1)
+
+wuser = MLogin:: getUser()
+wdatetime = x_mc_br_get_date_server_fn()
+wdate = wdatetime.substring(0, 10)
+wtime = wdatetime.substring(11, 19)
+
+//Verficar permissão Usuário
+if (!x_mc_get_access_fn("EDOC-0005", "")) {
+  throwError("Usuário não Autorizado.")
+}
+
+if (wrow.ddoc.trim() < "2018-04-02") {
+  oManager = edoc_mc_get_http_serv_old_fn(wrow, "nfe")
+} else {
+  oManager = edoc_mc_get_http_service_fn(wrow, "nfe")
+}
+
+cursor = MConnection:: getMCursor()
+
+wbent = edoc_mc_get_bent_fn("*", wrow.iorg, wrow.iuorgt, wrow.iuorg)
+
+// Para atender o novo CNPJ Alfanumerico, trocamos a regex antiga "[^0-9]" pela nova "[^A-Z0-9]".
+wCnpj = wbent.tidfisc.replaceAll("[^A-Z0-9]", "")
+
+wdfform = MForm:: getDialogForm(m, "EDOCDOWNLOAD", "ME", "Download XML", 3)
+wdfform.wini = INT(wrow.idoc.split("/")[1].trim()) + ""
+wdfform.wfin = INT(wrow2.idoc.split("/")[1].trim()) + ""
+wdfform.wtipo = "AUTORIZACAO"
+wdfform.wdini = wrow.ddoc.trim() //MDate(wdate).inicioMes().toString()
+wdfform.wdfin = wrow2.ddoc.trim() //MDate(wdate).fimMes().toString()
+
+cursor.commitWork() // <-- NOVO
+wdfform.showForm()
+cursor.beginWork()  // <-- NOVO
+
+if (wdfform.getLastCmd().equals("CLOSEWINDOW")) { throwError("Operação Cancelada.") }
+wIni = wdfform.wini
+wFin = wdfform.wfin
+wTipo = wdfform.wtipo
+wDini = wdfform.wdini
+wDfin = wdfform.wdfin
+
+if (MString:: isNumber(wIni) && MString:: isNumber(wFin) && wTipo.trim() != "") {
+
+  if (wDini > wDfin) {
+    throwError("A data inicial não pode ser maior que a data final.")
+  }
+
+  wIni = int(wIni)
+  wFin = int(wFin)
+  if (wIni > wFin) {
+    throwError("Faixa Inicial não pode ser maior que a Faixa Final.")
+  }
+
+  if (!inList(wTipo, ["EMISSAO", "AUTORIZACAO", "CANCELAMENTO"])) {
+    throwError("Tipo de documento não informado.\nInforme EMISSAO, AUTORIZACAO ou CANCELAMENTO.")
+  }
+
+  wDados = HashMap()
+  wDados.put("Tipo", wTipo)
+  wDados.put("Dtinicial", MDate(wDini).setFormat("dd/MM/yyyy").toString())
+  wDados.put("Dtfinal", MDate(wDfin).setFormat("dd/MM/yyyy").toString())
+  wDados.put("Ninicial", wIni.toString())
+  wDados.put("Nfinal", wFin.toString())
+  wDados.put("Url", "1")
+  wDados.put("cnpj", wCnpj)
+  wDados.put("GerarDanfe", "1")
+
+  println("wDados >> " + oManager.doRequestPost("exportaxml", wDados, 6000000)); flush()
+  // aqui comunicar com manager edoc
+  wUrlDownload = oManager.doRequestPost("exportaxml", wDados, 6000000)
+
+  println("Retorno >> " + wUrlDownload); flush()
+
+  if (wUrlDownload.indexOf(".zip") != -1) {
+
+    warquivo = wUrlDownload.split("/")
+    warquivo = warquivo[warquivo.length - 1]
+
+    arquivoSalvo = Util:: salvaArquivo(wUrlDownload, warquivo);
+
+    Util:: abreArquivo(arquivoSalvo)
+
+    //oManager.openFileBrowser(wUrlDownload)
+
+
+  } else {
+
+    wRetorno = wUrlDownload.split(",")
+
+    if (wRetorno[0] == "OK") {
+
+      showMessage(wRetorno[1])
+
+    } else {
+
+      throwError(wUrlDownload)
+
+    }
+  }
+
+} else {
+  throwError("Todos os campos precisam ser preenchidos. Faixa Inicial e Faixa Final precisam ser numéricos e o tipo precisa ser EMISSAO, AUTORIZACAO ou CANCELAMENTO.")
+}
+
+
+
+//EOF

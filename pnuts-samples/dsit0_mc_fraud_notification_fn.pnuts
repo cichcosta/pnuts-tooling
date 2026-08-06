@@ -1,0 +1,298 @@
+// FUNC: dsit0_mc_fraud_notification_fn()
+// Function para enviar notificações de pedidos que precisam de analise anti-fraude
+import("java.util.HashMap");
+
+WN = "\n";
+wqry = StringBuilder();
+
+println(">>>>>>>>>> FUNÇÃO: DSIT0_MC_FRAUD_NOTIFICATION_FN - INICIO"); flush();
+
+function get_body_json_card(wplatform, worderCode, worderCodePrincipal, wInsertedDate) {
+
+  wjson = StringBuilder();
+
+  wjson.append(" { ");
+  wjson.append("   " + char(34) + "type" + char(34) + ": " + char(34) + "message" + char(34) + ", ");
+  wjson.append("     " + char(34) + "attachments" + char(34) + ": [ ");
+  wjson.append("       { ");
+  wjson.append("         " + char(34) + "contentType" + char(34) + ": " + char(34) + "application/vnd.microsoft.card.adaptive" + char(34) + ", ");
+  wjson.append("         " + char(34) + "contentUrl" + char(34) + ": null, ");
+  wjson.append("         " + char(34) + "content" + char(34) + ": { ");
+  wjson.append("           " + char(34) + "$schema" + char(34) + ": " + char(34) + "http://adaptivecards.io/schemas/adaptive-card.json" + char(34) + ", ");
+  wjson.append("           " + char(34) + "type" + char(34) + ": " + char(34) + "AdaptiveCard" + char(34) + ", ");
+  wjson.append("           " + char(34) + "version" + char(34) + ": " + char(34) + "1.5" + char(34) + ", ");
+  wjson.append("           " + char(34) + "body" + char(34) + ": [ ");
+  wjson.append("             { ");
+  wjson.append("               " + char(34) + "type" + char(34) + ": " + char(34) + "Container" + char(34) + ", ");
+  wjson.append("               " + char(34) + "style" + char(34) + ": " + char(34) + "attention" + char(34) + ", ");
+  wjson.append("               " + char(34) + "bleed" + char(34) + ": true, ");
+  wjson.append("               " + char(34) + "backgroundColor" + char(34) + ": " + char(34) + "#c11717d9" + char(34) + ", ");
+  wjson.append("               " + char(34) + "padding" + char(34) + ": " + char(34) + "medium" + char(34) + ", ");
+  wjson.append("               " + char(34) + "items" + char(34) + ": [ ");
+  wjson.append("                 { ");
+  wjson.append("                   " + char(34) + "type" + char(34) + ": " + char(34) + "TextBlock" + char(34) + ", ");
+  wjson.append("                   " + char(34) + "text" + char(34) + ": " + char(34) + "\\u26A0\\uFE0F " + " ATENÇÃO!" + char(34) + ", ");
+  wjson.append("                   " + char(34) + "weight" + char(34) + ": " + char(34) + "bolder" + char(34) + ", ");
+  wjson.append("                   " + char(34) + "size" + char(34) + ": " + char(34) + "extraLarge" + char(34) + ", ");
+  wjson.append("                   " + char(34) + "color" + char(34) + ": " + char(34) + "#efefef" + char(34) + ", ");
+  wjson.append("                   " + char(34) + "spacing" + char(34) + ": " + char(34) + "none" + char(34) + ", ");
+  wjson.append("                   " + char(34) + "horizontalAlignment" + char(34) + ": " + char(34) + "center" + char(34) + " ");
+  wjson.append("                 }, ");
+  wjson.append("                 { ");
+  wjson.append("                   " + char(34) + "type" + char(34) + ": " + char(34) + "TextBlock" + char(34) + ", ");
+  wjson.append("                   " + char(34) + "text" + char(34) + ": " + char(34) + "Novo pedido para analise de Fraude" + char(34) + ", ");
+  wjson.append("                   " + char(34) + "size" + char(34) + ": " + char(34) + "medium" + char(34) + ", ");
+  wjson.append("                   " + char(34) + "color" + char(34) + ": " + char(34) + "#efefef" + char(34) + ", ");
+  wjson.append("                   " + char(34) + "weight" + char(34) + ": " + char(34) + "bolder" + char(34) + ", ");
+  wjson.append("                   " + char(34) + "spacing" + char(34) + ": " + char(34) + "small" + char(34) + ", ");
+  wjson.append("                   " + char(34) + "horizontalAlignment" + char(34) + ": " + char(34) + "center" + char(34) + " ");
+  wjson.append("                 } ");
+  wjson.append("               ] ");
+  wjson.append("             }, ");
+  wjson.append("             { ");
+  wjson.append("               " + char(34) + "type" + char(34) + ": " + char(34) + "Container" + char(34) + ", ");
+  wjson.append("               " + char(34) + "separator" + char(34) + ": true, ");
+  wjson.append("               " + char(34) + "spacing" + char(34) + ": " + char(34) + "medium" + char(34) + ", ");
+  wjson.append("               " + char(34) + "padding" + char(34) + ": " + char(34) + "medium" + char(34) + ", ");
+  wjson.append("               " + char(34) + "backgroundColor" + char(34) + ": " + char(34) + "#efefef" + char(34) + ", ");
+  wjson.append("               " + char(34) + "style" + char(34) + ": " + char(34) + "default" + char(34) + ", ");
+  wjson.append("               " + char(34) + "items" + char(34) + ": [ ");
+  wjson.append("                 { ");
+  wjson.append("                   " + char(34) + "type" + char(34) + ": " + char(34) + "ColumnSet" + char(34) + ", ");
+  wjson.append("                   " + char(34) + "columns" + char(34) + ": [ ");
+  wjson.append("                     { ");
+  wjson.append("                       " + char(34) + "width" + char(34) + ": " + char(34) + "auto" + char(34) + ", ");
+  wjson.append("                       " + char(34) + "items" + char(34) + ": [ ");
+  wjson.append("                         { ");
+  wjson.append("                           " + char(34) + "type" + char(34) + ": " + char(34) + "TextBlock" + char(34) + ", ");
+  wjson.append("                           " + char(34) + "text" + char(34) + ": " + char(34) + "TIPO" + char(34) + ", ");
+  wjson.append("                           " + char(34) + "size" + char(34) + ": " + char(34) + "small" + char(34) + ", ");
+  wjson.append("                           " + char(34) + "weight" + char(34) + ": " + char(34) + "bolder" + char(34) + ", ");
+  wjson.append("                           " + char(34) + "color" + char(34) + ": " + char(34) + "#333333" + char(34) + ", ");
+  wjson.append("                           " + char(34) + "spacing" + char(34) + ": " + char(34) + "none" + char(34) + " ");
+  wjson.append("                         } ");
+  wjson.append("                       ] ");
+  wjson.append("                     }, ");
+  wjson.append("                     { ");
+  wjson.append("                       " + char(34) + "width" + char(34) + ": " + char(34) + "stretch" + char(34) + " ");
+  wjson.append("                     }, ");
+  wjson.append("                     { ");
+  wjson.append("                       " + char(34) + "width" + char(34) + ": " + char(34) + "auto" + char(34) + ", ");
+  wjson.append("                       " + char(34) + "items" + char(34) + ": [ ");
+  wjson.append("                         { ");
+  wjson.append("                           " + char(34) + "type" + char(34) + ": " + char(34) + "TextBlock" + char(34) + ", ");
+  wjson.append("                           " + char(34) + "text" + char(34) + ": " + char(34) + wplatform.trim() + char(34) + ", ");
+  wjson.append("                           " + char(34) + "size" + char(34) + ": " + char(34) + "small" + char(34) + ", ");
+  wjson.append("                           " + char(34) + "weight" + char(34) + ": " + char(34) + "bolder" + char(34) + ", ");
+  wjson.append("                           " + char(34) + "color" + char(34) + ": " + char(34) + "#c11717d9" + char(34) + ", ");
+  wjson.append("                           " + char(34) + "spacing" + char(34) + ": " + char(34) + "none" + char(34) + " ");
+  wjson.append("                         } ");
+  wjson.append("                       ] ");
+  wjson.append("                     } ");
+  wjson.append("                   ] ");
+  wjson.append("                 }, ");
+  //Pedido MDI
+  wjson.append("                 { ");
+  wjson.append("                   " + char(34) + "type" + char(34) + ": " + char(34) + "Container" + char(34) + ", ");
+  wjson.append("                   " + char(34) + "separator" + char(34) + ": true, ");
+  wjson.append("                   " + char(34) + "spacing" + char(34) + ": " + char(34) + "medium" + char(34) + ", ");
+  wjson.append("                   " + char(34) + "items" + char(34) + ": [ ");
+  wjson.append("                     { ");
+  wjson.append("                       " + char(34) + "type" + char(34) + ": " + char(34) + "ColumnSet" + char(34) + ", ");
+  wjson.append("                       " + char(34) + "columns" + char(34) + ": [ ");
+  wjson.append("                         { ");
+  wjson.append("                           " + char(34) + "width" + char(34) + ": " + char(34) + "auto" + char(34) + ", ");
+  wjson.append("                           " + char(34) + "items" + char(34) + ": [ ");
+  wjson.append("                             { ");
+  wjson.append("                               " + char(34) + "type" + char(34) + ": " + char(34) + "TextBlock" + char(34) + ", ");
+  wjson.append("                               " + char(34) + "text" + char(34) + ": " + char(34) + "ID IBYTE" + char(34) + ", ");
+  wjson.append("                               " + char(34) + "size" + char(34) + ": " + char(34) + "small" + char(34) + ", ");
+  wjson.append("                               " + char(34) + "weight" + char(34) + ": " + char(34) + "bolder" + char(34) + ", ");
+  wjson.append("                               " + char(34) + "color" + char(34) + ": " + char(34) + "#333333" + char(34) + ", ");
+  wjson.append("                               " + char(34) + "spacing" + char(34) + ": " + char(34) + "none" + char(34) + " ");
+  wjson.append("                             } ");
+  wjson.append("                           ] ");
+  wjson.append("                         }, ");
+  wjson.append("                         { ");
+  wjson.append("                           " + char(34) + "width" + char(34) + ": " + char(34) + "stretch" + char(34) + " ");
+  wjson.append("                         }, ");
+  wjson.append("                         { ");
+  wjson.append("                           " + char(34) + "width" + char(34) + ": " + char(34) + "auto" + char(34) + ", ");
+  wjson.append("                           " + char(34) + "items" + char(34) + ": [ ");
+  wjson.append("                             { ");
+  wjson.append("                               " + char(34) + "type" + char(34) + ": " + char(34) + "TextBlock" + char(34) + ", ");
+  wjson.append("                               " + char(34) + "text" + char(34) + ": " + char(34) + worderCodePrincipal.trim() + char(34) + ", ");
+  wjson.append("                               " + char(34) + "size" + char(34) + ": " + char(34) + "small" + char(34) + ", ");
+  wjson.append("                               " + char(34) + "weight" + char(34) + ": " + char(34) + "bolder" + char(34) + ", ");
+  wjson.append("                               " + char(34) + "color" + char(34) + ": " + char(34) + "#000000" + char(34) + ", ");
+  wjson.append("                               " + char(34) + "spacing" + char(34) + ": " + char(34) + "none" + char(34) + " ");
+  wjson.append("                             } ");
+  wjson.append("                           ] ");
+  wjson.append("                         } ");
+  wjson.append("                       ] ");
+  wjson.append("                     } ");
+  wjson.append("                   ] ");
+  wjson.append("                 }, ");
+  // Pedido SITE
+  wjson.append("                 { ");
+  wjson.append("                   " + char(34) + "type" + char(34) + ": " + char(34) + "Container" + char(34) + ", ");
+  wjson.append("                   " + char(34) + "separator" + char(34) + ": true, ");
+  wjson.append("                   " + char(34) + "spacing" + char(34) + ": " + char(34) + "medium" + char(34) + ", ");
+  wjson.append("                   " + char(34) + "items" + char(34) + ": [ ");
+  wjson.append("                     { ");
+  wjson.append("                       " + char(34) + "type" + char(34) + ": " + char(34) + "ColumnSet" + char(34) + ", ");
+  wjson.append("                       " + char(34) + "columns" + char(34) + ": [ ");
+  wjson.append("                         { ");
+  wjson.append("                           " + char(34) + "width" + char(34) + ": " + char(34) + "auto" + char(34) + ", ");
+  wjson.append("                           " + char(34) + "items" + char(34) + ": [ ");
+  wjson.append("                             { ");
+  wjson.append("                               " + char(34) + "type" + char(34) + ": " + char(34) + "TextBlock" + char(34) + ", ");
+  wjson.append("                               " + char(34) + "text" + char(34) + ": " + char(34) + "ID PEDIDO" + char(34) + ", ");
+  wjson.append("                               " + char(34) + "size" + char(34) + ": " + char(34) + "small" + char(34) + ", ");
+  wjson.append("                               " + char(34) + "weight" + char(34) + ": " + char(34) + "bolder" + char(34) + ", ");
+  wjson.append("                               " + char(34) + "color" + char(34) + ": " + char(34) + "#333333" + char(34) + ", ");
+  wjson.append("                               " + char(34) + "spacing" + char(34) + ": " + char(34) + "none" + char(34) + " ");
+  wjson.append("                             } ");
+  wjson.append("                           ] ");
+  wjson.append("                         }, ");
+  wjson.append("                         { ");
+  wjson.append("                           " + char(34) + "width" + char(34) + ": " + char(34) + "stretch" + char(34) + " ");
+  wjson.append("                         }, ");
+  wjson.append("                         { ");
+  wjson.append("                           " + char(34) + "width" + char(34) + ": " + char(34) + "auto" + char(34) + ", ");
+  wjson.append("                           " + char(34) + "items" + char(34) + ": [ ");
+  wjson.append("                             { ");
+  wjson.append("                               " + char(34) + "type" + char(34) + ": " + char(34) + "TextBlock" + char(34) + ", ");
+  wjson.append("                               " + char(34) + "text" + char(34) + ": " + char(34) + worderCode.trim() + char(34) + ", ");
+  wjson.append("                               " + char(34) + "size" + char(34) + ": " + char(34) + "small" + char(34) + ", ");
+  wjson.append("                               " + char(34) + "weight" + char(34) + ": " + char(34) + "bolder" + char(34) + ", ");
+  wjson.append("                               " + char(34) + "color" + char(34) + ": " + char(34) + "#000000" + char(34) + ", ");
+  wjson.append("                               " + char(34) + "spacing" + char(34) + ": " + char(34) + "none" + char(34) + " ");
+  wjson.append("                             } ");
+  wjson.append("                           ] ");
+  wjson.append("                         } ");
+  wjson.append("                       ] ");
+  wjson.append("                     } ");
+  wjson.append("                   ] ");
+  wjson.append("                 }, ");
+  // DATA /HORA
+  wjson.append("                 { ");
+  wjson.append("                   " + char(34) + "type" + char(34) + ": " + char(34) + "Container" + char(34) + ", ");
+  wjson.append("                   " + char(34) + "separator" + char(34) + ": true, ");
+  wjson.append("                   " + char(34) + "spacing" + char(34) + ": " + char(34) + "medium" + char(34) + ", ");
+  wjson.append("                   " + char(34) + "items" + char(34) + ": [ ");
+  wjson.append("                     { ");
+  wjson.append("                       " + char(34) + "type" + char(34) + ": " + char(34) + "ColumnSet" + char(34) + ", ");
+  wjson.append("                       " + char(34) + "columns" + char(34) + ": [ ");
+  wjson.append("                         { ");
+  wjson.append("                           " + char(34) + "width" + char(34) + ": " + char(34) + "auto" + char(34) + ", ");
+  wjson.append("                           " + char(34) + "items" + char(34) + ": [ ");
+  wjson.append("                             { ");
+  wjson.append("                               " + char(34) + "type" + char(34) + ": " + char(34) + "TextBlock" + char(34) + ", ");
+  wjson.append("                               " + char(34) + "text" + char(34) + ": " + char(34) + "DATA/HORA" + char(34) + ", ");
+  wjson.append("                               " + char(34) + "size" + char(34) + ": " + char(34) + "small" + char(34) + ", ");
+  wjson.append("                               " + char(34) + "weight" + char(34) + ": " + char(34) + "bolder" + char(34) + ", ");
+  wjson.append("                               " + char(34) + "color" + char(34) + ": " + char(34) + "#333333" + char(34) + ", ");
+  wjson.append("                               " + char(34) + "spacing" + char(34) + ": " + char(34) + "none" + char(34) + " ");
+  wjson.append("                             } ");
+  wjson.append("                           ] ");
+  wjson.append("                         }, ");
+  wjson.append("                         { ");
+  wjson.append("                           " + char(34) + "width" + char(34) + ": " + char(34) + "stretch" + char(34) + " ");
+  wjson.append("                         }, ");
+  wjson.append("                         { ");
+  wjson.append("                           " + char(34) + "width" + char(34) + ": " + char(34) + "auto" + char(34) + ", ");
+  wjson.append("                           " + char(34) + "items" + char(34) + ": [ ");
+  wjson.append("                             { ");
+  wjson.append("                               " + char(34) + "type" + char(34) + ": " + char(34) + "TextBlock" + char(34) + ", ");
+  wjson.append("                               " + char(34) + "text" + char(34) + ": " + char(34) + wInsertedDate + char(34) + ", ");
+  wjson.append("                               " + char(34) + "size" + char(34) + ": " + char(34) + "small" + char(34) + ", ");
+  wjson.append("                               " + char(34) + "weight" + char(34) + ": " + char(34) + "bolder" + char(34) + ", ");
+  wjson.append("                               " + char(34) + "color" + char(34) + ": " + char(34) + "#000000" + char(34) + ", ");
+  wjson.append("                               " + char(34) + "spacing" + char(34) + ": " + char(34) + "none" + char(34) + " ");
+  wjson.append("                             } ");
+  wjson.append("                           ] ");
+  wjson.append("                         } ");
+  wjson.append("                       ] ");
+  wjson.append("                     } ");
+  wjson.append("                   ] ");
+  wjson.append("                 } ");
+  wjson.append("               ] ");
+  wjson.append("             } ");
+  wjson.append("           ] ");
+  wjson.append("         } ");
+  wjson.append("       } ");
+  wjson.append("     ] ");
+  wjson.append(" } ");
+  wjson_string = wjson.toString()
+
+  wjson.delete(0, wjson.length());
+
+  return wjson_string;
+}
+
+// recupera pedidos para envio das notificações
+wqry.append(WN + " SELECT ");
+wqry.append(WN + "     fila.notification_queue_id, ");
+wqry.append(WN + "     fila.endpoint, ");
+wqry.append(WN + "     mdi.salesPlatformCode, ");
+wqry.append(WN + "     mdi.orderCode, ");
+wqry.append(WN + "     mdi.orderCodePrincipal, ");
+wqry.append(WN + "     mdi.totalValue, ");
+wqry.append(WN + "     fila.created_at ");
+wqry.append(WN + " FROM vw_notification_queue_pending AS fila ");
+wqry.append(WN + " INNER JOIN tb_order AS mdi WITH (NOLOCK) ");
+wqry.append(WN + "     ON fila.source_entity_id = mdi.orderCodePrincipal ");
+wqry.append(WN + " WHERE ");
+wqry.append(WN + "     fila.channel_name = 'FRAUD_ANALYSIS' ");
+wqry.append(WN + "     AND fila.channel_type = 'TEAMS' ");
+wqry.append(WN + " UNION ALL ");
+wqry.append(WN + " SELECT ");
+wqry.append(WN + "     fila.notification_queue_id, ");
+wqry.append(WN + "     fila.endpoint, ");
+wqry.append(WN + "     'B2C' AS salesPlatformCode, ");
+wqry.append(WN + "     mweb.idoc AS orderCode, ");
+wqry.append(WN + "     mweb.idoc AS orderCodePrincipal, ");
+wqry.append(WN + "     mweb.mvalor AS totalValue, ");
+wqry.append(WN + "     fila.created_at ");
+wqry.append(WN + " FROM vw_notification_queue_pending AS fila ");
+wqry.append(WN + " INNER JOIN dsitt0 AS mweb WITH (NOLOCK) ");
+wqry.append(WN + "     ON fila.source_entity_id = mweb.idoc ");
+wqry.append(WN + " WHERE ");
+wqry.append(WN + "     fila.channel_name = 'FRAUD_ANALYSIS' ");
+wqry.append(WN + "     AND fila.channel_type = 'TEAMS' ");
+wqry.append(WN + "     AND NOT EXISTS ( ");
+wqry.append(WN + "         SELECT 1 ");
+wqry.append(WN + "         FROM tb_order AS mdi ");
+wqry.append(WN + "         WHERE fila.source_entity_id = mdi.orderCodePrincipal ");
+wqry.append(WN + "     ) ");
+wqry.append(WN + " ORDER BY fila.notification_queue_id; ");
+println("ORDERS: " + wqry.toString());
+vorders = getRows("DDOC", wqry.toString());
+
+wqry.delete(0, wqry.length());
+
+foreach worder(vorders.elements()) {
+
+  // envia notificação via Microsoft teams
+  wheader = HashMap();
+  wheader.put("Content-Type", "application/json");
+
+  wbody = get_body_json_card(worder.salesplatformcode, worder.ordercode, worder.ordercodeprincipal, worder.created_at);
+
+  wurl = worder.endpoint;
+  wtimeout = 3000;
+
+  wresponse = x_mc_request_api_v2_fn("POST", wurl, wheader, wbody, "UTF-8", wtimeout);
+  println("RES: " + wresponse); flush();
+
+  // Marcar notificação como processada.
+  wnotification_queue_id = worder.notification_queue_id;
+  wstatus = "Sent";
+  werror_message = "";
+  wshould_retry = 0;
+
+  executeProcedure("pr_update_notification_status", [wnotification_queue_id, wstatus, werror_message, wshould_retry]);
+}
+
+println(">>>>>>>>>> FUNÇÃO: DSIT0_MC_FRAUD_NOTIFICATION_FN - FINAL"); flush();

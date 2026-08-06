@@ -1,0 +1,492 @@
+//edoc_mc_nfse_resolver_newt_fn(wiuorg,wiixp)
+/**
+    Name: edoc_mc_nfse_resolver_new_fn(wiuorg)								   
+    Passos necessários para solicitar todas as notas
+    de serviços que ja se encontram no edoc e que precisam
+    ser inseridas no minimal
+*/
+
+/*
+    O primeiro passo é fazer um loop nas UOs para que
+    através dela possamos obter pelo menos um documento
+    para que seja possivel abrir uma instancia do
+    objeto de comunicação como edod
+	
+    Histórico:
+    2022-03-20 - Hélio Marques  - Calcular ISS (NPP.000964)
+    2022-07-12 - Hélio Marques  - Calcular ISS (NPP.000964) Ajuste caso não tenha o Ci-Código de Imposto B1/E1.
+    2022-08-17 - Pedro Henrique - PROBLEMA ERRO CONTABILIZAÇÃO NOTAS DE SERVIÇO
+    2023-01-30 - GEOVANI VITORIANO - NPP 001494										
+*/
+
+
+import("java.lang.StringBuilder")
+
+wdatetime = x_mc_br_get_date_server_fn()
+wdate = wdatetime.substring(0, 10)
+
+wlog = StringBuilder()
+
+function log(msg) {
+  wlog.append(msg)
+  wlog.append(EOL)
+}
+
+
+// select que traz todas as uos ou pelo menos
+// as que se deseja trabalhar (consultar no edoc)
+wsel = "select * "
+wsel += "  from bentt0 with(nolock) "
+wsel += " where ientt = '*' "
+wsel += "   and ient = 'TEC' "
+wsel += "   and iuorgt = 'UO' "
+wsel += "   and iuorg = '" + wiuorg.trim() + "'"
+log(">>edoc_mc_nfse_resolver_newt_fn<<>>>bent_filial<<<< " + wsel);
+vuo = getRows("BENT", wsel)
+
+if (vuo.size() > 0) {
+
+	// percorremos todas as UOS
+	foreach wuo(vuo.elements()){
+
+    println("Chamando função: x_mc_aplica_regra_idoc_fn(" + wuo.testado.trim() + "," + wuo.tmunicip.trim() + ");")
+    wAplicarRegraNumeracao = x_mc_aplica_regra_idoc_fn(wuo.testado.trim(), wuo.tmunicip.trim());
+    log("PROCESSANDO UO: " + wuo.iuorg.trim())
+
+    // Agora com os dados da uo em mãos, consultamos
+    // um documento para que possamos passar o mesmo
+    // para a função que devolve a instancia do objeto 
+    // que faz a comunicação com o edoc.
+    wsel = "select top 1 * "
+    wsel += "  from ddoct0 with(nolock) "
+    wsel += " where iorg = 'TEC' "
+    wsel += "   and idoct = 'RPS' "
+    wsel += "   and iuorgt = 'UO' "
+    wsel += "   and iuorg = '" + wuo.iuorg.trim() + "' "
+    log(">>edoc_mc_nfse_resolver_newt_fn<<>>>ddoc_edoc_comunica<<<< " + wsel);
+    wddoc = getRow("DDOC", wsel)
+
+    if (wddoc.wdcode != 100) {
+
+      // obtemos a instancia do objeto de
+      // comunicação com o edoc
+      oManager = edoc_mc_get_http_service_fn(wddoc, "nfse")
+
+      // define uma faixa inicial e final para a consulta
+      wfaixaIni = "0"
+
+      // consulta o maior documento RPS para obter o numero do RPS 
+      // para fazer a cosulta no edoc a partir de sua numeracao
+      wsel = "select max(iixp) "
+      wsel += "  from ddoct0 with(nolock) "
+      wsel += " where iorg = 'TEC' "
+      wsel += "   and iuorg = '" + wuo.iuorg + "' "
+      wsel += "   and idoct = 'RPS' "
+      //wsel += "   and csto = 'CT' "
+      wsel += "   and ddoc >= '2017-03-01' "
+      log(">>edoc_mc_nfse_resolver_newt_fn<<>>>ddoc_maior_numero<<<< " + wsel);
+      wi = getSQLValue(wsel);
+      if (wi.replaceAll("[^0-9]", "") != "") {
+        wfaixaIni = wi
+      }
+
+      log("Consultando RPS no Edoc a partir do RPS de numero " + wfaixaIni)
+
+      // monta a query string para a consulta
+      // Para atender o novo CNPJ Alfanumerico, trocamos a regex antiga "[^0-9]" pela nova "[^A-Z0-9]".
+      wQueryString = "consulta?encode=true&grupo=IBYTE&cnpj=" + wuo.tidfisc.replaceAll("[^A-Z0-9]", "") + "&Campos=nrps,nnfse,cnpj,serie,tipo,cidade&Filtro=1=1"
+      //wQueryString += "+and+situacao=AUTORIZADA"
+      wQueryString += "+and+nrps=" + wiixp.toString().trim()
+      wQueryString += "&Ordem=handle+desc"
+
+      //wQueryString  = "consulta?grupo=IBYTE&cnpj="+wuo.tidfisc.replaceAll("[^0-9]","")+"&Campos=nrps,nnfse,cnpj,serie,tipo,cidade&Filtro=situacao=AUTORIZADA+AND+nrps%3E" + wfaixaIni
+
+      // solicita a listagem das notas no edoc
+      wGet = oManager.doRequestGet(wQueryString)
+      log(">>edoc_mc_nfse_resolver_newt_fn<<>>>wGet<<<< " + wGet);
+
+      // verifica se o retorno da consulta inicia com exception, caso sim,
+      // continua o processamento
+      if (wGet.toLowerCase().substring(0, 9) == "exception") {
+        log(wGet)
+        continue
+      }
+
+      // verifica se o retorno da consulta veio "nenhum registro encontrado", se sim,
+      // continua o processo
+      if (wGet.toLowerCase().indexOf("nenhum registro encontrado") != -1) {
+        log("Nenhum registro encontrado")
+        continue
+      }
+
+      // monta um array com o retorno da solicitação
+      wgetArray = wGet.split("\r\n")
+      log(">>edoc_mc_nfse_resolver_newt_fn<<>>>wGet_tamanho<<<< " + wgetArray.length);
+
+      // verifica se o array do retorno contem elementos, se não,
+      // continua o processamento
+      if (wgetArray.length == 0) {
+        log("Falha no array do GET")
+        continue
+      }
+
+      // percorre os itens do array
+      for (i = 0; i < wgetArray.length; i++) {
+
+        // obtem o item do array
+        wlinha = wgetArray[i]
+        log(">>edoc_mc_nfse_resolver_newt_fn<<>>>linha_corrente<<<< " + wlinha);
+        // monta um array da linha separando os dados por virgula
+        wlinhaArray = wlinha.split(",")
+
+        // obtem os dados separadamente
+        wnumRps = wlinhaArray[0]
+        wnumNFSe = wlinhaArray[1]
+        wcnpj = wlinhaArray[2]
+        wserie = wlinhaArray[3]
+
+        println("RPS  >>" + wnumRps); flush();
+
+        //seleciona o cnpj da UO para verificar se  o mesmo que vem do edoc
+        wsel = "select top 1 tidfisc "
+        wsel += "  from bentt0 with(nolock) "
+        wsel += " where ientt = '*' "
+        wsel += "   and ient = 'TEC' "
+        wsel += "   and iuorgt = 'UO' "
+        wsel += "   and iuorg = '" + wuo.iuorg + "' "
+        log(">>edoc_mc_nfse_resolver_newt_fn<<>>>>bent_cnpj_edoc<<<< " + wsel);
+
+        // Para atender o novo CNPJ Alfanumerico, trocamos a regex antiga "[^0-9]" pela nova "[^A-Z0-9]".
+        wcnpjUO = getSQLValue(wsel).replaceAll("[^A-Z0-9]", "")
+        if (wcnpjUO != wcnpj) {
+          log("CNPJ diferentes " + wcnpjUO + "/" + wcnpj)
+          continue
+        }
+
+
+        // monta o numero do documento  que existe no minimal
+        wnumNFSeFormatado = wuo.iuorg.trim() + "/" + x_mc_format_number_idoc_fn(wnumNFSe, wAplicarRegraNumeracao, "N0000000");//formatNumber(wnumNFSe, "N0000000")
+
+        println("NFS  >>" + wnumNFSeFormatado); flush();
+        if (inList(wnumNFSeFormatado, ["F27/0000118", "F30/0001389", "F01/0002948", "F05/0011301"])) {
+          continue
+        }
+
+        // monta o numero do rps que existe no minimal
+        wnumRPSFormatado = wuo.iuorg.trim() + "/" + formatNumber(wnumRps, "N0000000")
+
+        log("Num. NFSe: " + wnumNFSe + ", Num. RPS: " + wnumRps + " / " + "Idoc NNS: " + wnumNFSeFormatado + ", IIXP: " + wnumRps)
+
+        //consulta o documento na base de dados
+        wsel = "select zk"
+        wsel += "  from ddoct0 with(nolock) "
+        wsel += " where iorg = 'TEC' "
+        wsel += "   and iuorgt = 'UO' "
+        wsel += "   and iuorg = '" + wuo.iuorg.trim() + "' "
+        wsel += "   and ientt in ('FN','CL','EM') "
+        wsel += "   and idoct = 'NNS' "
+        wsel += "   and idoc = '" + wnumNFSeFormatado + "' "
+        wddocNNS = getRow("DDOC", wsel)
+        log(">>edoc_mc_nfse_resolver_newt_fn<<>>>>nns<<<< " + wsel);
+
+        // verifica se o documento ja existe, se sim,
+        // continua o processamento
+        wJaExisteNNS = false
+        if (wddocNNS.wdcode != 100) {
+          log(wnumNFSeFormatado + " ja existe na base de dados!")
+          wJaExisteNNS = true
+        }
+
+        //consulta o RPS na base do minimal
+        wsel = "select * "
+        wsel += "  from ddoct0 with(nolock) "
+        wsel += " where iorg = 'TEC' "
+        wsel += "   and iuorgt = 'UO' "
+        wsel += "   and iuorg = '" + wuo.iuorg.trim() + "' "
+        wsel += "   and ientt in ('FN','CL','EM') "
+        wsel += "   and idoct = 'RPS' "
+        wsel += "   and iixp = '" + wnumRps + "' "
+        log(">>edoc_mc_nfse_resolver_newt_fn<<>>>>rps<<<< " + wsel);
+        println(">>edoc_mc_nfse_resolver_newt_fn<<>>>>rps<<<< " + wsel); flush();
+        wddocRPS = getRow("DDOC", wsel)
+
+        // verifica se o há registros de rps para o número informado, se sim,
+        // continua o processamento
+        if (wddocRPS.wdcode == 100) {
+          log("O número " + wnumRps + " não existe na base de dados!")
+          println("O número " + wnumRps + " não existe na base de dados!"); flush();
+          continue
+        }
+
+        // Verifica se o cliente do RPS corrente é substituto tributário ISS
+        wsel = " Select cmp4 "
+        wsel += "  from bentt0 with(nolock) "
+        wsel += " where ient = '" + wddocRPS.ient.trim() + "' "
+        wsel += "   and ientt = '" + wddocRPS.ientt.trim() + "' "
+        log(">>edoc_mc_nfse_resolver_newt_fn<<>>>>bent_cmp4<<<< " + wsel);
+        wbentRPS = getRow("BENT", wsel)
+
+        log(">>>edoc_mc_nfse_resolver_newt_fn<<>>>é subs trib iss ?<<<<<< = " + wbentRPS.cmp4);
+
+        // verifica se o documento RPS ja existe, se nao, 
+        // continua o processamento
+        // IMPORTANTE!! AQUI ELE SO VAI INSERIR A NNS SE EXISTIR O RPS NO MINIMAL
+        if (wddocRPS.wdcode == 100) {
+          log("Nao foi encontrado RPS que originou a nota " + wnumNFSe)
+          continue
+        }
+
+        // atualiza o campo iixp2 do documento RPS com o 
+        // numero da nota que veio do edoc
+        wsel = "update ddoct0 with(rowlock) "
+        wsel += "   set csto = 'CT', "
+        wsel += "       iixp2 = '" + wnumNFSe + "' "
+        wsel += " where zk = " + formatNumber(wddocRPS.zk, "N00000000000000")
+        wsel += " /*ddoc0_mc_nfse_consulta_lote_fn() UPDATE 1*/ "
+        log(">>edoc_mc_nfse_resolver_newt_fn<<>>>>atualiza_rps_iipx2<<<<< " + wsel);
+        executeSQL(wsel)
+
+        // insere o documento NNS atraves de uma copia feita no documento RPS
+        if (!wJaExisteNNS) {
+          executeProcedure("ddocprcp", ["c", wddocRPS.iorg, wddocRPS.ientt, wddocRPS.ient, wddocRPS.idoct, wddocRPS.idoc, "TEC", wddocRPS.ientt, wddocRPS.ient, "NNS", wnumNFSeFormatado])
+          println("Passou procedure"); flush();
+          log("Documento inserido: " + wnumNFSeFormatado)
+        }
+
+        // obtem o documento que acabou de ser gerado
+        wsel = " select a.* "
+        wsel += "   from ddoct0 a with(nolock) "
+        wsel += "  where a.iorg   = 'TEC' "
+        wsel += "    and a.ientt  = '" + wddocRPS.ientt + "' "
+        wsel += "    and a.ient   = '" + wddocRPS.ient + "' "
+        wsel += "    and a.idoct  = 'NNS' "
+        wsel += "    and a.idoc   = '" + wnumNFSeFormatado + "' "
+        wsel += " /*ddoc0_mc_nfse_consulta_lote_fn() SELECT 3*/ "
+        log(">>edoc_mc_nfse_resolver_newt_fn<<>>>>nns_gerado<<<<< " + wsel);
+        wddoc1 = getMRow("DDOC", wsel)
+
+        if (wAplicarRegraNumeracao) {
+          x_mc_update_extension_fn("c", "ddoctx", wddoc1.zk, "INVOICE_NNS", wnumNFSe);
+        }
+        //ph B
+        //Garantir que a NNS esteja com a Regra efeitos da Contabilidade como IS
+        wsel = " update ddoct0 with(rowlock) "
+        wsel += "   set ircti='IS' "
+        wsel += "  where iorg   = 'TEC' "
+        wsel += "    and ientt  = '" + wddocRPS.ientt + "' "
+        wsel += "    and ient   = '" + wddocRPS.ient + "' "
+        wsel += "    and idoct  = 'NNS' "
+        wsel += "    and idoc   = '" + wnumNFSeFormatado + "' "
+        log(">>edoc_mc_nfse_resolver_newt_fn<<>>>>atualiza_nns_contab<<<<< " + wsel);
+        x = executeSQL(wsel)
+
+        wnosdoc = wddoc1.idoc2
+        wnosdoct = wddoc1.idoct2
+
+        if (wnosdoc.trim() != "" && wnosdoct.trim() != "") {
+          // Alterando status operacional do documento NOS para CT
+          wsel = " update ddoct0 with(rowlock) "
+          wsel += "   set csto='CT', "
+          wsel += "       c3  = 'FE' "
+          wsel += "  where iorg   = 'TEC' "
+          wsel += "    and idoct = '" + wnosdoct + "' "
+          wsel += "    and idoc  = '" + wnosdoc + "' "
+          log(" Atualizando documento NOS  : \n " + wsel)
+          x = executeSQL(wsel)
+        }
+        //ph E 
+        // Recalcula o Documento Gerado  ########
+        executeProcedure("ddocpcal", [wddoc1.iorg, wddoc1.ientt, wddoc1.ient, wddoc1.idoct, wddoc1.idoc, "RECALC_ROW", 0])
+
+        log("Documento recalculado: " + wnumNFSeFormatado)
+
+        wac = if (wddocRPS.idoct2.trim() == "NVP") "'1065'" else "'1018'";
+
+        //B1 (HL)
+        wci = wddocRPS.ci.trim();
+
+        if (wbentRPS.cmp4.trim() == "S") {
+          log(">>edoc_mc_nfse_resolver_newt_fn<<>>>>entrou como cliente com substiruição tributaria iss <<<<< " + wsel);
+          wcodigo = "RET"
+          wci = getSQLValue("select tclass from bctxt0 where ictx = 'BCTX*ISS' and ivalk = '" + wcodigo + "' ")
+        } else {
+          if (wci == "") {
+            wci = getSQLValue("select tclass from bctxt0 where ictx = 'BCTX*ISS' and ivalk = '" + wuo.iuorg.trim() + "' and nctx = '' ")
+          }
+        }
+        //E1
+
+        wpi = getSQLNumber("select qqcoef1 from bctxt0 where ictx = 'BENT*CMP2' and ivalk = '" + wci.trim() + "' ")
+
+        log(">>edoc_mc_nfse_resolver_newt_fn<<>>>uci ddoc  \n " + wci + ">>ipi ddoc << " + wpi);
+
+        wsel = "Update ddoct0 with(rowlock) "
+        wsel += "   set ndoc   = '" + wddocRPS.idoct2.trim() + ": " + wddocRPS.idoc2.trim() + "',"
+        wsel += "       cr     = 'VX', "
+        wsel += "       ctcf   = 'VX-" + wddocRPS.idoct2.trim() + "', "
+        wsel += "       cit    = '5933', " //Aqui
+        wsel += "       ci   = '" + wci.trim() + "', " //Aqui
+        wsel += "       cci     = 'ND', "//ph B E
+        wsel += "       ddoc   = '" + wdate + "', "
+        wsel += "       dcnt   = '" + wdate + "', "
+        wsel += "       ddoces = '" + wdate + "', "
+        wsel += "       dixp   = '" + wdate + "', "
+        wsel += "       ddocv  = '" + wdate + "', "
+        wsel += "       iuorgt2  = 'AC', "
+        wsel += "       iuorg2   = " + wac + ", "
+        wsel += "       cstc   = 'E0', "
+        wsel += "       dstc   = '" + wdate + "', "
+        wsel += "       csto   = 'CF', "
+        wsel += "       dsto   = '" + wdate + "', "
+        wsel += "       zcst   = 'us', "
+        wsel += "       idoct2 = '" + wddocRPS.idoct2 + "', "
+        wsel += "       idoc2  = '" + wddocRPS.idoc2 + "', "
+        wsel += "       iixp   = '" + wddocRPS.iixp + "', "
+        wsel += "       iixp2  = '" + wnumNFSe + "', "
+        wsel += "       irct1  = '" + wddocRPS.irct1.trim() + "', "
+        wsel += "       ircti  = '" + wddocRPS.ircti.trim() + "', "
+        wsel += "       zprc   = -1, "
+        wsel += "       pi   = '" + wpi + "', " //Aqui
+        wsel += "       mvalim  =  mvalor * " + (wpi / 100) + ", "   //Aqui
+        wsel += "       vvalim  =  mvalor * " + (wpi / 100) + ", "   //Aqui
+        wsel += "       yvalim  =  mvalor * " + (wpi / 100) + ", "   //Aqui
+        wsel += "       mid  =  mvalor * " + (wpi / 100) + ", "      //Aqui
+        wsel += "       vid  =  mvalor * " + (wpi / 100) + ", "      //Aqui
+        wsel += "       yid  =  mvalor * " + (wpi / 100) + ", "      //Aqui
+        wsel += "       mvallq  =  mvalor - mvalor * " + (wpi / 100) + ", "   //Aqui
+        wsel += "       vvallq  =  mvalor - mvalor * " + (wpi / 100) + ", "   //Aqui
+        wsel += "       yvallq  =  mvalor - mvalor * " + (wpi / 100)         //Aqui
+        wsel += " Where iorg  = '" + wddoc1.iorg + "' "
+        wsel += "   and idoct = '" + wddoc1.idoct + "' "
+        wsel += "   and idoc  = '" + wddoc1.idoc + "' "
+        wsel += "   and ientt = '" + wddoc1.ientt + "' "
+        wsel += "   and ient  = '" + wddoc1.ient + "' "
+        wsel += " /*ddoc0_mc_nfse_consulta_lote_fn() UPDATE 2*/ "
+        x = executeSQL(wsel)
+
+        //Helio: Criar e Calcular o ISS  
+        wsel = " Select a.* "
+        wsel += " from ddolt0 a WITH(NOLOCK) "
+        wsel += " Where a.iorg   = '" + wddoc1.iorg + "' "
+        wsel += "    and a.idoct  = '" + wddoc1.idoct + "' "
+        wsel += "    and a.idoc   = '" + wddoc1.idoc + "' "
+        wsel += "    and a.ientt  = '" + wddoc1.ientt + "' "
+        wsel += "    and a.ient   = '" + wddoc1.ient + "' "
+        vddol1 = getRows("DDOL", wsel)
+        println(wsel); flush()
+        //ph B
+        somaMvalim = 0//variavel usada para obter o valor do ISS
+				//ph E
+				foreach wddol1(vddol1.elements()) {
+
+          // O cliente é substituto tributário
+          if (wbentRPS.cmp4.trim() != "S") {
+            wci = getSQLValue("select tclass from bctxt0 with(nolock) where ictx = 'BCTX*ISS' and ivalk = '" + wddol1.iuorg.trim() + "' and nctx = '" + wddol1.ipsr.trim() + "' ")
+            if (wci == "") {
+              wci = getSQLValue("select tclass from bctxt0 with(nolock) where ictx = 'BCTX*ISS' and ivalk = '" + wddol1.iuorg.trim() + "' and nctx = '' ")
+            }
+            wpi = getSQLNumber("select qqcoef1 from bctxt0 with(nolock) where ictx = 'BENT*CMP2' and ivalk = '" + wci + "' ")
+            println(">>edoc_mc_nfse_resolver_newt_fn<<entrou na situação que não é substituto : "); flush();
+          }
+
+          log(">>edoc_mc_nfse_resolver_newt_fn<<>>>uci ddol \n " + wci + ">>ipi ddol << " + wpi);
+          //
+          wsel = "Update ddolt0 with(rowlock) "
+          wsel += "   set cstc   = 'E0', "
+          wsel += "       cit    = '5933', "     //Aqui
+          wsel += "       csto   = 'CF', "
+          wsel += "       zprc   = -1, "
+          wsel += "       pi   = '" + wpi + "', "  //Aqui
+          wsel += "       zcst   = 'r!', "       //Aqui
+          wsel += "       ccl   = 'CIF', "       //Aqui
+          wsel += "       c1   = 'S', "          //Aqui
+          wsel += "       xstk   = '*Lppppppppp', "               //Aqui
+          wsel += "       ccvl   = 'N', "                         //Aqui
+          wsel += "       mvalim  =  mvalor * " + (wpi / 100) + ", "  //Aqui
+          wsel += "       vvalim  =  mvalor * " + (wpi / 100) + ", "  //Aqui
+          wsel += "       yvalim  =  mvalor * " + (wpi / 100) + ", "  //Aqui
+          wsel += "       mid  =  mvalor * " + (wpi / 100) + ", "     //Aqui
+          wsel += "       vid  =  mvalor * " + (wpi / 100) + ", "     //Aqui
+          wsel += "       yid  =  mvalor * " + (wpi / 100) + ", "     //Aqui
+          wsel += "       mvallq  =  mvalor - mvalor * " + (wpi / 100) + ", "   //Aqui
+          wsel += "       vvallq  =  mvalor - mvalor * " + (wpi / 100) + ", "   //Aqui
+          wsel += "       yvallq  =  mvalor - mvalor * " + (wpi / 100) + ", "   //Aqui
+          wsel += "       ci      = '" + wci.trim() + "', "
+          wsel += "       cci     = 'ND', "//ph B E
+          wsel += "      irct1   = '" + wddocRPS.irct1.trim() + "', "
+          wsel += "      ircti   = '" + wddocRPS.ircti.trim() + "', "
+          wsel += "      iuorgt2 = '" + wddocRPS.iuorgt2 + "', "
+          wsel += "      iuorg2  = '" + wddocRPS.iuorg2 + "' "
+          wsel += " Where iorg   = '" + wddoc1.iorg + "' "
+          wsel += "   and idoct  = '" + wddoc1.idoct + "' "
+          wsel += "   and idoc   = '" + wddoc1.idoc + "' "
+          wsel += "   and ientt  = '" + wddoc1.ientt + "' "
+          wsel += "   and ient   = '" + wddoc1.ient + "' "
+          wsel += "   and ipsr   = '" + wddol1.ipsr + "' "
+          wsel += " /*ddoc0_mc_nfse_consulta_lote_fn() UPDATE 3*/ "
+          x = executeSQL(wsel)
+
+          executeProcedure("ddolpz", [wddol1.zk, "TRANSFORM_JM", "AF", "", "", 0, ""])
+          //ph B
+          //select para pegar o valor do mValim na ddol
+          wsel = "select mvalim "
+          wsel += " from ddolt0 with(nolock) "
+          wsel += " Where iorg   = '" + wddoc1.iorg + "' "
+          wsel += "   and idoct  = '" + wddoc1.idoct + "' "
+          wsel += "   and idoc   = '" + wddoc1.idoc + "' "
+          wsel += "   and ientt  = '" + wddoc1.ientt + "' "
+          wsel += "   and ient   = '" + wddoc1.ient + "' "
+          wsel += "   and ipsr   = '" + wddol1.ipsr + "' "
+          wsel += " /*ddoc0_mc_nfse_consulta_lote_fn() UPDATE 4*/ "
+          wddolmValim = getMRow("DDOL", wsel)
+          somaMvalim += wddolmValim.mvalim
+          //ph E
+        }
+        //ph B
+        //update para atualizar os valores da ddoc de acordo com a ddol
+
+        wsel = "Update ddoct0 with(rowlock) "
+        wsel += "   set ci   = '" + wci.trim() + "', "
+        wsel += "       pi   = '" + wpi + "', " //Aqui
+        wsel += "       mvalim  = '" + somaMvalim + "', "   //Aqui
+        wsel += "       vvalim  =  '" + somaMvalim + "', "  //Aqui
+        wsel += "       yvalim  =  '" + somaMvalim + "', "  //Aqui
+        wsel += "       mid  =  '" + somaMvalim + "', "      //Aqui
+        wsel += "       vid  = '" + somaMvalim + "', "      //Aqui
+        wsel += "       yid  =  '" + somaMvalim + "', "      //Aqui
+        wsel += "       mvallq  =  mvalor -  '" + somaMvalim + "', "   //Aqui
+        wsel += "       vvallq  =  mvalor -  '" + somaMvalim + "', "  //Aqui
+        wsel += "       yvallq  =   mvalor -  '" + somaMvalim + "' "       //Aqui
+        wsel += " Where iorg  = '" + wddoc1.iorg + "' "
+        wsel += "   and idoct = '" + wddoc1.idoct + "' "
+        wsel += "   and idoc  = '" + wddoc1.idoc + "' "
+        wsel += "   and ientt = '" + wddoc1.ientt + "' "
+        wsel += "   and ient  = '" + wddoc1.ient + "' "
+        wsel += " /*ddoc0_mc_nfse_consulta_lote_fn() UPDATE 5*/ "
+        x = executeSQL(wsel)
+        //ph E
+
+        executeProcedure("ddocpcal", [wddoc1.iorg, wddoc1.ientt, wddoc1.ient, wddoc1.idoct, wddoc1.idoc, "RECALC_ROW", 0])
+        log("Documento recalculado: " + wnumNFSeFormatado)
+
+        //Grava Pis Cofins das Notas de Serviços para o BI
+        bi_mc_ident_pis_cof_nns_fn(wddoc1)
+
+        //Grava o valor do ISS da nota fiscal
+        bi_mc_iss_nns_on_fn(wddoc1)
+
+      }
+    }
+
+    log("--------------------------------------------------------")
+
+  }
+
+}
+
+if (wlog.toString() != "") {
+  println(wlog.toString())
+  flush()
+}
+//showMessage("Operação Concluída Com Sucesso ! \n " + wnumNFSeFormatado )
+//EOF

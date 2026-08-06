@@ -1,0 +1,506 @@
+// FUNC: bpsru_mc_temp_analise_giro_fn(wiorg, wiuorg, wcanal, wipsr, wdini, wdfim)
+// gerar tabela temporária para analise ABC
+
+x_mc_inserir_log_fn("BPSRU", "bpsru_mc_temp_analise_giro_fn", "BPSRUBR3")
+
+println("FUNC: bpsru_mc_temp_analise_giro_fn - INICIO"); flush();
+
+WN = "\n"
+
+wcacheDate = x_mc_br_get_date_server_fn().substring(0, 10);
+wcacheKey = "iorg=" + wiorg.trim();
+wcacheKey += "|iuorg=" + wiuorg.trim();
+wcacheKey += "|canal=" + wcanal.trim();
+wcacheKey += "|ipsr=" + wipsr.trim();
+wcacheKey += "|dini=" + wdini.trim();
+wcacheKey += "|dfim=" + wdfim.trim();
+wcacheKeyEsc = wcacheKey.replace("'", "''");
+
+wlockResource = "ABC_VENDAS_CACHE:" + wcacheKey;
+wlockResourceEsc = wlockResource.replace("'", "''");
+
+zglobals.ABC_VENDAS_CACHE_KEY = wcacheKey;
+zglobals.ABC_VENDAS_CACHE_DATE = wcacheDate;
+
+wsel = "";
+wsel += " SELECT CASE WHEN OBJECT_ID('dbo.abc_vendas_cache', 'U') IS NOT NULL AND OBJECT_ID('dbo.abc_vendas_cache_meta', 'U') IS NOT NULL THEN 1 ELSE 0 END; ";
+if (getSQLNumber(wsel) == 0) {
+  throwError("Operação Cancelada! Tabelas de cache ABC não existem.");
+}
+
+wsel = "";
+wsel += " DECLARE @lk INT; ";
+wsel += " EXEC @lk = sp_getapplock @Resource = '" + wlockResourceEsc + "', @LockMode = 'Exclusive', @LockOwner = 'Session', @LockTimeout = 600000; ";
+wsel += " SELECT CASE WHEN @lk < 0 THEN 0 ELSE 1 END; ";
+if (getSQLNumber(wsel) == 0) {
+  throwError("Falha ao obter lock do cache de vendas (sp_getapplock)");
+}
+
+wsel = " SELECT COUNT(*) FROM dbo.abc_vendas_cache_meta WITH (NOLOCK) ";
+wsel += " WHERE cache_date = '" + wcacheDate + "' AND cache_key = '" + wcacheKeyEsc + "' AND status = 'READY' ";
+if (getSQLNumber(wsel) > 0) {
+  wsel = " SELECT COUNT(*) FROM dbo.abc_vendas_cache WITH (NOLOCK) WHERE cache_date = '" + wcacheDate + "' AND cache_key = '" + wcacheKeyEsc + "' ";
+  wcachedCount = getSQLNumber(wsel);
+  println("abc_vendas_cache (reuso) count=" + wcachedCount); flush();
+  if (wcachedCount > 0) {
+    println("Reutilizando dbo.abc_vendas_cache (cache do dia corrente)"); flush();
+    // TODO: Em Produção precisa descomentar próxima linha 
+    // return;
+  }
+}
+
+wsel = "";
+wsel += " DELETE FROM dbo.abc_vendas_cache_meta WHERE cache_date = '" + wcacheDate + "' AND cache_key = '" + wcacheKeyEsc + "'; ";
+wsel += " INSERT INTO dbo.abc_vendas_cache_meta (cache_key, cache_date, status, updated_at) VALUES ('" + wcacheKeyEsc + "', '" + wcacheDate + "', 'BUILDING', GETDATE()); ";
+x = executeSQL(wsel);
+
+wsel = ""
+wsel += WN + " DROP TABLE IF EXISTS #tt_cds; "
+wsel += WN + " DROP TABLE IF EXISTS #tt_docs; "
+wsel += WN + " DROP TABLE IF EXISTS #tt_iuorgs; "
+wsel += WN + " DROP TABLE IF EXISTS #tt_tp_nota; "
+wsel += WN + " DROP TABLE IF EXISTS #tt_remove_data; "
+wsel += WN + " DROP TABLE IF EXISTS #tt_vendas_build; "
+wsel += WN + " DROP TABLE IF EXISTS #tt_em_fulfillment; "
+wsel += WN + " DROP TABLE IF EXISTS #tt_filial_especifica; "
+wsel += WN + " "
+
+// 1. Tabela: Centros De Distribuição
+wsel += WN + " SELECT "
+wsel += WN + "     a.ient, "
+wsel += WN + "     a.iuorgt, "
+wsel += WN + "     a.iuorg "
+wsel += WN + " INTO #tt_cds "
+wsel += WN + " FROM benxt0 AS a "
+wsel += WN + " WHERE "
+wsel += WN + "     a.ientt = '* ' "
+wsel += WN + "     AND a.ient = '" + wiorg.trim() + "' "
+wsel += WN + "     AND a.iuorgt = 'UO' "
+wsel += WN + "     AND a.ccx = 'TF' "
+wsel += WN + "     AND a.tid = 'CD'; "
+wsel += WN + " CREATE CLUSTERED INDEX IX_tt_cds ON #tt_cds (iuorg); "
+wsel += WN + " "
+
+// 2. Tabela: Filiais Especiais Com Roteamento Parametrizado
+wsel += WN + " SELECT "
+wsel += WN + "     CASE "
+wsel += WN + "         WHEN x.p1 = 0 THEN x.tpm "
+wsel += WN + "         ELSE LEFT(x.tpm, x.p1 - 1) "
+wsel += WN + "     END AS origem_iuorg, "
+wsel += WN + "     CASE "
+wsel += WN + "         WHEN x.p1 = 0 THEN ' ' "
+wsel += WN + "         ELSE SUBSTRING(x.tpm, x.p1 + 1, LEN(x.tpm)) "
+wsel += WN + "     END AS saida_iuorg "
+wsel += WN + " INTO #tt_filial_especifica "
+wsel += WN + " FROM bctxt0 AS b WITH (NOLOCK) "
+wsel += WN + " CROSS APPLY ( "
+wsel += WN + "     SELECT "
+wsel += WN + "         TRIM(b.tparms) AS tpm, "
+wsel += WN + "         CHARINDEX('|', TRIM(b.tparms)) AS p1 "
+wsel += WN + " ) AS x "
+wsel += WN + " WHERE "
+wsel += WN + "     b.ictx = 'BCTX*PARAM*LOG' "
+wsel += WN + "     AND b.ivalk = 'ABC*FILIAL*ESPECIFICA*GIRO'; "
+wsel += WN + " CREATE CLUSTERED INDEX IX_tt_filial_especifica ON #tt_filial_especifica (origem_iuorg); "
+wsel += WN + " CREATE NONCLUSTERED INDEX IX_tt_filial_especifica_saida ON #tt_filial_especifica (saida_iuorg); "
+wsel += WN + " "
+
+// 3. Tabela: Unidades Organizacionais Com Parâmetros De Giro
+wsel += WN + " SELECT "
+wsel += WN + "     src.iuorg, "
+wsel += WN + "     src.ivalk, "
+wsel += WN + "     CONVERT(INT, src.qqcoef1 - 1) AS qqcoef1, "
+wsel += WN + "     src.qqcoef2, "
+wsel += WN + "     src.qqcoef3, "
+wsel += WN + "     src.qqcoef4, "
+wsel += WN + "     src.qqcoef5, "
+if (wdini.trim() != "" && wdfim.trim() != "") {
+  wsel += WN + "     '" + wdini.trim() + "' AS dt_start "
+} else {
+  wsel += WN + "     CONVERT(CHAR(10), DATEADD(DAY, -CONVERT(INT, src.qqcoef1), GETDATE()), 23) AS dt_start "
+}
+wsel += WN + " INTO #tt_iuorgs "
+wsel += WN + " FROM ( "
+wsel += WN + "     SELECT "
+wsel += WN + "         iuorgs.iuorg, "
+wsel += WN + "         d.ivalk, "
+wsel += WN + "         d.qqcoef1, "
+wsel += WN + "         d.qqcoef2, "
+wsel += WN + "         d.qqcoef3, "
+wsel += WN + "         d.qqcoef4, "
+wsel += WN + "         d.qqcoef5, "
+wsel += WN + "         ROW_NUMBER() OVER (PARTITION BY iuorgs.iuorg ORDER BY d.ictx DESC) AS rn "
+wsel += WN + "     FROM ( "
+wsel += WN + "         SELECT a.iuorg "
+wsel += WN + "         FROM bentt0 AS a WITH (NOLOCK) "
+wsel += WN + "         WHERE "
+wsel += WN + "             a.ientt = '*' "
+wsel += WN + "             AND a.ient = '" + wiorg.trim() + "' "
+wsel += WN + "             AND a.iuorgt = 'UO' "
+wsel += WN + "             AND a.iuorg LIKE 'F%' "
+wsel += WN + "             AND a.cst = 'E0' "
+wsel += WN + "             AND LEN(TRIM(a.iuorg)) = 3 "
+wsel += WN + "             AND a.iuorg NOT IN ('F00', 'F44', 'F49') "
+wsel += WN + "         UNION ALL "
+wsel += WN + "         SELECT 'W03' "
+wsel += WN + "         UNION ALL "
+wsel += WN + "         SELECT 'W07' "
+wsel += WN + "     ) AS iuorgs "
+wsel += WN + "     INNER JOIN bctxt0 AS d WITH (NOLOCK) "
+wsel += WN + "         ON "
+wsel += WN + "             d.ictx = 'BCTX*PARAM*LOG' "
+wsel += WN + "             AND d.ivalk = 'ABC*TEMP*GIRO*' + iuorgs.iuorg "
+wsel += WN + " ) AS src "
+wsel += WN + " WHERE src.rn = 1 "
+wsel += WN + " CREATE CLUSTERED INDEX IX_tt_iuorgs ON #tt_iuorgs (iuorg); "
+wsel += WN + " CREATE NONCLUSTERED INDEX IX_tt_iuorgs_date ON #tt_iuorgs (dt_start); "
+wsel += WN + " CREATE NONCLUSTERED INDEX IX_tt_iuorgs_coef ON #tt_iuorgs (qqcoef4, qqcoef5); "
+wsel += WN + "  "
+
+// 4. Tabela: Séries Em Fulfillment
+wsel += WN + " SELECT DISTINCT TRIM(b.tparms) AS tparms "
+wsel += WN + " INTO #tt_em_fulfillment "
+wsel += WN + " FROM bctxt0 AS b WITH (NOLOCK) "
+wsel += WN + " WHERE "
+wsel += WN + "     b.ictx = 'FULFILLMENT*PARAMS' "
+wsel += WN + "     AND b.ivalk = 'SERIE_FULFILLMENT' "
+wsel += WN + "     AND b.cst = 'E0'; "
+wsel += WN + " CREATE CLUSTERED INDEX IX_tt_em_fulfillment ON #tt_em_fulfillment (tparms); "
+wsel += WN + "  "
+
+// 5. Tabela: Datas A Desconsiderar
+wsel += WN + " SELECT b.tparms "
+wsel += WN + " INTO #tt_remove_data "
+wsel += WN + " FROM bctxt0 AS b WITH (NOLOCK) "
+wsel += WN + " WHERE "
+wsel += WN + "     b.ictx = 'BCTX*PARAM*LOG' "
+wsel += WN + "     AND b.ivalk = 'DESCONSIDERA_DATA'; "
+wsel += WN + " CREATE CLUSTERED INDEX IX_tt_remove_data ON #tt_remove_data (tparms); "
+wsel += WN + "  "
+
+// 6. Tabela: Tipos De Nota Fiscal
+wsel += WN + " SELECT "
+wsel += WN + "     b.ivalk, "
+wsel += WN + "     b.tclass "
+wsel += WN + " INTO #tt_tp_nota "
+wsel += WN + " FROM bctxt0 AS b WITH (NOLOCK) "
+wsel += WN + " WHERE "
+wsel += WN + "     b.ictx = 'BCTX*CIT' "
+wsel += WN + "     AND b.ivalk != '' "
+wsel += WN + "     AND ( "
+wsel += WN + "         b.tclass LIKE '%VE%' "
+wsel += WN + "         OR b.tclass LIKE '%DV%' "
+wsel += WN + "     ); "
+wsel += WN + " CREATE CLUSTERED INDEX IX_tt_tp_nota ON #tt_tp_nota (ivalk); "
+wsel += WN + "  "
+
+// 7. Tabela: Documentos Com Lógica De Roteamento Dinâmica
+wsel += WN + " SELECT DISTINCT "
+wsel += WN + "     d.iorg, "
+wsel += WN + "     d.ientt2, "
+wsel += WN + "     d.ient2, "
+wsel += WN + "     d.ddoc, "
+wsel += WN + "     d3.iuorg, "
+wsel += WN + "     d.ctcf, "
+wsel += WN + "     d.idoct, "
+wsel += WN + "     d.idoc, "
+wsel += WN + "     d.idoct2, "
+wsel += WN + "     d.idoc2, "
+wsel += WN + "     d3.idoct AS idoct3, "
+wsel += WN + "     d3.idoc AS idoc3, "
+wsel += WN + "     d.ientt, "
+wsel += WN + "     d.ient, "
+wsel += WN + "     d.cstc, "
+wsel += WN + "     d.csto, "
+wsel += WN + "     l.ipsr, "
+wsel += WN + "     l.qpsr, "
+wsel += WN + "     l.ipsrlp, "
+wsel += WN + "     l.cit, "
+wsel += WN + "     IIF( "
+wsel += WN + "         EXISTS ( "
+wsel += WN + "             SELECT 1 FROM #tt_filial_especifica AS fe "
+wsel += WN + "             WHERE "
+wsel += WN + "                 fe.saida_iuorg = d3.iuorg "
+wsel += WN + "                 AND fe.origem_iuorg = dbo.benxposxn(d.iorg, d.ientt2, d.ient2, d.ddoc, 'UORG') "
+wsel += WN + "         ), "
+wsel += WN + "         ( "
+wsel += WN + "             SELECT TOP 1 fe.saida_iuorg "
+wsel += WN + "             FROM #tt_filial_especifica AS fe "
+wsel += WN + "             WHERE "
+wsel += WN + "                 fe.saida_iuorg = d3.iuorg "
+wsel += WN + "                 AND fe.origem_iuorg = dbo.benxposxn(d.iorg, d.ientt2, d.ient2, d.ddoc, 'UORG') "
+wsel += WN + "         ), "
+wsel += WN + "         CASE "
+wsel += WN + "             WHEN c.iuorg IS NULL "
+wsel += WN + "                 THEN dbo.benxposxn(d.iorg, d.ientt2, d.ient2, d.ddoc, 'UORG') "
+wsel += WN + "             ELSE d3.iuorg "
+wsel += WN + "         END "
+wsel += WN + "     ) AS em_uorg, "
+wsel += WN + "     dbo.benxposxn(d.iorg, d.ientt2, d.ient2, d.ddoc, 'ACTV') AS em_actv "
+wsel += WN + " INTO #tt_docs "
+wsel += WN + " FROM ddoct0 AS d WITH (NOLOCK) "
+wsel += WN + " INNER JOIN ddolt0 AS l WITH (NOLOCK) "
+wsel += WN + "     ON "
+wsel += WN + "         d.iorg = l.iorg "
+wsel += WN + "         AND d.idoct = l.idoct "
+wsel += WN + "         AND d.idoc = l.idoc "
+wsel += WN + "         AND d.ientt = l.ientt "
+wsel += WN + "         AND d.ient = l.ient "
+wsel += WN + "         AND l.qpsr > 0 "
+if (wipsr.trim() != "") {
+  wsel += WN + "         AND l.ipsr = '" + wipsr.trim() + "' "
+}
+wsel += WN + " INNER JOIN #tt_iuorgs AS u "
+wsel += WN + "     ON "
+wsel += WN + "         dbo.benxposxn(d.iorg, d.ientt2, d.ient2, d.ddoc, 'UORG') "
+wsel += WN + "         = REPLACE(u.iuorg, 'W', 'F') "
+if (wdini.trim() != "" && wdfim.trim() != "") {
+  wsel += WN + "     AND d.ddoc BETWEEN '" + wdini.trim() + "' AND '" + wdfim.trim() + "' "
+} else {
+  wsel += WN + "     AND d.ddoc >= u.dt_start "
+}
+wsel += WN + " INNER JOIN ddoct0 AS d2 WITH (NOLOCK) "
+wsel += WN + "     ON "
+wsel += WN + "         d.iorg = d2.iorg "
+wsel += WN + "         AND d.idoct2 = d2.idoct "
+wsel += WN + "         AND d.idoc2 = d2.idoc "
+wsel += WN + "         AND d2.idoct IN ('NPV', 'NPA', 'NVD', 'NRD') "
+wsel += WN + " INNER JOIN ddoct0 AS d3 WITH (NOLOCK) "
+wsel += WN + "     ON "
+wsel += WN + "         d2.iorg = d3.iorg "
+wsel += WN + "         AND d2.idoct2 = d3.idoct2 "
+wsel += WN + "         AND d2.idoc2 = d3.idoc2 "
+wsel += WN + "         AND d3.idoct IN ('NPV', 'NPA', 'NVD', 'NRD') "
+wsel += WN + "         AND ( "
+wsel += WN + "             d3.idoc = d3.idoc2 "
+wsel += WN + "             OR d2.idoc != d3.idoc "
+wsel += WN + "             OR ( "
+wsel += WN + "                 d2.idoct IN ('NVD', 'NRD') "
+wsel += WN + "                 AND d2.idoc = d3.idoc "
+wsel += WN + "             ) "
+wsel += WN + "         ) "
+wsel += WN + " LEFT JOIN #tt_cds AS c "
+wsel += WN + "     ON c.iuorg = d3.iuorg "
+wsel += WN + " WHERE "
+wsel += WN + "     d.iorg = '" + wiorg.trim() + "' "
+wsel += WN + "     AND d.ientt IN ('CL', 'EM') "
+wsel += WN + "     AND d.idoct IN ('NNF', 'NCF', 'TNF') "
+wsel += WN + "     AND d.idoct2 IN ('NPV', 'NPA', 'NVD', 'NRD') "
+wsel += WN + "     AND d.cstc NOT IN ('PD', 'XA') "
+wsel += WN + "     AND d.csto NOT IN ('PD', 'XA') "
+wsel += WN + "     AND NOT EXISTS ( "
+wsel += WN + "         SELECT 1 FROM #tt_em_fulfillment AS ef "
+wsel += WN + "         WHERE LEFT(d.idoc, 3) = ef.tparms "
+wsel += WN + "     ) "
+if (wcanal.trim() != "") {
+  wsel += WN + "     AND dbo.benxposxn(d.iorg, d.ientt2, d.ient2, d.ddoc, 'ACTV') = '" + wcanal.trim() + "' "
+}
+wsel += WN + " UNION ALL "
+wsel += WN + " SELECT DISTINCT "
+wsel += WN + "     d.iorg, "
+wsel += WN + "     d.ientt2, "
+wsel += WN + "     d.ient2, "
+wsel += WN + "     d.ddoc, "
+wsel += WN + "     d3.iuorg, "
+wsel += WN + "     d.ctcf, "
+wsel += WN + "     d.idoct, "
+wsel += WN + "     d.idoc, "
+wsel += WN + "     d.idoct2, "
+wsel += WN + "     d.idoc2, "
+wsel += WN + "     d3.idoct AS idoct3, "
+wsel += WN + "     d3.idoc AS idoc3, "
+wsel += WN + "     d.ientt, "
+wsel += WN + "     d.ient, "
+wsel += WN + "     d.cstc, "
+wsel += WN + "     d.csto, "
+wsel += WN + "     l.ipsr, "
+wsel += WN + "     l.qpsr, "
+wsel += WN + "     l.ipsrlp, "
+wsel += WN + "     l.cit, "
+wsel += WN + "     IIF( "
+wsel += WN + "         EXISTS ( "
+wsel += WN + "             SELECT 1 FROM #tt_filial_especifica AS fe "
+wsel += WN + "             WHERE "
+wsel += WN + "                 fe.saida_iuorg = d3.iuorg "
+wsel += WN + "                 AND fe.origem_iuorg = dbo.benxposxn(d.iorg, d.ientt2, d.ient2, d.ddoc, 'UORG') "
+wsel += WN + "         ), "
+wsel += WN + "         ( "
+wsel += WN + "             SELECT TOP 1 fe.saida_iuorg "
+wsel += WN + "             FROM #tt_filial_especifica AS fe "
+wsel += WN + "             WHERE "
+wsel += WN + "                 fe.saida_iuorg = d3.iuorg "
+wsel += WN + "                 AND fe.origem_iuorg = dbo.benxposxn(d.iorg, d.ientt2, d.ient2, d.ddoc, 'UORG') "
+wsel += WN + "         ), "
+wsel += WN + "         CASE "
+wsel += WN + "             WHEN c.iuorg IS NULL "
+wsel += WN + "                 THEN dbo.benxposxn(d.iorg, d.ientt2, d.ient2, d.ddoc, 'UORG') "
+wsel += WN + "             ELSE d3.iuorg "
+wsel += WN + "         END "
+wsel += WN + "     ) AS em_uorg, "
+wsel += WN + "     dbo.benxposxn(d.iorg, d.ientt2, d.ient2, d.ddoc, 'ACTV') AS em_actv "
+wsel += WN + " FROM ddoct0 AS d WITH (NOLOCK) "
+wsel += WN + " INNER JOIN ddolt0 AS l WITH (NOLOCK) "
+wsel += WN + "     ON "
+wsel += WN + "         d.iorg = l.iorg "
+wsel += WN + "         AND d.idoct = l.idoct "
+wsel += WN + "         AND d.idoc = l.idoc "
+wsel += WN + "         AND d.ientt = l.ientt "
+wsel += WN + "         AND d.ient = l.ient "
+wsel += WN + "         AND l.qpsr > 0 "
+if (wipsr.trim() != "") {
+  wsel += WN + "         AND l.ipsr = '" + wipsr.trim() + "' "
+}
+wsel += WN + " INNER JOIN #tt_iuorgs AS u "
+wsel += WN + "     ON "
+wsel += WN + "         dbo.benxposxn(d.iorg, d.ientt2, d.ient2, d.ddoc, 'UORG') "
+wsel += WN + "         = REPLACE(u.iuorg, 'W', 'F') "
+if (wdini.trim() != "" && wdfim.trim() != "") {
+  wsel += WN + "     AND d.ddoc BETWEEN '" + wdini.trim() + "' AND '" + wdfim.trim() + "' "
+} else {
+  wsel += WN + "     AND d.ddoc >= u.dt_start "
+}
+wsel += WN + " INNER JOIN dsitt0 AS s WITH (NOLOCK) "
+wsel += WN + "     ON "
+wsel += WN + "         d.iorg = s.iorg "
+wsel += WN + "         AND d.idoct2 = s.idoct "
+wsel += WN + "         AND d.idoc2 = LEFT(s.idoc, 13) "
+wsel += WN + " INNER JOIN ddoct0 AS d3 WITH (NOLOCK) "
+wsel += WN + "     ON "
+wsel += WN + "         d.iorg = d3.iorg "
+wsel += WN + "         AND d3.idoct IN ('NPV', 'NPA', 'NVD', 'NRD') "
+wsel += WN + "         AND d.idoct2 = d3.idoct2 "
+wsel += WN + "         AND d.idoc2 = d3.idoc2 "
+wsel += WN + " LEFT JOIN #tt_cds AS c "
+wsel += WN + "     ON c.iuorg = d3.iuorg "
+wsel += WN + " WHERE "
+wsel += WN + "     d.iorg = '" + wiorg.trim() + "' "
+wsel += WN + "     AND d.ientt IN ('CL', 'EM') "
+wsel += WN + "     AND d.idoct IN ('NNF', 'NCF', 'TNF') "
+wsel += WN + "     AND d.idoct2 IN ('NPV', 'NPA', 'NVD', 'NRD') "
+wsel += WN + "     AND d.cstc NOT IN ('PD', 'XA') "
+wsel += WN + "     AND d.csto NOT IN ('PD', 'XA') "
+wsel += WN + "     AND NOT EXISTS ( "
+wsel += WN + "         SELECT 1 FROM #tt_em_fulfillment AS ef "
+wsel += WN + "         WHERE LEFT(d.idoc, 3) = ef.tparms "
+wsel += WN + "     ) "
+if (wcanal.trim() != "") {
+  wsel += WN + "     AND dbo.benxposxn(d.iorg, d.ientt2, d.ient2, d.ddoc, 'ACTV') = '" + wcanal.trim() + "' "
+}
+wsel += WN + ";  "
+wsel += WN + " CREATE CLUSTERED INDEX IX_tt_docs ON #tt_docs (iorg, idoct, idoc, ientt, ient); "
+wsel += WN + " CREATE NONCLUSTERED INDEX IX_tt_docs_uorg_date ON #tt_docs (em_uorg, ddoc); "
+wsel += WN + " CREATE NONCLUSTERED INDEX IX_tt_docs_actv ON #tt_docs (em_actv); "
+wsel += WN + " CREATE NONCLUSTERED INDEX IX_tt_docs_iuorg ON #tt_docs (iuorg); "
+wsel += WN + " UPDATE STATISTICS #tt_docs WITH FULLSCAN; "
+wsel += WN + "  "
+wsel += WN + " SELECT "
+wsel += WN + "     d.iorg, "
+wsel += WN + "     d.iuorg AS iuorg_doc, "
+wsel += WN + "     u.iuorg, "
+wsel += WN + "     d.em_actv AS actv, "
+wsel += WN + "     d.ctcf, "
+wsel += WN + "     u.dt_start, "
+wsel += WN + "     d.ddoc, "
+wsel += WN + "     d.ientt2, "
+wsel += WN + "     d.ient2, "
+wsel += WN + "     d.idoct, "
+wsel += WN + "     d.idoc, "
+wsel += WN + "     p.zk AS zk_psr, "
+wsel += WN + "     p.ipst, "
+wsel += WN + "     p.ipsr, "
+wsel += WN + "     p.ipsrlp, "
+wsel += WN + "     p.npsr, "
+wsel += WN + "     DATEPART(DW, CONVERT(DATE, d.ddoc, 23)) AS week_day, "
+
+// 8. Tabela Final: Vendas Com Agregações
+wsel += WN + "     CASE WHEN DATEPART(DW, d.ddoc) IN (u.qqcoef4, u.qqcoef5) THEN 1 ELSE 0 END AS remove_day, "
+wsel += WN + "     CASE WHEN rup.zk IS NULL THEN 0 ELSE 1 END AS qrup, "
+wsel += WN + "     SUM(CASE WHEN b.tclass LIKE '%DV%' THEN 0 ELSE d.qpsr END) AS qpsr_ven, "
+wsel += WN + "     SUM(CASE WHEN b.tclass LIKE '%DV%' THEN d.qpsr ELSE 0 END) AS qpsr_dev "
+wsel += WN + " INTO #tt_vendas_build "
+wsel += WN + " FROM #tt_docs AS d "
+wsel += WN + " INNER JOIN #tt_iuorgs AS u "
+wsel += WN + "     ON "
+if (wdini.trim() != "" && wdfim.trim() != "") {
+  wsel += WN + "         d.ddoc BETWEEN '" + wdini.trim() + "' AND '" + wdfim.trim() + "' "
+} else {
+  wsel += WN + "         d.ddoc >= u.dt_start "
+}
+wsel += WN + "         AND d.em_uorg = REPLACE(u.iuorg, 'W', 'F') "
+wsel += WN + " INNER JOIN #tt_tp_nota AS b "
+wsel += WN + "     ON d.cit = b.ivalk "
+wsel += WN + " INNER JOIN bpsrt0 AS p WITH (NOLOCK) "
+wsel += WN + "     ON "
+wsel += WN + "         d.iorg = p.iorg "
+wsel += WN + "         AND d.ipsr = p.ipsr "
+wsel += WN + "         AND d.ipsrlp = p.ipsrlp "
+wsel += WN + " LEFT JOIN bpset0 AS rup WITH (NOLOCK) "
+wsel += WN + "     ON "
+wsel += WN + "         p.iorg = rup.iorg "
+wsel += WN + "         AND rup.cpse = 'RPU' "
+wsel += WN + "         AND p.ipsr = rup.ipsr "
+wsel += WN + "         AND p.ipsrlp = rup.ipsrlp "
+wsel += WN + "         AND rup.iuorgt2 = 'UO' "
+wsel += WN + "         AND REPLACE(u.iuorg, 'W', 'F') = rup.iuorg2 "
+wsel += WN + "         AND d.ddoc = rup.dpse "
+wsel += WN + " WHERE "
+wsel += WN + "     NOT EXISTS ( "
+wsel += WN + "         SELECT 1 FROM #tt_remove_data AS x "
+wsel += WN + "         WHERE d.ddoc = x.tparms "
+wsel += WN + "     ) "
+if (wiuorg.trim() != "") {
+  wsel += WN + "     AND u.iuorg = '" + wiuorg.trim() + "' "
+}
+wsel += WN + "     AND ( "
+wsel += WN + "         ( "
+wsel += WN + "             u.iuorg IN ('F01', 'F42', 'F46', 'F50', 'F52', 'F58', 'F60') "
+wsel += WN + "             AND ( "
+wsel += WN + "                 d.em_actv IN ( "
+wsel += WN + "                     '1019', '1032', '1031', '1016', '1022', '1021', '1030' "
+wsel += WN + "                 ) "
+wsel += WN + "                 OR (d.em_actv = '1028' AND d.ctcf = '5102') "
+wsel += WN + "             ) "
+wsel += WN + "         ) "
+wsel += WN + "         OR ( "
+wsel += WN + "             u.iuorg = 'W03' "
+wsel += WN + "             AND d.em_actv IN ('1021', '1028') "
+wsel += WN + "             AND d.em_uorg = 'F03' "
+wsel += WN + "         ) "
+wsel += WN + "         OR ( "
+wsel += WN + "             u.iuorg = 'W07' "
+wsel += WN + "             AND d.em_actv IN ('1021', '1028') "
+wsel += WN + "             AND d.em_uorg = 'F07' "
+wsel += WN + "         ) "
+wsel += WN + "         OR ( "
+wsel += WN + "             u.iuorg NOT IN ( "
+wsel += WN + "                 'F01', 'F42', 'F46', 'F50', 'F52', 'F58', 'F60', 'W03', 'W07' "
+wsel += WN + "             ) "
+wsel += WN + "             AND ( "
+wsel += WN + "                 d.em_actv NOT IN ('1019', '1021', '1032', '1031') "
+wsel += WN + "                 OR u.iuorg IN ('F03', 'F07') "
+wsel += WN + "             ) "
+wsel += WN + "         ) "
+wsel += WN + "     ) "
+wsel += WN + " GROUP BY "
+wsel += WN + "     d.iorg, d.iuorg, u.iuorg, d.em_actv, d.ientt2, d.ient2, d.ctcf, u.dt_start, d.ddoc, d.idoct, d.idoc, rup.zk, p.zk, p.ipst, p.ipsr, p.ipsrlp, p.npsr, u.qqcoef4, u.qqcoef5 "
+wsel += WN + " ORDER BY u.iuorg, d.ddoc, d.idoc; "
+wsel += WN + " "
+wsel += WN + " UPDATE STATISTICS #tt_vendas_build WITH FULLSCAN; "
+println("TT_VENDAS_BUILD: " + wsel); flush();
+x = executeSQL(wsel)
+
+wbuildCount = getSQLNumber(" SELECT COUNT(*) FROM #tt_vendas_build WITH (NOLOCK) ");
+println("#tt_vendas_build count=" + wbuildCount); flush();
+
+wsel = "";
+wsel += " DELETE FROM dbo.abc_vendas_cache WHERE cache_date = '" + wcacheDate + "' AND cache_key = '" + wcacheKeyEsc + "'; ";
+wsel += " INSERT INTO dbo.abc_vendas_cache (cache_key, cache_date, iorg, iuorg_doc, iuorg, actv, ctcf, dt_start, ddoc, ientt2, ient2, idoct, idoc, zk_psr, ipst, ipsr, ipsrlp, npsr, week_day, remove_day, qrup, qpsr_ven, qpsr_dev) ";
+wsel += " SELECT '" + wcacheKeyEsc + "' AS cache_key, '" + wcacheDate + "' AS cache_date, ";
+wsel += "     b.iorg, b.iuorg_doc, b.iuorg, b.actv, b.ctcf, b.dt_start, b.ddoc, b.ientt2, b.ient2, b.idoct, b.idoc, b.zk_psr, b.ipst, b.ipsr, b.ipsrlp, b.npsr, b.week_day, b.remove_day, b.qrup, b.qpsr_ven, b.qpsr_dev ";
+wsel += " FROM #tt_vendas_build AS b; ";
+wsel += " UPDATE dbo.abc_vendas_cache_meta SET status = 'READY', updated_at = GETDATE() WHERE cache_date = '" + wcacheDate + "' AND cache_key = '" + wcacheKeyEsc + "'; ";
+x = executeSQL(wsel);
+
+println("FUNC: bpsru_mc_temp_analise_giro_fn - FINAL"); flush();
+
+// EOF

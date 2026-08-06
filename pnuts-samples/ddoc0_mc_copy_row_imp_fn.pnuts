@@ -1,0 +1,284 @@
+x_mc_inserir_log_fn("DDOCR", "ddoc0_mc_copy_row_imp_fn", "DDOCRBRE")
+
+x_mc_inserir_log_fn("DDOCR", "ddoc0_mc_copy_row_imp_fn", "DDOCRBRE")
+
+//********************************************************************************
+// Nome.....: ddoc0_mc_copy_row_imp_fn(wrow,wctcf)
+// Objetivo.: Transformação Automática de Documentos de Importação
+// Histórico:
+// 2010-09-16 - VALDER CANTIDIO – Mudança Tratamento Status do NPC - Não executar CT
+// 2012-07-31 - OZANA SPINOSA  - Customizar a geração de nota de importação para gerar em modo SCAN
+//********************************************************************************
+
+wrow = wrows.elementAt(0)
+wuser = MLogin:: getUser().trim()
+wdatetime = x_mc_br_get_date_server_fn()
+wdate = wdatetime.substring(0, 10)
+fddoc = MForm:: getMForm(m.getEnt() + "BR")
+
+if (wrow.idoct.trim() != "NPC") { throwError("Operação Cancelada.\n Documento inválido.") }
+if (wrow.csto.trim() != "CE") { throwError("Operação Cancelada.\n Status Operacional deve estar CE.") }
+
+wiorg = wrow.iorg.trim()
+widoct = "NNF"
+wientt = wrow.ientt.trim()
+wient = wrow.ient.trim()
+
+wbendorg = x_mc_load_bend_fn("*", wiorg, wrow.iuorgt.trim(), wrow.iuorg.trim(), "LG")
+wuforg = wbendorg.testado.trim()
+
+if (wrow.idoc.trim().substring(0, 3) == "F00") {
+  widoc = "B00/%"
+} else {
+  widoc = wrow.iuorg.trim() + "/%"
+}
+
+// Muda Prefixo Quando Em contigencia SCAN
+// wcscan = getTparms("BCTX*PARAM*NFE","NFE*CONT*SCAN*" + wuforg.trim()).trim()
+// if (wcscan.trim() == "ON") {widoc = "S" + widoc.substring(1)}
+
+
+wpos = widoc.indexOf("%");
+wddoc = getMRow("DDOC0")
+wddoc.iorg = wrow.iorg
+wddoc.idoct = widoct
+wddoc.idoc = widoc
+widoc = MUtil:: seqNumber("idoc", widoc.substring(0, wpos), wddoc)
+
+// Ajuste feito junto com o Tom por conta de quebra de sequencia da nota na F03 - Andefson Lopes - 2022-04-06
+if (wrow.iuorg.trim() == "F03") {
+
+  wsel = " select  'F03/0' + convert(varchar(12), right(max(a.idoc),8) + 1)  as seq from  ddoct0 a "
+  wsel += " where  a.iorg = 'TEC' "
+  wsel += " and a.idoct = 'NNF' "
+  wsel += " and a.idoc like 'F03/________ ' "
+  wsel += " and a.idoc between 'F03/00000000' and 'F03/99999999' "
+  wsel += " and  a.idoc < 'F03/12006127' "
+  wsel += " and len(rtrim(a.idoc)) = 12 "
+  println(wsel); flush()
+  widoc = getSQLValue(wsel)
+
+}
+
+// Carrega Documento Gerado
+wsel = " select * "
+wsel += "   from ddoct0 a "
+wsel += "  where a.iorg   = '" + wrow.iorg + "' "
+wsel += "    and a.ientt  = '" + wrow.ientt + "' "
+wsel += "    and a.ient   = '" + wrow.ient + "' "
+wsel += "    and a.idoct  = '" + wrow.idoct + "' "
+wsel += "    and a.idoc   = '" + wrow.idoc + "' "
+println(wsel); flush()
+wddoc = getMRow("DDOC0", wsel)
+
+wddoc2 = wddoc.Copy()
+wddoc2.iorg = wiorg
+wddoc2.idoct = widoct
+wddoc2.idoc = widoc
+wddoc2.ientt = wientt
+wddoc2.ient = wient
+wddoc2.ndoc = "NNF DE IMPORTACAO"
+wddoc2.cr = "AX"
+wddoc2.ctcf = wctcf
+wddoc2.cit = wctcf
+wddoc2.iuorgt = "UO"
+wddoc2.iuorg = wrow.idoc.trim().substring(0, 3)
+wddoc2.iuorgt2 = "AR"
+wddoc2.iuorg2 = "I" + wrow.idoc.trim().substring(1, 3)
+wddoc2.irct1 = ""
+wddoc2.ddoc = wdate
+wddoc2.dcnt = wdate
+wddoc2.ddoces = wdate
+wddoc2.dixp = wdate
+wddoc2.ddocv = wrow.ddocv //Atualizar esse campo igual ao ddocv NPC
+wddoc2.cstc = "PD"
+wddoc2.dstc = wdate
+wddoc2.csto = "PD"
+wddoc2.dsto = wdate
+wddoc2.zcst = "us"
+wddoc2.idoct2 = wrow.idoct
+wddoc2.idoc2 = wrow.idoc
+wddoc2.iixp = ""
+wddoc2.iixp2 = ""
+wddoc2.zprc = -1
+wddoc2.insertRow()
+wddoc2.setZCommand("INSERT_ROW", "AF", " ")
+wddoc2.refreshRow()
+
+
+wsel = "Delete from ddolt0 "
+wsel += " where iorg  = '" + wiorg + "' "
+wsel += "   and ientt = '" + wientt + "' "
+wsel += "   and ient  = '" + wient + "' "
+wsel += "   and idoct = '" + widoct + "' "
+wsel += "   and idoc  = '" + widoc + "' "
+x = executeSQL(wsel)
+
+wcont = 0
+
+foreach wrow(wrows.elements()) {
+
+  // ########  Processo Itens  ########
+  wsel = " select * "
+  wsel += "   from ddolt0 "
+  wsel += "  where iorg  = '" + wrow.iorg + "' "
+  wsel += "    and ientt = '" + wrow.ientt + "' "
+  wsel += "    and ient  = '" + wrow.ient + "' "
+  wsel += "    and idoct = '" + wrow.idoct + "' "
+  wsel += "    and idoc  = '" + wrow.idoc + "' "
+  wsel += "  Order by idol "
+  vddol = getMRows("DDOL0", wsel)
+  if (vddol.size() == 0) { throwError("Documento não tem linhas para processar.") }
+  widol = ""
+	foreach wddol(vddol.elements()) {
+
+    wddol2 = wddol.Copy()
+
+    if (widol != wddol.idol.trim()) {
+      widol = wddol.idol.trim()
+      wcont++
+    }
+
+    wddol2.idol = formatNumber(wcont, "N000")
+    wddol2.iorg = wddoc2.iorg
+    wddol2.idoct = wddoc2.idoct
+    wddol2.idoc = wddoc2.idoc
+    wddol2.ientt = wddoc2.ientt
+    wddol2.ient = wddoc2.ient
+    wddol2.cr = "AX"
+    wddol2.ctcf = wctcf
+    wddol2.cit = wctcf
+    wddol2.iuorgt = "UO"
+    wddol2.iuorg = wrow.idoc.trim().substring(0, 3)
+    wddol2.iuorgt2 = "AR"
+    wddol2.iuorg2 = "I" + wrow.idoc.trim().substring(1, 3)
+    wddol2.ddoc = wdate
+    wddol2.ddoces = wdate
+    wddol2.ddocv = wrow.ddocv //Atualizar esse campo igual ao ddocv NPC
+    wddol2.dcnt = wdate
+    wddol2.cci = "ND"
+    wddol2.ccf = "N"
+    wddol2.qbfisc = 1
+    wddol2.idoct2 = wrow.idoct
+    wddol2.idoc2 = wrow.idoc
+    wddol2.zcst = "us"
+    wddol2.cstc = "PD"
+    wddol2.dstc = wdate
+    wddol2.csto = "PD"
+    wddol2.dsto = wdate
+    wddol2.insertRow()
+    wddol2.setZCommand("INSERT_ROW", "AF", " ")
+    wddol2.setAssociatedObject("ROWTXT", wddol.getAssociatedText("ROWTXT").getBytes())
+  }
+
+  // Tabatah solicitou que esta opção fosse desabilitada - pedro ivo veio na sala e pediu que fosse realizada a alteração - vagner 
+  //wsel += "    set cst = 'XF', iprot2 = '" + widoct.trim() + "', ipro2 = '" + widoc.trim() + "' "
+  // Gera Evento XF
+  //wsel  = " select * "
+  //wsel += "   from bprot0 "
+  //wsel += "  where iorg  = '" + wrow.iorg  + "' " 
+  //wsel += "    and iprot = '" + wrow.iprot + "' " 
+  //wsel += "    and ipro  = '" + wrow.ipro  + "' " 
+  //brow = getMRow("BPRO",wsel)
+  //bproz_pr_insert_bpre_fn(brow,"XF",brow.mvalor)
+
+  // Atualiza Numero da NNF na Invoice
+  wsel = " update bprot0 "
+  wsel += "    set iprot2 = '" + widoct.trim() + "', ipro2 = '" + widoc.trim() + "' "
+  wsel += "  where iorg  = '" + wrow.iorg + "' "
+  wsel += "    and iprot = '" + wrow.iprot + "' "
+  wsel += "    and ipro  = '" + wrow.ipro + "' "
+  x = executeSQL(wsel)
+  if (x != 1) { throwError("Invoice referente a este NPC não encontrada.") }
+
+
+  // Atualiza CT do NPC
+  wrow.csto = "CF"
+  wrow.dsto = wdate
+  wrow.updateRow(wrow)
+  wrow.setZCommand("STOCKF_ROW", "AF", " ")
+
+
+}
+// Carrega Documento Gerado
+wsel = " select * "
+wsel += "   from ddoct0 a "
+wsel += "  where iorg   = '" + wiorg + "' "
+wsel += "    and ientt  = '" + wientt + "' "
+wsel += "    and ient   = '" + wient + "' "
+wsel += "    and idoct  = '" + widoct + "' "
+wsel += "    and idoc   = '" + widoc + "' "
+wddoc = getMRow("DDOC0", wsel)
+
+
+// ########  Calcula o Documento Gerado  ########
+executeProcedure("ddocpcal", [wiorg, wientt, wient, widoct, widoc, "RECALC_ROW", 0])
+
+wddoc2.refreshRow()
+
+// Carrega Documento Gerado
+wsel = " select * "
+wsel += "   from ddoct0 a "
+wsel += "  where iorg   = '" + wiorg + "' "
+wsel += "    and ientt  = '" + wientt + "' "
+wsel += "    and ient   = '" + wient + "' "
+wsel += "    and idoct  = '" + widoct + "' "
+wsel += "    and idoc   = '" + widoc + "' "
+wddoc = getMRow("DDOC0", wsel)
+
+wsel = " update ddoct0  "
+wsel += "    set cstc  = 'E0', "
+wsel += "        dstc  = '" + wdate + "', "
+wsel += "        zcst  = 'ro' "
+wsel += "  where zk    = " + wddoc2.zk
+x = executeSQL(wsel)
+wddoc2.setZCommand("VERIFY_ROW", "AF", " ")
+
+wddoc2.setAssociatedObject("DDOC0-3", wrow.text.getBytes())
+wddoc2.setAssociatedObject("ROWTXT", wrow.getAssociatedText("ROWTXT").getBytes())
+
+wddoc2.refreshRow()
+fddoc.getBrowse().addRow(wddoc2)
+fddoc.getBrowse().calcTotal()
+wrow.refreshRow()
+
+
+// Carrega Documento Gerado
+wsel = " select * "
+wsel += "   from ddoct0 a "
+wsel += "  where iorg   = '" + wiorg + "' "
+wsel += "    and ientt  = '" + wientt + "' "
+wsel += "    and ient   = '" + wient + "' "
+wsel += "    and idoct  = '" + widoct + "' "
+wsel += "    and idoc   = '" + widoc + "' "
+wddoc = getMRow("DDOC0", wsel)
+
+if (wddoc.ctcf.trim() == "3101") {
+
+  wsel = " update ddoct0 "
+  wsel += "    set cit = '3101', zprc = -1 "
+  wsel += "  where iorg   = '" + wiorg + "' "
+  wsel += "    and ientt  = '" + wientt + "' "
+  wsel += "    and ient   = '" + wient + "' "
+  wsel += "    and idoct  = '" + widoct + "' "
+  wsel += "    and idoc   = '" + widoc + "' "
+  x = executeSQL(wsel)
+
+  // atualiza nas linhas Documento Gerado
+  wsel = " update ddolt0 "
+  wsel += "    set cit = '3101', zprc = -1 "
+  wsel += "  where iorg   = '" + wiorg + "' "
+  wsel += "    and ientt  = '" + wientt + "' "
+  wsel += "    and ient   = '" + wient + "' "
+  wsel += "    and idoct  = '" + widoct + "' "
+  wsel += "    and idoc   = '" + widoc + "' "
+  x = executeSQL(wsel)
+  wddoc2.refreshRow()
+
+}
+
+// Notifica setor de Qualidade
+ddoc0_mc_mail_tnf_goldentec_fn(wddoc)
+
+// EOF
+

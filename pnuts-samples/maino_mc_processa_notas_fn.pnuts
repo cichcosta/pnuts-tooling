@@ -1,0 +1,604 @@
+//*************************************************************************************************
+// Nome.....: maino_mc_processa_notas_fn(widnfe)
+// Objetivo.: Processar notas de importação da plataforma Mainô
+// Cicero Henrique: 2026-04-20
+//*************************************************************************************************
+
+
+wxstk = "+ppppppEET"
+
+println("FUNCAO: MAINO_MC_PROCESSA_NOTAS_FN - INICIO"); flush();
+
+
+function get_email_recipient(wrecipient) {
+
+  wsel = ""
+  wsel += " WITH cte_emails AS( "
+  wsel += "   SELECT DISTINCT TRIM(b.tparms) AS recipient "
+  wsel += "     FROM bctxt0 AS b WITH(NOLOCK) "
+  wsel += "     WHERE "
+  wsel += "         b.ictx = 'IMPORTACAO*PARAMS' "
+  wsel += "         AND b.ivalk = 'DESTINATARIO_EMAIL' "
+  wsel += "         AND b.cst = 'E0' "
+  wsel += " ) "
+  wsel += " SELECT ISNULL(STRING_AGG(b.recipient, ', '), 'chsilva@ibyte.com.br') AS recipients "
+  wsel += " FROM cte_emails AS b "
+  if (wrecipient != "") {
+    wsel += " WHERE b.recipient = '" + wrecipient.trim() + "' "
+  }
+
+  return getSQLValue(wsel);
+}
+
+function error_email(info, error) {
+
+  tcorpo = ""
+  tcorpo += "Erro no processamento maino_mc_processa_notas_fn." + EOL
+  tcorpo += info.toString() + EOL
+  tcorpo += "Error: " + padRight(error.toString(), 300).substring(0, 300).trim() + EOL + EOL
+
+  wcabecalho = "<h4>Erro no Processo de NFe de Importação</h4></br>"
+
+  tfrom = "comunicacao_interna@ibyte.com.br"
+  to = get_email_recipient("");
+  cc = ""
+  bcc = ""
+  assunto = "Processo de Importação Erro no Processamento de Notas";
+
+  whtml = x_mc_set_mail_body_html_fn(assunto, wcabecalho, tcorpo, today().substring(0, 4));
+
+  x_mc_sendmail_aut_fn(assunto, whtml, tfrom, to, cc, bcc)
+}
+
+function gerar_imprt_params() {
+
+  WN = "\n"
+  wsel = ""
+  wsel += WN + " DROP TABLE IF EXISTS #tt_nfe_params; "
+  wsel += WN + " SELECT "
+  wsel += WN + "     TRIM(b.ictx) AS ictx, "
+  wsel += WN + "     TRIM(b.ivalk) AS ivalk, "
+  wsel += WN + "     TRIM(b.nctx) AS nctx, "
+  wsel += WN + "     TRIM(b.xord) AS xord, "
+  wsel += WN + "     TRIM(b.tclass) AS tclass, "
+  wsel += WN + "     TRIM(b.tparms) AS tparms, "
+  wsel += WN + "     CASE "
+  wsel += WN + "         WHEN pos.idx = 0 "
+  wsel += WN + "             THEN TRIM(b.tparms) "
+  wsel += WN + "         ELSE "
+  wsel += WN + "             SUBSTRING(TRIM(b.tparms), 1, pos.idx - 1) "
+  wsel += WN + "     END AS tparms_prefix, "
+  wsel += WN + "     CASE "
+  wsel += WN + "         WHEN pos.idx = 0 "
+  wsel += WN + "             THEN ' ' "
+  wsel += WN + "         ELSE "
+  wsel += WN + "             SUBSTRING(TRIM(b.tparms), pos.idx + 1, LEN(TRIM(b.tparms))) "
+  wsel += WN + "     END AS tparms_suffix "
+  wsel += WN + " INTO #tt_nfe_params "
+  wsel += WN + " FROM bctxt0 AS b WITH (NOLOCK) "
+  wsel += WN + " CROSS APPLY ( "
+  wsel += WN + "     SELECT CHARINDEX(':', TRIM(b.tparms)) AS idx "
+  wsel += WN + " ) AS pos "
+  wsel += WN + " WHERE "
+  wsel += WN + "     b.ictx IN ('BCTX*PARAM*NFE', 'IMPORTACAO*PARAMS') "
+  wsel += WN + "     AND ( "
+  wsel += WN + "         LEFT(b.ivalk, 5) = 'SERIE' "
+  wsel += WN + "         OR b.ivalk = 'CONFIG_IMPOSTO' "
+  wsel += WN + "     ); "
+  wsel += WN + " CREATE CLUSTERED INDEX CIX_tt_nfe_params "
+  wsel += WN + "     ON #tt_nfe_params (ictx, ivalk); "
+  wsel += WN + " "
+  wsel += WN + " CREATE INDEX IX_tt_nfe_params_nctx_xord "
+  wsel += WN + "     ON #tt_nfe_params (nctx, xord) "
+  wsel += WN + "     INCLUDE (tparms, tclass, tparms_prefix); "
+  println("PARAMS: " + wsel); flush()
+  x = executeSQL(wsel)
+}
+
+function insert_import_nnf(wddoc) {
+
+  println("FUNC: insert_import_nnf"); flush();
+  catch (Exception, function(error) { error_email("insert_import_nnf: " + wddoc.idoc, error.toString()) });
+
+  import("PT.Minimal.geral.MUtil");
+
+  // Gerar params
+  gerar_imprt_params();
+
+  WN = "\n";
+
+  // Sequencial do novo NPC a ser gerado
+  wddocNpc = getMRow("DDOC0")
+  wddocNpc.iorg = wddoc.iorg
+  wddocNpc.ientt = wddoc.ientt
+  wddocNpc.ient = wddoc.ient
+  wddocNpc.idoct = wddoc.idoct2 // "NPC"
+  wddocNpc.idoc = wddoc.iuorg.trim() + "/%"
+  widocNpc = MUtil:: seqNumber("idoc", wddocNpc.idoc, wddocNpc)
+  wddocNpc.idoc = widocNpc.trim()
+  wddocNpc.ientt = wddoc.ientt.trim()
+  wddocNpc.ient = wddoc.ient.trim()
+  wddocNpc.ientt2 = wddoc.ientt2.trim()
+  wddocNpc.ient2 = wddoc.ient2.trim()
+  wddocNpc.iprot = wddoc.iprot.trim()
+  wddocNpc.ipro = wddoc.ipro.trim()
+  wddocNpc.ndoc = "IMP - INVOICE " + wddoc.ipro.trim()
+  wddocNpc.cmc = "BRL"
+  wddocNpc.mcm = "BRL"
+  wddocNpc.vcm = "BRL"
+  wddocNpc.ycm = "USD"
+  wddocNpc.qcamb = 1.00
+  wddocNpc.ccl = "FOB"
+  wddocNpc.cr = "AX"
+  wddocNpc.ctcf = "AX-IMP"
+  wddocNpc.cit = wddoc.cit.trim()
+  wddocNpc.iuorgt = wddoc.iuorgt.trim()
+  wddocNpc.iuorg = wddoc.iuorg.trim()
+  wddocNpc.iuorgt2 = wddoc.iuorgt2.trim()
+  wddocNpc.iuorg2 = wddoc.iuorg2.trim()
+  wddocNpc.irct1 = wddoc.irct1.trim()
+  wddocNpc.ddoc = wddoc.ddoc.trim()
+  wddocNpc.dcnt = wddoc.dcnt.trim()
+  wddocNpc.ddoces = wddoc.ddoces.trim()
+  wddocNpc.dixp = wddoc.dixp.trim()
+  wddocNpc.ddocv = wddoc.ddocv.trim()
+  wddocNpc.cstc = wddoc.cstc.trim()
+  wddocNpc.dstc = wddoc.dstc.trim()
+  wddocNpc.csto = wddoc.csto.trim()
+  wddocNpc.dsto = wddoc.dsto.trim()
+  wddocNpc.zcst = wddoc.zcst.trim()
+  wddocNpc.idoct2 = wddoc.idoct2.trim()
+  wddocNpc.idoc2 = widocNpc.trim()
+  wddocNpc.xstk = wxstk
+  wddocNpc.insertRow()
+  wddocNpc.setZCommand("INSERT_ROW", "AF", " ")
+  wddocNpc.refreshRow()
+
+  println("NPC New: " + wddocNpc.idoc.trim()); flush()
+
+  wddocNnf = wddocNpc.Copy()
+  wddocNnf.idoct = wddoc.idoct.trim()
+  wddocNnf.idoc = wddoc.idoc.trim()
+  wddocNnf.ctcf = wddoc.ctcf.trim()
+  wddocNnf.insertRow()
+  wddocNnf.setZCommand("INSERT_ROW", "AF", " ")
+  wddocNnf.refreshRow()
+
+  wsel = ""
+  wsel += WN + " DROP TABLE IF EXISTS #tt_invoice_item; "
+  wsel += WN + " SELECT "
+  wsel += WN + "     invoice_item.id, "
+  wsel += WN + "     invoice_item.cfop, "
+  wsel += WN + "     invoice_item.accessKey, "
+  wsel += WN + "     invoice_item.itemNumber, "
+  wsel += WN + "     invoice_item.referenceCode, "
+  wsel += WN + "     invoice_item.amount, "
+  wsel += WN + "     invoice_item.icmsCst, "
+  wsel += WN + "     invoice_item.icmsOrigin, "
+  wsel += WN + "     invoice_item.totalValue, "
+  wsel += WN + "     invoice_item.unitaryValue, "
+  wsel += WN + "     ISNULL(invoice_item.iiValue, 0.00) AS iiValue, "
+  wsel += WN + "     ISNULL(invoice_item.ipiValue, 0.00) AS ipiValue, "
+  wsel += WN + "     ISNULL(invoice_item.pisValue, 0.00) AS pisValue, "
+  wsel += WN + "     ISNULL(invoice_item.cofinsValue, 0.00) AS cofinsValue, "
+  wsel += WN + "     ISNULL(invoice_item.icmsValue, 0.00) AS icmsValue, "
+  wsel += WN + "     ISNULL(invoice_item.icmsVicmsst, 0.00) AS icmsVicmsst, "
+  wsel += WN + "     ISNULL(invoice_item.ipiPercentage, 0.00) AS ipiPercentage, "
+  wsel += WN + "     ISNULL(invoice_item.pisPercentage, 0.00) AS pisPercentage, "
+  wsel += WN + "     ISNULL(invoice_item.cofinsPercentage, 0.00) AS cofinsPercentage, "
+  wsel += WN + "     ISNULL(invoice_item.icmsPercentage, 0.00) AS icmsPercentage, "
+  wsel += WN + "     ISNULL(invoice_item.icmsPicmsst, 0.00) AS icmsPicmsst, "
+  wsel += WN + "     ISNULL(invoice_item.otherExpensesAmount, 0.00) AS otherExpensesAmount, "
+  wsel += WN + "     ISNULL(item_import_declaration.vafrmm, 0.00) AS vafrmm "
+  wsel += WN + " INTO #tt_invoice_item "
+  wsel += WN + " FROM tb_invoice_item AS invoice_item WITH (NOLOCK) "
+  wsel += WN + " LEFT JOIN "
+  wsel += WN + "     tb_invoice_item_import_declaration AS item_import_declaration WITH (NOLOCK) "
+  wsel += WN + "     ON invoice_item.id = item_import_declaration.invoiceItemId "
+  wsel += WN + " WHERE "
+  wsel += WN + "     invoice_item.accessKey = '" + wddoc.zchar.trim() + "'; "
+  println("ITEM: " + wsel); flush()
+  x = executeSQL(wsel)
+
+  // Processar Itens conforme Nota Fiscal
+  wsel = ""
+  wsel += WN + " WITH cte_imp_pre AS ( "
+  wsel += WN + "     SELECT * "
+  wsel += WN + "     FROM #tt_nfe_params AS imp "
+  wsel += WN + "     WHERE "
+  wsel += WN + "         imp.tparms_suffix = '' "
+  wsel += WN + "         AND imp.xord "
+  wsel += WN + "         = ISNULL(( "
+  wsel += WN + "             SELECT TOP 1 par.xord "
+  wsel += WN + "             FROM #tt_nfe_params AS par "
+  wsel += WN + "             WHERE "
+  wsel += WN + "                 par.xord = '" + wddoc.iuorg.trim() + "' "
+  wsel += WN + "         ), '') "
+  wsel += WN + "     UNION "
+  wsel += WN + "     SELECT * "
+  wsel += WN + "     FROM #tt_nfe_params AS imp "
+  wsel += WN + "     WHERE "
+  wsel += WN + "         imp.tparms_suffix != '' "
+  wsel += WN + " ) "
+  wsel += WN + " "
+  wsel += WN + " SELECT "
+  wsel += WN + "     RIGHT('0000' + invoice_item.itemNumber, 4) AS idol, "
+  wsel += WN + "     invoice_item.referenceCode AS ipsr, "
+  wsel += WN + "     imp.tparms_prefix AS irct1, "
+  wsel += WN + "     imp.tparms_suffix, "
+  wsel += WN + "     ISNULL(NULLIF(imp.tparms_suffix, ''), psr.npsr) AS ndoc, "
+  wsel += WN + "     IIF( "
+  wsel += WN + "         imp.tparms_suffix != '', "
+  wsel += WN + "         0, "
+  wsel += WN + "         invoice_item.amount "
+  wsel += WN + "     ) AS qpsr, "
+  wsel += WN + "     IIF( "
+  wsel += WN + "         imp.tparms_suffix = '', "
+  wsel += WN + "         invoice_item.unitaryValue, "
+  wsel += WN + "         0.0000 "
+  wsel += WN + "     ) AS mvalun, "
+  wsel += WN + "     IIF( "
+  wsel += WN + "         imp.tparms_suffix = '', "
+  // wsel += WN + "         invoice_item.totalValue - ISNULL(invoice_item.vafrmm, 0.00), "
+  wsel += WN + "         invoice_item.totalValue, "
+  wsel += WN + "         t.totalValue "
+  wsel += WN + "     ) AS mvalor, "
+  wsel += WN + "     t.taxPercentage AS pimpst, "
+  wsel += WN + "     invoice_item.cfop AS ctcf, "
+  wsel += WN + "     invoice_item.cfop AS cit, "
+  wsel += WN + "     CONCAT(invoice_item.icmsOrigin, invoice_item.icmsCst) AS cfpsr, "
+  wsel += WN + "     FORMAT( "
+  wsel += WN + "         ( "
+  wsel += WN + "             SELECT COUNT(*) FROM #tt_invoice_item AS i "
+  wsel += WN + "             WHERE i.amount > 0 AND ISNULL(i.otherExpensesAmount, 0) > 0 "
+  wsel += WN + "         ), '00') AS zcomp "
+  wsel += WN + " FROM #tt_invoice_item AS invoice_item WITH (NOLOCK) "
+  wsel += WN + " INNER JOIN bpsrt0 AS psr WITH (NOLOCK) "
+  wsel += WN + "     ON "
+  wsel += WN + "         psr.iorg = 'TEC' "
+  wsel += WN + "         AND invoice_item.referenceCode = psr.ipsr "
+  wsel += WN + " CROSS APPLY ( "
+  wsel += WN + "     VALUES "
+  wsel += WN + "     ('CC', '', ISNULL(invoice_item.totalValue, 0.00), ''), "
+  wsel += WN + "     ('CP', '', ISNULL(invoice_item.totalValue, 0.00), ''), "
+  wsel += WN + "     ('II', 'II', ISNULL(invoice_item.iiValue, 0.00), ''), "
+  wsel += WN + "     ( "
+  wsel += WN + "         'IP', 'IPI', ISNULL(invoice_item.ipiValue, 0.00), "
+  wsel += WN + "         CONVERT(VARCHAR(20), ISNULL(invoice_item.ipiPercentage, 0.00)) "
+  wsel += WN + "     ), "
+  wsel += WN + "     ( "
+  wsel += WN + "         'PI', 'PIS', ISNULL(invoice_item.pisValue, 0.00), "
+  wsel += WN + "         CONVERT(VARCHAR(20), ISNULL(invoice_item.pisPercentage, 0.00)) "
+  wsel += WN + "     ), "
+  wsel += WN + "     ( "
+  wsel += WN + "         'CF', 'COFINS', ISNULL(invoice_item.cofinsValue, 0.00), "
+  wsel += WN + "         CONVERT(VARCHAR(20), ISNULL(invoice_item.cofinsPercentage, 0.00)) "
+  wsel += WN + "     ), "
+  wsel += WN + "     ( "
+  wsel += WN + "         'IM', 'ICMS', ISNULL(invoice_item.icmsValue, 0.00), "
+  wsel += WN + "         CONVERT(VARCHAR(20), ISNULL(invoice_item.icmsPercentage, 0.00)) "
+  wsel += WN + "     ), "
+  wsel += WN + "     ( "
+  wsel += WN + "         'ST', 'ICMSST', ISNULL(invoice_item.icmsVicmsst, 0.00), "
+  wsel += WN + "         CONVERT(VARCHAR(20), ISNULL(invoice_item.icmsPicmsst, 0.00)) "
+  wsel += WN + "     ), "
+  wsel += WN + "     ('DA', 'DESPACESS', ISNULL(invoice_item.otherExpensesAmount, 0.00), ''), "
+  wsel += WN + "     ('AF', 'AFRMM', ISNULL(invoice_item.vafrmm, 0.00), '') "
+  wsel += WN + " ) AS t (taxAcronym, taxDescription, totalValue, taxPercentage) "
+  wsel += WN + " INNER JOIN cte_imp_pre AS imp "
+  wsel += WN + "     ON "
+  wsel += WN + "         t.taxAcronym = imp.tparms_prefix "
+  wsel += WN + " WHERE "
+  wsel += WN + "     invoice_item.accessKey = '" + wddoc.zchar.trim() + "' "
+  wsel += WN + " AND IIF( "
+  wsel += WN + "     imp.tparms_suffix = '', "
+  wsel += WN + "     invoice_item.totalValue, "
+  wsel += WN + "     t.totalValue "
+  wsel += WN + " ) > 0.00 "
+  wsel += WN + " ORDER BY "
+  wsel += WN + "     TRY_CAST(invoice_item.itemNumber AS INT), "
+  wsel += WN + "     invoice_item.referenceCode ASC, "
+  wsel += WN + "     6 DESC, "
+  wsel += WN + "     imp.tparms; "
+  println("GET ITEMS: " + wsel); flush()
+  vddol = getRows("DDOL", wsel)
+
+  wfirst = 0;
+  foreach wddol(vddol.elements()) {
+
+    if (wfirst == 0) wcm1 = wddol.zcomp.toString();
+    wfirst = wfirst + 1;
+
+    wddolNpc = getMRow("DDOL0")
+    wddolNpc.idol = wddol.idol.trim()
+    wddolNpc.iorg = wddocNpc.iorg.trim()
+    wddolNpc.idoct = wddocNpc.idoct.trim()
+    wddolNpc.idoc = wddocNpc.idoc.trim()
+    wddolNpc.ientt = wddocNpc.ientt.trim()
+    wddolNpc.ient = wddocNpc.ient.trim()
+    wddolNpc.ientt2 = wddocNpc.ientt2.trim()
+    wddolNpc.ient2 = wddocNpc.ient2.trim()
+    wddolNpc.cr = "AX"
+    wddolNpc.ctcf = "AX-IMP"
+    wddolNpc.cit = wddol.cit.trim()
+    wddolNpc.cfpsr = wddol.cfpsr.trim()
+    wddolNpc.iuorgt = wddocNpc.iuorgt.trim()
+    wddolNpc.iuorg = wddocNpc.iuorg.trim()
+    wddolNpc.iuorgt2 = wddocNpc.iuorgt2.trim()
+    wddolNpc.iuorg2 = wddocNpc.iuorg2.trim()
+    wddolNpc.ddoc = wddoc.ddoc.trim()
+    wddolNpc.ddoces = wddoc.ddoces.trim()
+    wddolNpc.ddocv = wddoc.ddocv.trim()
+    wddolNpc.dcnt = wddoc.dcnt.trim()
+    wddolNpc.cci = "ND"
+    wddolNpc.ccf = "N"
+    wddolNpc.qbfisc = 1
+    wddolNpc.idoct2 = wddocNpc.idoct.trim()
+    wddolNpc.idoc2 = wddocNpc.idoc.trim()
+    wddolNpc.zcst = wddocNpc.zcst.trim()
+    wddolNpc.cstc = wddocNpc.cstc.trim()
+    wddolNpc.dstc = wddocNpc.dstc.trim()
+    wddolNpc.csto = wddocNpc.csto.trim()
+    wddolNpc.dsto = wddocNpc.dsto.trim()
+    wddolNpc.irct1 = wddol.irct1
+    wddolNpc.ndoc = wddol.ndoc
+    wddolNpc.ipsr = wddol.ipsr
+    wddolNpc.qpsr = wddol.qpsr
+    // removemso o valoer unitário para o próprio sistema recalcular
+    // wddolNpc.mvalun = wddol.mvalun
+    wddolNpc.mvallq = wddol.mvalor
+    wddolNpc.mvalor = wddol.mvalor
+    wddolNpc.iixp = wddol.pimpst
+    wddolNpc.xstk = wxstk
+    wddolNpc.insertRow()
+    wddolNpc.setZCommand("INSERT_ROW", "AF", " ")
+
+    wddolNnf = wddolNpc.Copy()
+    wddolNnf.idoct = wddocNnf.idoct.trim()
+    wddolNnf.idoc = wddocNnf.idoc.trim()
+    wddolNnf.ctcf = wddol.ctcf.trim()
+    wddolNnf.insertRow()
+    wddolNnf.setZCommand("INSERT_ROW", "AF", " ")
+  }
+
+  wsel = ""
+  wsel += WN + " SELECT a.* "
+  wsel += WN + " FROM bprot0 AS b WITH (NOLOCK) "
+  wsel += WN + " INNER JOIN ddoct0 AS a WITH (NOLOCK) "
+  wsel += WN + "     ON "
+  wsel += WN + "         b.iorg = a.iorg "
+  wsel += WN + "         AND b.ientt = a.ientt "
+  wsel += WN + "         AND b.ient = a.ient "
+  wsel += WN + "         AND b.iprot = a.iprot "
+  wsel += WN + "         AND b.ipro = a.ipro "
+  wsel += WN + "         AND a.idoct = 'NPC' "
+  wsel += WN + "         AND a.idoc <> '" + wddocNpc.idoc.trim() + "' "
+  wsel += WN + "         AND 'XA' NOT IN (a.cstc, a.csto) "
+  wsel += WN + " WHERE "
+  wsel += WN + "     b.iorg = 'TEC' "
+  wsel += WN + "     AND b.icon14 = '" + wddoc.zcomp.trim() + "' "
+  wsel += WN + " ORDER BY a.zk "
+  println("DDOC0: " + wsel.trim()); flush()
+  vnpcs = getMRows("DDOC0", wsel)
+  
+  foreach wnpc(vnpcs.elements()) {
+
+    wnpc.idoc2 = wddocNpc.idoc.trim()
+    wnpc.cstc = "XA"
+    wnpc.csto = "XA"
+    wnpc.dsto = today()
+    wnpc.updateRow(wnpc)
+    wnpc.refreshRow()
+
+    ddoc0_pr_insert_ddoe_fn(wnpc, "NIV", "N", wddocNpc.idoct.trim() + ":" + wddocNpc.idoc.trim(), wnpc.mvalor)
+    ddoc0_pr_insert_ddoe_fn(wnpc, "CA", "N", "Após NPC Importação: " + wddocNpc.idoct.trim() + ":" + wddocNpc.idoc.trim(), wnpc.mvalor)
+  }
+
+  // Atualiza Numero da NNF na Invoice
+  wsel = " update bprot0 with(rowlock) "
+  wsel += "    set iprot2 = '" + wddocNnf.idoct.trim() + "', ipro2 = '" + wddocNnf.idoc.trim() + "' "
+  wsel += "  where iorg  = '" + wddocNnf.iorg.trim() + "' "
+  wsel += "    and icon14 = '" + wddoc.zcomp.trim() + "' "
+  x = executeSQL(wsel)
+  if (x != 1) println("Error: Invoice referente a este NPC não encontrada."); flush()
+
+  // Atualiza impostos nos itens da Invoice
+  wupdt = ""
+  wupdt += " UPDATE a "
+  wupdt += " SET "
+  wupdt += "     a.mvalort2 = ISNULL(invoice_item.iiValue, 0.00), "
+  wupdt += "     a.mvalort3 = ISNULL(invoice_item.ipiValue, 0.00), "
+  wupdt += "     a.mvalort4 = ISNULL(invoice_item.pisValue, 0.00), "
+  wupdt += "     a.mvalort5 = ISNULL(invoice_item.cofinsValue, 0.00), "
+  wupdt += "     a.mvalort6 = ISNULL(invoice_item.icmsValue, 0.00), "
+  wupdt += "     a.mvalort7 = ISNULL(invoice_item.vafrmm, 0.00), "
+  wupdt += "     a.mvalorex = ISNULL(invoice_item.icmsVicmsst, 0.00) "
+  wupdt += " FROM oitot0 AS a WITH (NOLOCK) "
+  wupdt += " INNER JOIN bprot0 AS b WITH (NOLOCK) "
+  wupdt += "     ON "
+  wupdt += "         a.ipro = b.ipro "
+  wupdt += "         AND a.iorg = b.iorg "
+  wupdt += "         AND b.icon14 = '" + wddoc.zcomp.trim() + "' "
+  wupdt += " INNER JOIN #tt_invoice_item AS invoice_item "
+  wupdt += "     ON "
+  wupdt += "         a.ipsr = invoice_item.referenceCode "
+  wupdt += "         AND a.qpsr = invoice_item.amount "
+  wupdt += " WHERE "
+  wupdt += "     a.iorg = 'TEC' "
+  wupdt += "     AND a.iprot = 'INV' "
+  wupdt += "     AND a.ipsr != '' "
+  x = executeSQL(wupdt)
+  if (x != 1) println("Error: Invoice referente a este NPC não encontrada."); flush()
+
+  /* ================= Finaliza NPC/NNF do Processo ================= */
+  /* ########  Grava extenssões nos novos documentos gerados ######## */
+  x_mc_update_extension_fn("c", "DDOCTX", wddocNnf.zk, "widnfe", wddoc.zchar.trim())
+  x_mc_update_extension_fn("c", "DDOCTX", wddocNnf.zk, "woriginintegration", "MAINO")
+  x_mc_update_extension_fn("c", "DDOCTX", wddocNnf.zk, "wexternalplatform", "MAINO")
+  x_mc_update_extension_fn("c", "DDOCTX", wddocNpc.zk, "woriginintegration", "MAINO")
+  x_mc_update_extension_fn("c", "DDOCTX", wddocNpc.zk, "wexternalplatform", "MAINO")
+
+  /* ########  Recalcula o Documento Gerado  ######## */
+  executeProcedure("ddocpcal", [wddocNpc.iorg, wddocNpc.ientt, wddocNpc.ient, wddocNpc.idoct, wddocNpc.idoc, "RECALC_ROW", 0])
+  executeProcedure("ddocpcal", [wddocNnf.iorg, wddocNnf.ientt, wddocNnf.ient, wddocNnf.idoct, wddocNnf.idoc, "RECALC_ROW", 0])
+
+  /* ########  Atualiza Status Documentos  ######## */
+  wddocNpc.refreshRow()
+  wddocNpc.cstc = "E0"
+  wddocNpc.csto = "CF"
+  wddocNpc.zcst = "ro"
+  wddocNpc.dsto = today()
+  wddocNpc.dstc = today()
+  wddocNpc.updateRow(wddocNpc)
+  wddocNpc.setZCommand("VERIFY_ROW", "AF", "")
+
+
+  wddocNnf.refreshRow()
+  wddocNnf.cstc = "E0"
+  wddocNnf.csto = "CE"
+  wddocNnf.dsto = today()
+  wddocNnf.dstc = today()
+  wddocNnf.zcst = "ro"
+  wddocNnf.updateRow(wddocNnf)
+  wddocNnf.setZCommand("VERIFY_ROW", "AF", "")
+}
+
+// Gerar params
+gerar_imprt_params();
+
+// Carrega Notas com base nos NPC's que ainda não tiveram a NNF gerada
+WN = "\n"
+wsel = ""
+wsel += WN + " WITH cte_conf AS ( "
+wsel += WN + "     SELECT "
+wsel += WN + "         par.xord, "
+wsel += WN + "         par.tparms_prefix, "
+wsel += WN + "         par.tclass, "
+wsel += WN + "         ROW_NUMBER() OVER ( "
+wsel += WN + "             PARTITION BY par.xord "
+wsel += WN + "             ORDER BY (SELECT NULL) "
+wsel += WN + "         ) AS rn "
+wsel += WN + "     FROM #tt_nfe_params AS par "
+wsel += WN + "     WHERE "
+wsel += WN + "         par.ictx = 'IMPORTACAO*PARAMS' "
+wsel += WN + "         AND par.ivalk = 'CONFIG_IMPOSTO' "
+wsel += WN + " ) "
+wsel += WN + " "
+wsel += WN + " SELECT DISTINCT "
+wsel += WN + "     npc.iorg, "
+wsel += WN + "     'NNF' AS idoct, "
+wsel += WN + "     ser.tparms "
+wsel += WN + "     + '/' "
+wsel += WN + "     + REPLICATE('0', 8 - LEN(invoice.number)) "
+wsel += WN + "     + invoice.number AS idoc, "
+wsel += WN + "     npc.ientt, "
+wsel += WN + "     npc.ient, "
+wsel += WN + "     npc.ientt2, "
+wsel += WN + "     npc.ient2, "
+wsel += WN + "     'NNF DE IMPORTACAO' AS ndoc, "
+wsel += WN + "     'AX' AS cr, "
+wsel += WN + "     invoice.cfop AS ctcf, "
+wsel += WN + "     invoice.cfop AS cit, "
+wsel += WN + "     npc.iuorgt, "
+wsel += WN + "     uorg.iuorg, "
+wsel += WN + "     'AR' AS iuorgt2, "
+wsel += WN + "     ISNULL( "
+wsel += WN + "         NULLIF(cte_conf.tclass, ' '), "
+wsel += WN + "         'I' + RIGHT(TRIM(uorg.iuorg), LEN(uorg.iuorg) - 1) "
+wsel += WN + "     ) AS iuorg2, "
+wsel += WN + "     ISNULL( "
+wsel += WN + "         NULLIF(cte_conf.tparms_prefix, ' '), "
+wsel += WN + "         npc.irct1 "
+wsel += WN + "     ) AS irct1, "
+wsel += WN + "     CONVERT(VARCHAR(10), invoice.date, 23) AS ddoc, "
+wsel += WN + "     CONVERT(VARCHAR(10), invoice.entryOrExitDate, 23) AS dcnt, "
+wsel += WN + "     CONVERT(VARCHAR(10), invoice.entryOrExitDate, 23) AS ddoces, "
+wsel += WN + "     CONVERT(VARCHAR(10), invoice.entryOrExitDate, 23) AS dixp, "
+wsel += WN + "     CONVERT(VARCHAR(10), invoice.entryOrExitDate, 23) AS ddocv, "
+wsel += WN + "     CONVERT(VARCHAR(10), invoice.entryOrExitDate, 23) AS dstc, "
+wsel += WN + "     CONVERT(VARCHAR(10), invoice.entryOrExitDate, 23) AS dsto, "
+wsel += WN + "     'PD' AS cstc, "
+wsel += WN + "     'PD' AS csto, "
+wsel += WN + "     'us' AS zcst, "
+wsel += WN + "     npc.idoct AS idoct2, "
+wsel += WN + "     npc.iprot, "
+wsel += WN + "     npc.ipro, "
+wsel += WN + "     invoice.xPed AS zcomp, "
+wsel += WN + "     invoice.accessKey AS zchar "
+wsel += WN + " FROM dbo.tb_invoice_status AS invoice_status WITH (NOLOCK) "
+wsel += WN + " INNER JOIN dbo.tb_invoice AS invoice WITH (NOLOCK) "
+wsel += WN + "     ON "
+wsel += WN + "         invoice_status.source = invoice.salesPlatformCode "
+wsel += WN + "         AND invoice_status.accessKey = invoice.accessKey "
+wsel += WN + " INNER JOIN bentt0 AS uorg WITH (NOLOCK) "
+wsel += WN + "     ON "
+wsel += WN + "         uorg.ientt = '*' "
+wsel += WN + "         AND uorg.ient = 'TEC' "
+wsel += WN + "         AND uorg.iuorgt = 'UO' "
+wsel += WN + "         AND dbo.fn_only_number(uorg.tidfisc) = invoice.documentIssuer "
+wsel += WN + " CROSS APPLY ( "
+wsel += WN + "     SELECT TOP 1 "
+wsel += WN + "         iv.iorg, "
+wsel += WN + "         iv.ientt, "
+wsel += WN + "         iv.ient, "
+wsel += WN + "         iv.iprot, "
+wsel += WN + "         iv.ipro, "
+wsel += WN + "         iv.icon14 "
+wsel += WN + "     FROM bprot0 AS iv WITH (NOLOCK) "
+wsel += WN + "     WHERE "
+wsel += WN + "         uorg.ient = iv.iorg "
+wsel += WN + "         AND iv.iprot = 'INV' "
+wsel += WN + "         AND invoice.xPed = iv.icon14 "
+wsel += WN + "     ORDER BY iv.zk ASC "
+wsel += WN + " ) AS inv "
+wsel += WN + " INNER JOIN dbo.ddoct0 AS npc WITH (NOLOCK) "
+wsel += WN + "     ON "
+wsel += WN + "         inv.iorg = npc.iorg "
+wsel += WN + "         AND inv.ientt = npc.ientt "
+wsel += WN + "         AND inv.ient = npc.ient "
+wsel += WN + "         AND npc.idoct = 'NPC' "
+wsel += WN + "         AND npc.cr = 'AX' "
+wsel += WN + "         AND npc.ctcf = 'AX-IMP' "
+wsel += WN + "         AND inv.iprot = npc.iprot "
+wsel += WN + "         AND inv.ipro = npc.ipro "
+wsel += WN + "         AND npc.cstc != 'XA' "
+wsel += WN + "         AND NOT EXISTS ( "
+wsel += WN + "             SELECT 1 "
+wsel += WN + "             FROM dbo.ddoct0 AS nnf WITH (NOLOCK) "
+wsel += WN + "             WHERE "
+wsel += WN + "                 nnf.iorg = npc.iorg "
+wsel += WN + "                 AND nnf.idoct = 'NNF' "
+wsel += WN + "                 AND nnf.idoct2 = npc.idoct "
+wsel += WN + "                 AND nnf.idoc2 = npc.idoc "
+wsel += WN + "                 AND 'XA' NOT IN (nnf.cstc, nnf.csto) "
+wsel += WN + "         ) "
+wsel += WN + " LEFT JOIN cte_conf "
+wsel += WN + "     ON "
+wsel += WN + "         uorg.iuorg = cte_conf.xord "
+wsel += WN + "         AND cte_conf.rn = 1 "
+wsel += WN + " CROSS APPLY ( "
+wsel += WN + "     SELECT "
+wsel += WN + "         REPLICATE('0', 3 - LEN(invoice.series)) "
+wsel += WN + "         + invoice.series AS padded_series "
+wsel += WN + " ) AS pad "
+wsel += WN + " INNER JOIN #tt_nfe_params AS ser "
+wsel += WN + "     ON "
+wsel += WN + "         ser.ictx = 'BCTX*PARAM*NFE' "
+wsel += WN + "         AND ser.ivalk = 'SERIE*' + TRIM(npc.iuorg) + '*' + pad.padded_series "
+wsel += WN + "         AND npc.iuorg = ser.nctx "
+wsel += WN + "         AND pad.padded_series = ser.xord "
+wsel += WN + " WHERE "
+wsel += WN + "     invoice_status.source = 'MAINO' "
+if (!widnfe.trim().equals("")) wsel += WN + "     AND invoice.accessKey = '" + widnfe.trim() + "' "
+println("VDDOC: " + wsel); flush()
+vddoc = getRows("DDOC0", wsel)
+
+foreach wddoc(vddoc.elements()) {
+
+  // processar notas MAINÔ
+  insert_import_nnf(wddoc);
+}
+
+println("FUNCAO: MAINO_MC_PROCESSA_NOTAS_FN - FINAL"); flush();
+
+// EOF

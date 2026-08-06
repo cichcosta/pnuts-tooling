@@ -1,0 +1,339 @@
+import("java.io.*")
+//edoc_mc_nfse_tx2_2111300_fn(wrow, wtipo)
+
+//work
+wdatetime = x_mc_br_get_date_server_fn()
+wdate = wdatetime.substring(0, 10)
+wtime = wdatetime.substring(11, 19)
+wtime = formatNumber(toNumber(wdatetime.substring(11, 13)) - 1, "N00") + wtime.substring(2, 8)
+cursor = MConnection:: getMCursor()
+wbody = StringBuffer()
+
+// aliquota PIS
+wAliquotaPIS = 0.00
+
+// aliquota Cofins
+wAliquotaCofins = 0.00
+
+// aliquota INSS
+wAliquotaINSS = 0.00
+
+// aliquota IR
+wAliquotaIR = 0.00
+
+// aliquota CSLL
+wAliquotaCSLL = 0.00
+
+// valor total dos serviços
+wValorServicos = 0.00
+
+// valor de deduções
+wValorDeducoes = 0.00
+
+// valor do PIS
+wValorPis = 0.00
+
+// valor do Cofins
+wValorCofins = 0.00
+
+// valor do INSS
+wValorInss = 0.00
+
+// valor do IR
+wValorIr = 0.00
+
+// valor do CSLL
+wValorCsll = 0.00
+
+// valor do ISS
+wValorIss = 0.00
+
+// valor de outras retenções
+wOutrasRetencoes = 0.00
+
+// valor do ISS retido
+wValorIssRetido = 0.00
+
+// aliquota do iss
+wAliquota = 0.00
+
+// valor liquido da nfse
+wValorLiquidoNfse = 0.00
+
+// valor do desconto condicionado
+wDescontoCondicionado = 0.00
+
+// variavel inicia sem retenção do ISS
+wIssRetido = "2"
+
+// obtem o numero para referenciar o RPS
+wnum = edoc_mc_nfse_get_num_fn(wrow)
+
+// obtem os dados do prestador de serviço
+wbentp = edoc_mc_nfse_get_prestador_fn(wrow)
+
+// codigo do municipio de prestação
+wMunicipioPrestacao = edoc_mc_nfse_get_municipio_fn(wbentp.tmunicip, wbentp.testado)
+
+if (wMunicipioPrestacao.trim() == "2111300") {
+  wMunicipioPrestacao = "000921"
+  wCodCidade = "921"
+}
+// nome da cidade do prestador
+wMunicipioPrestacaoDescricao = wbentp.tmunicip.trim()
+
+// razao social do prestador
+wRazaoSocialRemetente = wbentp.nnomel.trim()
+
+// Dados do Tomador
+wbentt = edoc_mc_nfse_get_tomador_fn(wrow)
+
+// Busca o código isiafi da tabela de CEP, busca pelo CEP do cliente.
+wcepcliente = ""
+if (wbentt.icpt.trim() != "") {
+  wcepcliente = wbentt.icpt.trim()
+}
+
+println(">>>Cep do Cliente : <<<<" + wcepcliente); flush();
+
+wsel = " select top 1 isiafi "
+wsel += " from bcept0 "
+wsel += " where icep = '" + wcepcliente + "' "
+println(">>>Wsel  bcept0 : <<<<" + wsel); flush();
+wCidadeTomador = getSQLValue(wsel)
+
+// Codigo do municipio do tomador
+
+if (wCidadeTomador.trim() == "") {
+  println(">>código isiafi vazio  : <<<<"); flush();
+  wsel = " select tclass "
+  wsel += " from bctxt0 with(nolock) "
+  wsel += " where ictx = 'TABELA*SIAFI' "
+  wsel += " and xord = '" + wbentt.testado.trim() + "' "
+  wsel += " and nctx = '" + wbentt.tmunicip.trim() + "' "
+  println(">>>Wsel  bctxt0 : <<<<" + wsel); flush();
+  wCidadeTomador = getSQLValue(wsel) //edoc_mc_nfse_get_municipio_fn(wbentt.tmunicip, wbentt.testado)
+}
+
+
+if (wCidadeTomador.trim() == "") throwError("Código SIAFI não encontrado para " + wbentt.tmunicip.trim())
+
+
+// remove todos os caracteres diferente de numero da string que representa a inscrição municipal
+// deixando apenas caracteres numericos
+wInscricaoMunicipalPrestador = wbentp.tidfisc3.replaceAll("[^0-9]", "")
+
+// cnpj do prestador
+// Para atender o novo CNPJ Alfanumerico, trocamos a regex antiga "[^0-9]" pela nova "[^A-Z0-9]".
+wCnpj = wbentp.tidfisc.replaceAll("[^A-Z0-9]", "")
+
+// identificação do RPS
+wIdRps = "R" + wnum
+
+// numero do RPS
+wNumeroRps = wnum
+
+// serie do RPS
+wSerieRps = edoc_mc_nfse_get_serie_fn(wrow) //wrow.iuorg
+
+// obtem o tipo do RPS
+wTipoRps = edoc_mc_nfse_get_tipo_rps_fn(wrow)
+
+// data da emissão do RRPS
+wDataEmissao = wdate + "T" + wtime + ".000"
+
+// codigo domunicipio do prestator
+wCodigoMunicipio = edoc_mc_nfse_get_municipio_fn(wbentp.tmunicip, wbentp.testado)
+
+// nome da cidade do tomador
+wCidadeTomadorDescricao = wbentt.tmunicip.trim()
+
+// CNPJ/CPF do tomador
+// Para atender o novo CNPJ Alfanumerico, trocamos a regex antiga "[^0-9]" pela nova "[^A-Z0-9]".
+wCnpjTomador = wbentt.tidfisc.replaceAll("[^A-Z0-9]", "")
+
+// inscrição municipal do tomador
+wInscricaoMunicipalTomador = wbentt.tidfisc3.replaceAll("[^0-9]", "")
+
+// razão social do tomador
+wRazaoSocialTomador = wbentt.nnomel.trim()
+
+// endereço do tomador
+wEnderecoTomador = wbentt.tmorad.trim()
+
+// numero do logradouro do tomador
+wNumeroTomador = "1"
+
+// complemento do logradouro tomador
+wComplementoTomador = wbentt.tcend.trim()
+
+// bairro do tomador
+wBairroTomador = wbentt.tlocal.trim().replaceAll("[^\\x00-\\x7F]", "")
+
+// UF do tomador
+wUfTomador = wbentt.testado.trim()
+
+// CEP do tomador
+wCepTomador = wbentt.icpt.replaceAll("[^0-9]", "")
+if (wCepTomador.length() != 8) {
+  throwError("CEP do tomador é inválido.")
+}
+
+// email do tomador
+wEmailTomador = wbentt.temail.trim()
+if (!wEmailTomador.matches("^[_A-Za-z0-9-\\+]+(\\.[_A-Za-z0-9-]+)*@[A-Za-z0-9-]+(\\.[A-Za-z0-9]+)*(\\.[A-Za-z]{2,})$")) {
+  wEmailTomador = "-"
+}
+
+// DDD do prestador
+wDDDPrestador = ""//wbentp.ttelin.replaceAll("[^0-9]","")
+
+// Telefone do prestador
+wTelefonePrestador = ""//wbentp.ttel.replaceAll("[^0-9]","")
+
+// DDD do tomador
+wDDDTomador = ""//wbentt.ttelin.replaceAll("[^0-9]","")
+
+// telefone do tomador
+wTelefoneTomador = ""//wbentt.ttel.replaceAll("[^0-9]","")
+
+// valida o CPF/CNPJ do tomador
+if (!inList(wCnpjTomador.length(), [11, 14])) {
+  throwError("CPF/CNPJ do tomador é inválido.")
+}
+
+// função que monta o conteudo do arquivo tx2
+function append(str) {
+  wbody.append(str + "\r\n")
+}
+
+// obtem os itens da nota
+vddol = edoc_mc_nfse_get_linhas_fn(wrow)
+
+// percorre as linhas e soma o valor de cada linha
+foreach wddol(vddol.elements()) {
+  wValorServicos += wddol.mvalor
+}
+
+// obtem a aliquota do ISS se baseando na linha do documento. 
+// ta certo isso? Não seria mais interessante a aliquota ser uma informação da empresa?
+wsel = "select qqcoef1 "
+wsel += "  from bctxt0 "
+wsel += " where ictx = 'BENT*CMP2' "
+wsel += "   and ivalk = '" + vddol.elementAt(0).ci.trim() + "' "
+wv = getSQLNumber(wsel)
+
+// verifica o valor da aliquota o ISS, não pode ser menor ou igual a zero
+if (wv <= 0) {
+  throwError("Aliquota do ISS não pode ser menor ou igual a zero.")
+}
+
+wAliquota = wv //wv/100
+wValorIss = round(wValorServicos * wAliquota, 2)
+wValorPis = round(wValorServicos * wAliquotaPIS, 2)
+wValorCofins = round(wValorServicos * wAliquotaCofins, 2)
+wValorInss = round(wValorServicos * wAliquotaINSS, 2)
+wValorIr = round(wValorServicos * wAliquotaIR, 2)
+wValorCsll = round(wValorServicos * wAliquotaCSLL, 2)
+wValorIssRetido = round(wValorServicos * wAliquota, 2)
+
+// atraves do campo irct1 marca a nota com iss retido. Esta certo isso?
+if (vddol.elementAt(0).irct1.trim() == "VR") {
+  wIssRetido = "1"
+}
+
+// zera o valor do ISS retido caso não tenha retenção de ISS
+if (wIssRetido == "2") {
+  wValorIssRetido = 0.00
+}
+
+// totaliza o valor liquido da nota
+wValorLiquidoNfse = wValorServicos - wValorPis - wValorCofins - wValorInss - wValorIr - wValorCsll - wOutrasRetencoes - wValorIssRetido - wDescontoCondicionado
+
+wCodigoAtividade = "951180001"
+
+//Inicio do arquivo
+append("formato=tx2")
+append("INCLUIR")
+append("IdLote=L" + wnum)
+append("CodCidade=" + wCodCidade)//921
+append("CPFCNPJRemetente=" + wCnpj)
+append("RazaoSocialRemetente=" + wRazaoSocialRemetente)
+append("transacao=false")
+append("dtInicio=" + wdate)
+append("dtFim=" + wdate)
+append("QtdRPS=1")
+append("ValorTotalServicos=" + formatNumber(wValorServicos, "N0.00"))
+append("ValorTotalDeducoes=0.00")
+append("Versao=1")
+append("MetodoEnvio=WS")
+append("SALVAR")
+append("INCLUIRRPS")
+append("IdRPS=R" + wnum)
+append("InscricaoMunicipalPrestador=" + wInscricaoMunicipalPrestador)
+append("RazaoSocialPrestador=" + wRazaoSocialRemetente)
+append("TipoRPS=RPS")
+append("SerieRPS=NF")
+append("NumeroRPS=" + wnum)
+append("DataEmissaoRPS=" + wDataEmissao)
+append("SituacaoRPS=N")
+append("SeriePrestacao=99")
+append("InscricaoMunicipalTomador=" + wInscricaoMunicipalTomador)
+append("CPFCNPJTomador=" + wCnpjTomador)
+append("RazaoSocialTomador=" + wRazaoSocialTomador)
+append("TipoLogradouroTomador=RUA")
+append("LogradouroTomador=" + wEnderecoTomador)
+append("NumeroEnderecoTomador=" + wNumeroTomador)
+append("TipoBairroTomador=Bairro")
+append("BairroTomador=" + wBairroTomador)
+append("CidadeTomador=" + wCidadeTomador) //000921
+append("CidadeTomadorDescricao=" + wCidadeTomadorDescricao)
+append("CEPTomador=" + wCepTomador)
+append("EmailTomador=" + wEmailTomador)
+append("CodigoAtividade=" + wCodigoAtividade)
+append("AliquotaAtividade=" + formatNumber(wAliquota, "N0.00"))
+append("CodigoServico=1402")
+append("TipoRecolhimento=A")
+append("MunicipioPrestacao=" + wMunicipioPrestacao)//000921
+append("MunicipioPrestacaoDescricao=" + wMunicipioPrestacaoDescricao)
+append("Operacao=A")
+append("Tributacao=T")
+append("ValorPIS=" + formatNumber(wValorPis, "N0.00"))
+append("ValorCOFINS=" + formatNumber(wValorCofins, "N0.00"))
+append("ValorINSS=" + formatNumber(wValorInss, "N0.00"))
+append("ValorIR=" + formatNumber(wValorIr, "N0.00"))
+append("ValorCSLL=" + formatNumber(wValorCsll, "N0.00"))
+append("AliquotaPIS=" + formatNumber(wAliquotaPIS, "N0.00"))
+append("AliquotaCOFINS=" + formatNumber(wAliquotaCofins, "N0.00"))
+append("AliquotaINSS=" + formatNumber(wAliquotaINSS, "N0.00"))
+append("AliquotaIR=" + formatNumber(wAliquotaIR, "N0.00"))
+append("AliquotaCSLL=" + formatNumber(wAliquotaCSLL, "N0.00"))
+append("DescricaoRPS=Serviço")
+append("DDDPrestador=" + wDDDPrestador)
+append("TelefonePrestador=" + wTelefonePrestador)
+append("DDDTomador=" + wDDDTomador)
+append("TelefoneTomador=" + wTelefoneTomador)
+append("SALVARRPS")
+
+foreach wddol(vddol.elements()){
+  // obtem a disciminação dos serviços
+  //cursor.commitWork()
+  //zglobals.CODMUNICIP = "2111300"
+  //wDiscriminacao = edoc_mc_nfse_get_discrimin_fn(wddol)
+  //cursor.beginWork()
+
+  append("INCLUIRSERVICO")
+  append("DiscriminacaoServico=" + padRight(wddol.ndoc.trim(), 40).substring(0, 40).trim() + " | DESCONTO: " + formatNumber(wddol.mvaldc, "N0.00", 15).trim())
+  append("Quantidade=" + INT(wddol.qpsrs))
+  append("ValorUnitario=" + formatNumber(wddol.mvalun, "N0.00"))
+  append("ValorTotal=" + formatNumber(wddol.mvalor, "N0.00"))
+  append("SALVARSERVICO")
+
+}
+
+// wtipo indica se estamos trabalhando com edoc ou componente.
+// se for edoc, então retornamos o tx2
+
+return wbody.toString()
+
+// EOF

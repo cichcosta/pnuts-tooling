@@ -1,0 +1,15 @@
+//*************************************************************************************************
+// Nome.....: maino_mc_processa_notas_aut_fn()
+// Objetivo.: Processar notas de importação da plataforma Mainô automaticamente via Batch
+// Cicero Henrique: 2026-07-27
+//*************************************************************************************************
+
+widnfe = ""
+
+println("FUNCAO: MAINO_MC_PROCESSA_NOTAS_AUT_FN - INICIO"); flush();
+
+maino_mc_processa_notas_fn(widnfe);
+
+println("FUNCAO: MAINO_MC_PROCESSA_NOTAS_AUT_FN - FINAL"); flush();
+
+// EOF

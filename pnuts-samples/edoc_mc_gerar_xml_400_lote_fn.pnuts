@@ -1,0 +1,2599 @@
+// 2023-04-11 - Ozana Spinosa - NPP.001653  PARAMETRIZAÇÃO TRIBUTÁRIA DOS PRODUTOS UDA V1
+// 2023-05-18 - OZANA SPINOSA - NPP.001774 - CADASTRO DE REGRAS TRIBUTÁRIAS F59
+// 2023-12-22 - OZANA SPINOSA - NPP.002005 - INCLUSÃO DE TAG NO XML DA NF-e E NCF-e -BENEFÍCIO
+// 2023-12-18 - OZANA SPINOSA - NPP.000012 - RETIRADA DO ICMS DA BASE DO PIS E COFINS - SAÍDAS
+// 2025-02-26 - OZANA SPINOSA - NPP.002697 - ADEQUAÇÃO DA BCTX*AUDI*UF - DIFAL - Cubo e Calculadora de MC
+
+x_mc_inserir_log_fn("DDOCR", "edoc_mc_gerar_xml_400_lote_fn(wrow)", "DDOCRBRF")
+
+import("java.io.*")
+import("javax.swing.*")
+import("br.com.unigex.nfe.NFe")
+
+zglobals.WESPELHO = ""
+
+zglobals.WCSTPROD = "|"
+
+// Work   
+wNFe = NFe()
+cursor = MConnection:: getMCursor()
+wuser = MLogin:: getUser().trim()
+wnodo = MLogin:: getUserNodo().trim()
+wdatetime = x_mc_br_get_date_server_fn()
+wdate = wdatetime.substring(0, 10)
+wtime = wdatetime.substring(11, 19)
+
+println(" FUNCAO -> EDOC_MC_GERAR_XML_400_LOTE_FN -> INICIO "); flush()
+
+wflagicms = false
+wflagavaria = false
+wticms = false
+wlinha = ""
+wcrt = "3"
+wvbcst2 = 0.00
+wvst = 0.00
+wserie = "1"
+wzk = formatNumber(wrow.zk, "N00000000000000")
+wversao = "4.00"
+wexterior = false
+wiuorg = wrow.iuorg.trim()
+wIEST = ""
+wtemICMSEfetivo = true
+wfnfrtflag = false
+worigemregrageral = ""
+worigemautomatismo = ""
+
+//REFORMA TRIBUTARIA
+wvBCIBSCBSt = 0.00; wvIBSt = 0.00;
+wvtIBSUF = 0.00; wvtIBSMun = 0.00; wvtCBS = 0.00;
+
+// Variaveis para dados transportadora
+wflagwtra = false
+
+wnome = zglobals.WNOME
+wendtra = zglobals.WENDTRA
+wuftra = zglobals.WUFTRA
+wcnpjtra = zglobals.WCNPJTRA
+wietra = zglobals.WIETRA
+wmuntra = zglobals.WMUNTRA
+wccl = zglobals.WCCL
+wienttra = zglobals.WIENTTRA
+
+// REGION
+// Objetivo: Obter o identificador de local de destino da operação.
+// Pega o primeiro digito para saber o destino da operação
+wcit = wrow.cit.trim().substring(0, 1)
+
+// Identificador de local de destino da operação
+// 1=Operação interna;
+// 2=Operação interestadual;
+// 3=Operação com exterior.
+widDest = "1"
+
+// Se wcit for 2 ou 6, é porque nas linhas contem CFOP de operação interestadual
+if (inList(wcit, ["2", "6"])) {
+  widDest = "2"
+  // Se wcit for 3 ou 7, é porque nas linhas contem CFOP de operação com exterior
+} else if (inList(wcit, ["3", "7"])) {
+  widDest = "3"
+  wexterior = true
+}
+// ENDREGION
+
+//REGION
+//Objetivo: Obter os dados do emitente da nota e armazena-los em variaveis
+// Obtem os dados do emitente da nota
+wbent = edoc_mc_get_bent_fn("*", wrow.iorg.trim(), wrow.iuorgt.trim(), wrow.iuorg.trim())
+
+// Obtem os dados do municipio do emitente
+wbgeo = edoc_mc_get_bgeo_fn(wbent)
+
+// Dados do emitente da nota
+// Para atender o novo CNPJ Alfanumerico, trocamos a regex antiga "[^0-9]" pela nova "[^A-Z0-9]".
+wCNPJ_C02 = wbent.tidfisc.trim().replaceAll("[^A-Z0-9]", "")
+wxNome_C03 = wbent.nnomel.trim().replaceAll("&", "E")
+xFant_C04 = wbent.nent.trim().replaceAll("&", "E")
+wxLgr_C06 = wbent.tmorad.trim()
+wnro_C07 = wbent.tmail.trim()
+wxCpl_C08 = ""
+wxBairro_C09 = wbent.tlocal.trim()
+wcMun_C10 = wbgeo.wcidade.trim()
+wxMun_C11 = wbent.tmunicip.trim()
+wUF_C12 = wbent.testado.trim()
+wCEP_C13 = formatNumber(wbent.icpt.replaceAll("[^0-9]", ""), "N00000000")
+wcPais_C14 = wbgeo.wpais.trim()
+wxPais_C15 = wbent.tpais.trim()
+wfone_C16 = ""
+wIE_C17 = wbent.tidfisc2.trim().replaceAll("[^0-9]", "")
+//ENDREGION
+
+if (inList(wUF_C12, ["CE"])) {
+  wtemICMSEfetivo = false
+}
+
+// REGION
+// Armazena os dados do destinatario da nota na variavel wbent2
+wbent2 = edoc_mc_get_destinatario_fn(wrow)
+
+// Obtem os dados do municipio do destinatario
+wbgeo2 = edoc_mc_get_bgeo_fn(wbent2)
+
+// Indicador da IE do Destinatário
+// 1=Contribuinte ICMS (informar a IE do destinatário);
+// 2=Contribuinte isento de Inscrição no cadastro de Contribuintes do ICMS;
+// 9=Não Contribuinte, que pode ou não possuir Inscrição Estadual no Cadastro de Contribuintes do ICMS.
+windIEDest_E16a = "1"
+
+// Verifica se no cadastro do destinatario o campo de IE está preenchido
+// como ISENTO, se estiver então atribui 0
+if (inList(wbent2.tidfisc2.trim().toUpperCase(), ["ISENTO", ""])) windIEDest_E16a = "9";
+
+// Se o destinatario for do exterior informa 9 no
+// indicador do IE do destinatário
+if (wexterior) windIEDest_E16a = "9";
+
+// Variaveis do destiantario da nota
+// Para atender o novo CNPJ Alfanumerico, trocamos a regex antiga "[^0-9]" pela nova "[^A-Z0-9]".
+wCNPJ_E02 = wbent2.tidfisc.replaceAll("[^A-Z0-9]", "")
+wCPF_E03 = wbent2.tidfisc.replaceAll("[^A-Z0-9]", "")
+widEstrangeiro_E03a = ""
+wxNome_E40 = wbent2.nnomel.trim().replaceAll("&", "E")
+wxLgr_E06 = wbent2.tmorad.trim()
+wnro_E07 = wbent2.tmail.trim()
+wxCpl_E08 = wbent2.tcend.trim()
+wxBairro_E09 = wbent2.tlocal.trim()
+wcMun_E10 = wbgeo2.wcidade.trim()
+wxMun_E11 = wbent2.tmunicip.trim()
+wUF_E12 = wbent2.testado.trim().toUpperCase()
+wCEP_E13 = formatNumber(wbent2.icpt.replaceAll("[^0-9]", ""), "N00000000")
+wcPais_E14 = wbgeo2.wpais.trim()
+wxPais_E15 = wbent2.tpais.trim()
+wfone_E16 = ""
+wIE_E17 = wbent2.tidfisc2.replaceAll("[^0-9]", "")
+wemail_E19 = wbent2.temail.trim()
+
+//**********************************
+//Inserir Inscrção Estadual de Substituto de acordo com o estado.
+if ((inList(wrow.cit.trim(), ["6102", "6108"]) && windIEDest_E16a == "9") || (inList(wrow.cit.trim(), ["6152"]) && wUF_E12.toUpperCase() == "PA")) {
+  wsel = " select nctx "
+  wsel += " from bctxt0 with(nolock) "
+  wsel += " where ictx = 'IEST*UF' "
+  wsel += " and  ivalk = '" + wrow.iuorg.trim() + "' "
+  wsel += " and   xord = '" + wUF_E12 + "' "
+  wsel += " and   cst  = 'E0' "
+  println(wsel); flush()
+  wIEST = getSQLValue(wsel).replaceAll("[^0-9]", "")
+}
+
+//**********************************
+
+if (!wemail_E19.matches("^[_A-Za-z0-9-+]+(.[_A-Za-z0-9-]+)@[A-Za-z0-9-]+(.[A-Za-z0-9]+)(.[A-Za-z]{2,})$")) {
+  wemail_E19 = ""
+}
+
+// TODO: resolver essa gabis
+if (wIE_E17 == "" || wCNPJ_E02.length() < 14) {
+  windIEDest_E16a = "2"
+}
+
+// Verifica se o número da residencia do destinatario esta preenchida,
+// se nao estiver aborta a operação e avisa ao usuario
+if (wnro_E07 == "") {
+  throwError("Operação Cancelada. Cadastre o número do logradouro do destinatário.")
+}
+
+// Se o destinatario da nota for do exterior, atribui a aplica algumas regras as variaveis do destinatario
+if (wexterior) {
+
+  // O valor do cep passa a ser vazio
+  wCEP_E13 = ""
+
+  // Limpa a variavel do CNPJ do destinatario
+  wCNPJ_E02 = ""
+
+  // Limpa a variavel do CPF do destinatario
+  wCPF_E03 = ""
+
+} else {
+
+  // Veririca se o CEP do destinatario está vazio
+  if (wCEP_E13 == "") {
+    wmsg = "Operação Cancelada. Terceiro " + wrow.ientt.trim() + " - " + wrow.ient.trim() + ", com CEP inválido."
+    throwError(wmsg)
+  }
+
+  // Se a Inscrição Estadual estiver vazia e o CNPJ/CPF > 11, 
+  // exige o preenchimento da Inscrição Estadual do destinatario
+  if (wIE_E17 == "" && wCNPJ_E02.length() > 11) {
+    wmsg = "Operação Cancelada. Inscrição Estadual inválida para terceiro: "
+    wmsg += wrow.ientt.trim() + " - " + wrow.ient.trim() + "."
+    throwError(wmsg)
+  }
+
+}
+
+// Atribui flag para destacar o ICMS
+if ((wrow.cit.trim().substring(0, 1) == "6") && (wCNPJ_E02.length() == 14) && (wbent2.tidfisc2.trim() != "ISENTO")) {
+  wflagicms = true
+}
+
+// REGION
+// Objetivo: Obter o tipo de emissão da nota fiscal e validar se o tipo informado é valido
+// Tipo de Emissão da NF-e
+// 1=Normal
+// 6=Contingência SVC-AN (SEFAZ Virtual de Contingência do AN);
+// 7=Contingência SVC-RS (SEFAZ Virtual de Contingência do RS);
+wtpEmis = getTparms("BCTX*PARAM*NFE", "TPEMIS*" + wrow.iorg.trim() + "*" + wrow.iuorg.trim())
+if (!inList(wtpEmis.trim(), ["1", "6", "7"])) {
+  throwError("Tipo de Emissão inválido. Tipo válidos: 1 (produção), 2 (Homologação)")
+}
+// ENDREGION
+
+
+// REGION
+// Objetivo: Obter a identificação do ambiente de emissao das notas fiscais
+//           e validar se a identificação informada é valida
+// Identificação do Ambiente
+// 1=Produção; 
+// 2=Homologação
+wtpAmb = getTparms("BCTX*PARAM*NFE", "AMBIENTE*" + wrow.iorg.trim() + "*" + wrow.iuorg.trim())
+if (!inList(wtpAmb, ["1", "2"])) {
+  throwError("Tipo de Emissão inválido. Tipo válidos: 1 (produção), 2 (Homologação)")
+}
+// ENDREGION
+
+// REGION
+// Objetivo: Obter a forma de pagamento.
+
+// Indicador da forma de pagamento
+// 0=Pagamento à vista
+// 1=Pagamento a prazo
+// 2=Outros
+windPag = "0"
+if (wrow.cdocp.trim() != "00") { windPag = "1" }
+// ENDREGION
+
+// REGION
+// Objetivo: Obter o tipo Tipo de Operação.
+// 0=Entrada;
+// 1=Saída
+wtpNF = "1"
+
+if (wrow.cit.substring(0, 1) == "1" || wrow.cit.substring(0, 1) == "2" || inList(wrow.cit.trim().substring(0, 1), ["3"])) {
+  wtpNF = "0"
+}
+//ENDREGION
+
+// Obter a descrição da Natureza da Operação
+wnatOp = edoc_mc_get_natop_fn(wrow)
+
+// Código da UF do emitente do Documento Fiscal
+wcUF = wbgeo.westado.trim()
+
+// Código Numérico que compõe a Chave de Acesso
+//wcNF = formatNumber(INT(wrow.idoc.trim().substring(4,wrow.idoc.trim().length())),"N00000000")
+wcodigoNumerico = INT(wrow.idoc.trim().substring(4, wrow.idoc.trim().length())) + 1
+wcNF = formatNumber(wcodigoNumerico, "N00000000")
+
+// Código do Modelo do Documento Fiscal
+wmod = "55"
+
+// Número do Documento Fiscal
+wnNF = INT(wrow.idoc.trim().substring(4, wrow.idoc.trim().length())).toString()
+
+// Código do município de ocorrência do fato gerador do ISSQN
+wcMunFG = wbgeo.wcidade.trim()
+
+// Formato do DANFE
+// 1=DANFE normal, Retrato;
+wtpImp = "1"
+
+// Processo de emissão da NF-e
+// 0=Emissão de NF-e com aplicativo do contribuinte;
+// 1=Emissão de NF-e avulsa pelo Fisco;
+// 2=Emissão de NF-e avulsa, pelo contribuinte com seu certificado digital, através do site do Fisco;
+// 3=Emissão NF-e pelo contribuinte com aplicativo fornecido pelo Fisco.
+wprocEmi = "0"
+
+// Versão do Processo de emissão da NF-e
+wverProc = "3.10"
+
+// Data e hora de emissão do Documento Fiscal
+wdhEmi = wrow.ddoc.trim() + "T" + wtime + "-03:00"
+
+// Data e hora de Saída ou da Entrada da Mercadoria/Produto
+wdhSaiEnt = wrow.ddoces.trim() + "T" + wtime + "-03:00"
+
+// Indica operação com Consumidor final
+// 0=Normal;
+// 1=Consumidor final;
+if ((wCNPJ_E02.length() == 14) && !inList(wbent2.tidfisc2.trim().toUpperCase(), ["ISENTO", ""])) {
+  windFinal = "0"
+} else {
+  windFinal = "1"
+}
+
+// Indicador de presença do comprador no estabelecimento comercial no momento da operação
+// 0=Não se aplica (por exemplo, Nota Fiscal complementar ou de ajuste);
+// 1=Operação presencial;
+// 2=Operação não presencial, pela Internet;
+// 3=Operação não presencial, Teleatendimento;
+// 4=NFC-e em operação com entrega a domicílio;
+// 9=Operação não presencial, outros.
+windPres = "9"
+
+if (wrow.idoct2.trim() == "NPV") {
+
+  wsel = "Select a.ctcf "
+  wsel += "  From ddoct0 a "
+  wsel += " Where a.iorg  = '" + wrow.iorg.trim() + "' "
+  wsel += "   and a.idoct = '" + wrow.idoct2.trim() + "' "
+  wsel += "   and a.idoc2  = '" + wrow.idoc2.trim() + "' "
+  wctcf = getSQLValue(wsel).trim()
+
+  if (inList(wctcf.trim(), ["VX-WEB", "VX-CHA"])) {
+    windPres = "2"
+  } else if (inList(wctcf.trim(), ["DEMO", "DOACAO", "PERDA"])) {
+    windPres = "0"
+  } else if (wctcf.trim() == "VX-CON") {
+    windPres = "1"
+  }
+}
+
+// REGION
+// Objetivo: Obter a finalidade da NF-e.
+// Finalidade de emissão da NF-e
+// 1=NF-e normal;
+// 2=NF-e complementar;
+// 3=NF-e de ajuste;
+// 4=Devolução de mercadoria.
+wfinNFe = edoc_mc_get_finnfe_fn(wrow)
+// ENDREGION
+
+// REGION
+// Objetivo: Calcular a chave da NF-e, obter o digito verificador
+//           e salvar a chave nas extensoes
+wAnoMes = wrow.ddoc.trim().substring(2, 4) + wrow.ddoc.trim().substring(5, 7)
+
+// Faz o calculo da chave de acesso da nota fiscal
+wId = wNFe.calculaChaveNFe200(wcUF, wAnoMes, wCNPJ_C02, wmod, wserie, wnNF, wtpEmis, wcodigoNumerico.toString())
+//wId = wNFe.calculaChaveNFe200(wcUF, wAnoMes, wCNPJ_C02, wmod, wserie, wnNF, wtpEmis, wnNF)
+
+// obtem o digito verificador da chave de acesso da nota fiscal
+wcDV = wId.substring(wId.length() - 1, wId.length())
+
+wintegrador = getTparms("BCTX*PARAM*NFE", "INTEGRADOR*" + wrow.iorg.trim() + "*" + wrow.iuorg.trim()).trim()
+if (wintegrador.toUpperCase() != "DFEAPI") {
+
+  oManager = edoc_mc_get_http_service_fn(wrow, "nfe")
+  wnum = INT(wrow.idoc.split("/")[1].trim())
+
+  //salva a chave da nota nas extensoes
+  wIdExt = x_mc_select_extension_fn("c", "DDOCTX", wzk, "widnfe").trim()
+
+  if (wIdExt.trim() == "") {
+
+    x_mc_update_extension_fn("c", "DDOCTX", wzk, "widnfe", wId)
+
+  } else {
+
+    wQueryString = "?Campos=chave,dtcadastro&"
+    wQueryString += "Filtro=numero='" + wnum + "'+and+chave='" + wIdExt + "'"
+    //wQueryString += "+and+dtcadastro='" + MDate(wrow.ddoc.trim()).setFormat("dd/MM/yyyy").toString() + "'"
+    wQueryString += "&Ordem=Handle%20asc"
+    wPost = oManager.doRequestGet("consulta" + wQueryString).trim()
+
+    println("0 wQueryString>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" + wQueryString); flush();
+    println("0 wQueryString>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" + wPost); flush();
+
+    if (!wPost.contains("Nenhum")) {
+
+      dtcadastro = wPost.split(",")[1]
+      dtcadastro = padRight(dtcadastro, 10).substring(0, 10).trim()
+      println("0 wQueryString>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" + dtcadastro); flush();
+
+      dtnota = MDate(wrow.ddoc.trim()).setFormat("dd/MM/yyyy").toString()
+
+      if (dtcadastro == dtnota) {
+        wId = wIdExt
+      }
+    }
+
+  }
+
+  //Ajuste temporario.
+  //monta a querystring da consulta
+  wQueryString = "?Campos=chave&"
+  wQueryString += "Filtro=numero='" + wnum + "'"
+  wQueryString += "+and+dtcadastro='" + MDate(wrow.ddoc.trim()).setFormat("dd/MM/yyyy").toString() + "'"
+  wQueryString += "&Ordem=Handle%20asc"
+
+  println("0 wQueryString>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" + wQueryString); flush();
+
+  //aqui comunicar com manager edoc
+  wPost = oManager.doRequestGet("consulta" + wQueryString).trim()
+
+  if (!wPost.contains("Nenhum") && wPost.length() == 44 && wPost != wId) {
+    wId = wPost
+  }
+}
+
+// ENDREGION
+
+// REGION
+// Indicador de intermediario na venda
+windIntermed = ""
+
+// Dados do intermediador(marketplace) da venda
+wCNPJ_YB02 = ""
+widCadIntTran_YB03 = ""
+
+if (wtpNF == "1" && wfinNFe == "1" && inList(windPres, ["2", "3", "4", "9"])) {
+  windIntermed = "0"
+
+  wsel = "select bent.tidfisc as cnpj_yb02, "
+  wsel += "       bctx.ttext2 as idcadinttran_yb03 "
+  wsel += "  from bctxt0 bctx "
+  wsel += " inner join bentt0 bent on bent.ientt = 'EM' and bent.ient = bctx.ivalk "
+  wsel += " where bctx.ictx = 'BCTX*MKT*CANAL' "
+  wsel += "   and bctx.ivalk = '" + wrow.ient2 + "'"
+  winfintermedRow = getRow("BENT", wsel)
+  if (winfintermedRow.wdcode != 100) {
+    windIntermed = "1"
+
+    // Para atender o novo CNPJ Alfanumerico, trocamos a regex antiga "[^0-9]" pela nova "[^A-Z0-9]".
+    wCNPJ_YB02 = winfintermedRow.cnpj_yb02.replaceAll("[^A-Z0-9]", "")
+    widCadIntTran_YB03 = winfintermedRow.idcadinttran_yb03
+  }
+}
+// ENDREGION
+
+cursor.commitWork()
+cursor.beginWork()
+
+// Inicia a geração do XML da nota fiscal
+wlinha += "formato=xml" + EOL
+wlinha += "<infNFe Id=" + char(34) + "NFe" + wId + char(34) + " versao=" + char(34) + wversao + char(34) + ">"
+wlinha += "<ide>"
+wlinha += "<cUF>" + wcUF + "</cUF>"
+wlinha += "<cNF>" + wcNF + "</cNF>"
+wlinha += "<natOp>" + wnatOp + "</natOp>"
+wlinha += "<mod>" + wmod + "</mod>"
+wlinha += "<serie>" + wserie + "</serie>"
+wlinha += "<nNF>" + wnNF + "</nNF>"
+wlinha += "<dhEmi>" + wdhEmi + "</dhEmi>"
+wlinha += "<dhSaiEnt>" + wdhSaiEnt + "</dhSaiEnt>"
+wlinha += "<tpNF>" + wtpNF + "</tpNF>"
+wlinha += "<idDest>" + widDest + "</idDest>"
+wlinha += "<cMunFG>" + wcMunFG + "</cMunFG>"
+wlinha += "<tpImp>" + wtpImp + "</tpImp>"
+wlinha += "<tpEmis>" + wtpEmis + "</tpEmis>"
+wlinha += "<cDV>" + wcDV + "</cDV>"
+wlinha += "<tpAmb>" + wtpAmb + "</tpAmb>"
+wlinha += "<finNFe>" + wfinNFe + "</finNFe>"
+wlinha += "<indFinal>" + windFinal + "</indFinal>"
+wlinha += "<indPres>" + windPres + "</indPres>"
+if (wtpNF == "1" && wfinNFe == "1" && inList(windPres, ["2", "3", "4", "9"])) {
+  wlinha += "<indIntermed>0</indIntermed>"
+}
+wlinha += "<procEmi>" + wprocEmi + "</procEmi>"
+wlinha += "<verProc>" + wverProc + "</verProc>"
+
+// Se o tipo de emissão for diferente de 1 (Normal),
+// então informa os dados referente a contingencia
+if (wtpEmis != "1") {
+  wxjust = getTparms("BCTX*PARAM*NFE", "NFE*CONT*SCAN*JUST").trim()
+  wdhCont = getTparms("BCTX*PARAM*NFE", "NFE*CONT*SCAN*DATA*HORA").trim()
+  wlinha += "<dhCont>" + wdhCont + "</dhCont>"
+  wlinha += "<xJust>" + wxjust + "</xJust>"
+}
+
+// Se a finalidade da nota for diferente de 1 (Normal)
+// entao informa os dados de referencia que pode ser a chave
+// de uma nota de devolução ou dados de uma cupom fiscal.
+if (wfinNFe != "1") {
+
+  wrefNFe = x_mc_select_extension_fn("c", "DDOCTX", wzk, "wrefnfe").trim()
+  wnECF = x_mc_select_extension_fn("c", "DDOCTX", wzk, "wnecf").trim()
+  wnCOO = x_mc_select_extension_fn("c", "DDOCTX", wzk, "wncoo").trim()
+
+  wlinha += "<NFref>"
+
+  // Se existe chave de nota de referencia, entao informa a chave da nota,
+  // senão, informa os dados do cupom fiscal
+  if (wrefNFe != "") {
+    wlinha += "<refNFe>" + wrefNFe + "</refNFe>"
+  } else {
+    if (wnECF == "" || wnCOO == "") {
+      wmsg = "A finalidade do documento requer a chave da NF-e ou "
+      wmsg += "dados de referência do cupom fiscal (Número do ECF e COO) "
+      wmsg += "informados nas extensões."
+      throwError(wmsg)
+    }
+    wlinha += "<refECF>"
+    wlinha += "<mod>2D</mod>"
+    wlinha += "<nECF>" + wnECF + "</nECF>"
+    wlinha += "<nCOO>" + wnCOO + "</nCOO>"
+    wlinha += "</refECF>"
+  }
+  wlinha += "</NFref>"
+}
+
+wlinha += "</ide>"
+
+// Monta os dados do emitente da nota fiscal
+wlinha += "<emit>"
+wlinha += "<CNPJ>" + wCNPJ_C02 + "</CNPJ>"
+wlinha += "<xNome>" + wxNome_C03 + "</xNome>"
+wlinha += "<xFant>" + xFant_C04 + "</xFant>"
+wlinha += "<enderEmit>"
+wlinha += "<xLgr>" + wxLgr_C06 + "</xLgr>"
+wlinha += "<nro>" + wnro_C07 + "</nro>"
+wlinha += "<xBairro>" + wxBairro_C09 + "</xBairro>"
+wlinha += "<cMun>" + wcMun_C10 + "</cMun>"
+wlinha += "<xMun>" + wxMun_C11 + "</xMun>"
+wlinha += "<UF>" + wUF_C12 + "</UF>"
+wlinha += "<CEP>" + wCEP_C13 + "</CEP>"
+wlinha += "<cPais>" + wcPais_C14 + "</cPais>"
+wlinha += "<xPais>" + wxPais_C15 + "</xPais>"
+wlinha += "</enderEmit>"
+wlinha += "<IE>" + wIE_C17 + "</IE>"
+
+if (wIEST.trim() != "") {
+  wlinha += "<IEST>" + wIEST + "</IEST>"
+}
+
+wlinha += "<CRT>" + wcrt + "</CRT>"
+wlinha += "</emit>"
+
+// Dados do destinatario da nota
+wlinha += "<dest>"
+
+wwcnpj = "<CNPJ></CNPJ>"
+wwcep = ""
+wwcpl = ""
+wwie = ""
+wwemail = ""
+
+
+//Verifica se a filial esta confirma e assim usa o automatismo
+wsel = "Select count(*) "
+wsel += "  From bctxt0 a "
+wsel += " Where a.ictx  = 'BCTX*AUT*FISCAL' "
+wsel += "   and a.ivalk = '" + wrow.iuorg.trim() + "' "
+wsel += "   and a.cst   = 'E0'"
+wautuo = getSQLNumber(wsel)
+
+wutomatismo = false
+//testa se retornou algo
+if (wautuo > 0) {
+  wutomatismo = true
+}
+
+// Se o cliente não for do exterior, preenche os campos do CNPJ
+// ou CPF com os dados do cliente
+if (!wexterior) {
+  wwcnpj = "<CNPJ>" + wCNPJ_E02 + "</CNPJ>"
+  if (wCPF_E03.length() != 14) {
+    wwcnpj = "<CPF>" + wCPF_E03 + "</CPF>"
+  }
+}
+
+// Se o cliente não for do exterior, informa o CEP
+if (!wexterior) {
+  wwcep = "<CEP>" + wCEP_E13 + "</CEP>"
+}
+
+// Se existir complemento do endereço do cliente,
+// informa-o no xml
+if (wxCpl_E08 != "") {
+  wwcpl = "<xCpl>" + wxCpl_E08 + "</xCpl>"
+}
+
+// Se o Indicador da IE do Destinatário for 1, informa a IE do destinatario
+if (windIEDest_E16a == "1")
+  wwie = "<IE>" + wIE_E17 + "</IE>";
+
+
+// Se o email do destinatario for informado, entao informa no XML
+if (wemail_E19 != "")
+  wwemail = "<email>" + wemail_E19 + "</email>"
+
+wwidEstrangeiro = ""
+if (wexterior)
+  wwidEstrangeiro = "<idEstrangeiro>" + widEstrangeiro_E03a + "</idEstrangeiro>"
+
+// Se o ambiente for 1 (Produção), atribui aos campos os valores
+// reais do destinatario da nota fiscal
+if (wtpAmb == "1") {
+
+  // Monta o XML com os dados do destinatario
+  wlinha += wwcnpj
+  wlinha += wwidEstrangeiro
+  wlinha += "<xNome>" + wxNome_E40 + "</xNome>"
+  wlinha += "<enderDest>"
+  wlinha += "<xLgr>" + wxLgr_E06 + "</xLgr>"
+  wlinha += "<nro>" + wnro_E07 + "</nro>"
+  wlinha += wwcpl
+  wlinha += "<xBairro>" + wxBairro_E09 + "</xBairro>"
+  wlinha += "<cMun>" + wcMun_E10 + "</cMun>"
+  wlinha += "<xMun>" + wxMun_E11 + "</xMun>"
+  wlinha += "<UF>" + wUF_E12 + "</UF>"
+  wlinha += wwcep
+  wlinha += "<cPais>" + wcPais_E14 + "</cPais>"
+  wlinha += "<xPais>" + wxPais_E15 + "</xPais>"
+  wlinha += "</enderDest>"
+  wlinha += "<indIEDest>" + windIEDest_E16a + "</indIEDest>"
+  wlinha += wwie
+  wlinha += wwemail
+
+} else {
+
+  wlinha += wwcnpj
+  wlinha += wwidEstrangeiro
+  wlinha += "<xNome>NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL</xNome>"
+  wlinha += "<enderDest>"
+  wlinha += "<xLgr>" + wxLgr_E06 + "</xLgr>"
+  wlinha += "<nro>" + wnro_E07 + "</nro>"
+  wlinha += wwcpl
+  wlinha += "<xBairro>" + wxBairro_E09 + "</xBairro>"
+  wlinha += "<cMun>" + wcMun_E10 + "</cMun>"
+  wlinha += "<xMun>" + wxMun_E11 + "</xMun>"
+  wlinha += "<UF>" + wUF_E12 + "</UF>"
+  wlinha += wwcep
+  wlinha += "<cPais>" + wcPais_E14 + "</cPais>"
+  wlinha += "<xPais>" + wxPais_E15 + "</xPais>"
+  wlinha += "</enderDest>"
+  wlinha += "<indIEDest>" + windIEDest_E16a + "</indIEDest>"
+  wlinha += wwie
+  wlinha += wwemail
+
+}
+
+wlinha += "</dest>"
+
+// Totalizadores das linhas
+wcont = 1
+wtotvbc = 0.00
+wtoticms = 0.00
+wtotprod = 0.00
+wtotpis = 0.00
+wtotcofins = 0.00
+wtotipi = 0.00
+wtotmvaldc = 0.00
+wtotii = 0.00
+wtotdespadu = 0.00
+wtotfrete = 0.00
+//NPP.002005 - INCLUSÃO DE TAG NO XML DA NF-e E NCF-e
+wtoticmsdeson = 0
+wicmsdeson = 0
+
+wsel = "Select sum(a.mvalor) as mvalor, sum(a.mvalim) as mvalim "
+wsel += "  From ddolt0 a, bpsrt0 b  "
+wsel += " Where a.iorg    = '" + wrow.iorg.trim() + "' "
+wsel += "   and a.idoct   = '" + wrow.idoct.trim() + "' "
+wsel += "   and a.idoc    = '" + wrow.idoc.trim() + "' "
+wsel += "   and a.ientt   = '" + wrow.ientt.trim() + "' "
+wsel += "   and a.ient    = '" + wrow.ient.trim() + "' "
+wsel += "   and b.ipst    = 'SRV' "
+wsel += "   and a.iorg    = b.iorg "
+wsel += "   and a.ipsr    = b.ipsr "
+wddolf = getMRow("DDOL", wsel)
+wtotfrete = wddolf.mvalor
+wtotfreteicms = wddolf.mvalim
+wtotfretet = wddolf.mvalor
+wtotfreteicmst = wddolf.mvalim
+wprimeiro = 0
+
+wdinr = ""
+wdidt = ""
+wdilocal = ""
+wdidtdes = ""
+wdiexport = ""
+
+if (wrow.idoct2 == "NPV") {
+  wflagavaria = true
+}
+
+//if ((wrow.cit.trim().substring(0,1) == "3") || (wrow.iuorg.trim() == "F03") || (wrow.iuorg.trim() == "F00") || (wrow.iuorg.trim() == "F09") || ((wrow.iuorg.trim() == "F08") && wnodo != "610")) {
+
+//if ((inList(wrow.cit.trim().substring(0, 1), ["3", "7"])) || (wrow.iuorg.trim() == "F03") || (wrow.iuorg.trim() == "F07") || (wrow.iuorg.trim() == "F00") || (wrow.iuorg.trim() == "F09") || ((wrow.iuorg.trim() == "F08") || (wrow.iuorg.trim() == "F13") && wnodo != "610")) {
+
+//if ((inList(wrow.cit.trim().substring(0,1),["3","7"])) inList(wrow.iuorg.trim() == "F03") || (wrow.iuorg.trim() == "F07")|| (wrow.iuorg.trim() == "F00") || (wrow.iuorg.trim() == "F09") || ((wrow.iuorg.trim() == "F08")|| (wrow.iuorg.trim() == "F13") && wnodo != "610"))
+
+if ((inList(wrow.cit.trim().substring(0, 1), ["3", "7"])) || (!x_mc_get_access3_fn("DDOC0-0373", ""))) {
+
+  // Formulário de Input
+  wdfform = MForm:: getDialogForm(m, "DDOCNFEIMP", "ME", "Importação", 3)
+  wdfform.setEnt(m.getEnt())
+  wdfform.setRow(getMRow("DDOC"))
+  wdfform.setAction("VALIDATE_FORM")
+
+  wqvol = 1.00
+  wsel2 = "SELECT d2.zk FROM ddoct0 d INNER JOIN ddoct0 d2 ON d.idoct2 = d2.idoct and d.idoc2 = d2.idoc and d.zk=" + wrow.zk
+  wzk = getSQLNumber(wsel2)
+
+  if (wzk < 1) {
+    wsel = " SELECT d2.zk  "
+    wsel += " FROM ddoct0 d  "
+    wsel += " INNER JOIN ddoct0 d2 "
+    wsel += " on  d2.idoct = 'NPV' "
+    wsel += " and d2.idoct2 = d.idoct2 "
+    wsel += " and d2.idoc2  = d.idoc2  "
+    wsel += " where d.zk=" + wrow.zk
+    println(wsel); flush()
+    wzk = getSQLNumber(wsel)
+  }
+
+  wqvol = x_mc_select_extension_fn("n", "DDOCTX", wzk, "wqvol")
+
+  if (wqvol <= 1) {
+    wsel = "SELECT b.mvalor "
+    wsel += "  FROM ddoct0 a "
+    wsel += "         JOIN ddoet0 b "
+    wsel += "           ON a.idoct = b.idoct "
+    wsel += "          AND a.idoc  = b.idoc "
+    wsel += " WHERE b.cdoe  = 'EM'"
+    wsel += " AND a.idoct = '" + wrow.idoct2.trim() + "' "
+    wsel += " AND a.idoc  = '" + wrow.idoc2.trim() + "' "
+    wsel += " ORDER BY b.zhst DESC "
+    x = getRows("DDOC", wsel)
+    if (x.size() > 0) {
+      wqvol = x.elementAt(0).mvalor
+    }
+  }
+
+  wdfform.wqvol = wqvol
+  wdfform.wespecie = "VOL"
+  wdfform.wpesol = 0.00
+  wdfform.wpesob = 0.00
+  wdfform.ientt = "FN"
+
+  wient = ""
+  wccl = ""
+
+  if (wrow.idoct2.trim() == "NPV") {
+
+    wsel = " Select a.* "
+    wsel += "  From ddoct0 a with(nolock) "
+    wsel += " Where a.iorg   = '" + wrow.iorg.trim() + "' "
+    wsel += "   and a.idoct  = '" + wrow.idoct2.trim() + "' "
+    wsel += "   and a.idoc   = '" + wrow.idoc2.trim() + "' "
+    println(wsel); flush()
+    wnpv = getRow("DDOC", wsel)
+
+    if (wnpv.wdcode == 100) {
+      wsel = "Select a.* "
+      wsel += "  From ddoct0 a with(nolock) "
+      wsel += " Where a.iorg   = '" + wrow.iorg.trim() + "' "
+      wsel += "   and a.idoct2 = '" + wrow.idoct2.trim() + "' "
+      wsel += "   and a.idoc2  = '" + wrow.idoc2.trim() + "' "
+      wsel += "   and a.idoct  = 'NPV' "
+      wsel += "   and a.iuorg  = '" + wrow.iuorg.trim() + "' "
+      println(wsel); flush()
+      wnpv = getRow("DDOC", wsel)
+    }
+
+    if (wnpv.wdcode != 100) {
+
+      wsel = " select d.zchar "
+      wsel += " from ddoctx d WITH ( NOLOCK ) "
+      wsel += " where d.zkent = " + wnpv.zk
+      wsel += " AND d.zcomp = 'FN_trans' "
+      println(wsel); flush()
+      wient = getSQLValue(wsel).trim()
+
+      if (wient == "") {
+
+        wsel = " SELECT  a.ttext10 "
+        wsel += " FROM    sinct0 a WITH ( NOLOCK ) "
+        wsel += "         INNER JOIN ddoct0 b WITH ( NOLOCK ) ON a.iorg = b.iorg "
+        wsel += "                                                AND a.ttext1 = b.idoct "
+        wsel += "                                                AND a.ttext2 = b.idoc "
+        wsel += "                                                AND a.c2 = '*' "
+        wsel += " WHERE   b.zk = " + wnpv.zk + " "
+        wsel += " and a.tipo = 'COTF' "
+        println(wsel); flush()
+        wient = getSQLValue(wsel).trim()
+
+        if (wient == "") {
+          wsel = " select b.ient "
+          wsel += " from bentt0 b with(nolock) "
+          wsel += "   inner join ddozt0 d with(nolock) "
+          wsel += "   on d.zk = " + wnpv.zk + " "
+          wsel += "   inner join bfrtt0 c with(nolock) "
+          wsel += "   on c.zk = d.zkaux "
+          wsel += "   where  b.ientt = 'FN' "
+          wsel += "    and   b.ient  = c.ient "
+          println(wsel); flush()
+          wient = getSQLValue(wsel).trim()
+        }
+      }
+
+      wsel = " SELECT  count(*) "
+      wsel += " FROM    sinct0 a WITH ( NOLOCK ) "
+      wsel += "         INNER JOIN ddoct0 b WITH ( NOLOCK ) ON a.iorg = b.iorg "
+      wsel += "                                                AND a.ttext1 = b.idoct "
+      wsel += "                                                AND a.ttext2 = b.idoc "
+      wsel += "                                                AND a.c2 = '*' "
+      wsel += " WHERE   b.zk = " + wnpv.zk + " "
+      wsel += " and a.tipo = 'COTF' "
+      println(wsel); flush()
+      wfrt = getSQLNumber(wsel)
+
+      //Tipo de Frete
+      if (wfrt != 0 || wnpv.ctcf.trim() == "VX-WEB") {
+        wccl = "CIF"
+      } else if (wfrt == 0 || inList(wnpv.iixp2.trim(), ["01", "05"])) {
+        wccl = "FOB"
+      }
+    }
+  }
+
+  wnent = ""
+
+  if (wient != "") {
+    wnent = getSQLValue("select nent from bentt0 with(nolock) where ientt = 'FN' and ient = '" + wient + "' ")
+  }
+
+  wdfform.ient = wient
+  wdfform.nent = wnent
+  wdfform.wplaca = ""
+  wdfform.wuf = ""
+  wdfform.wccl = wrow.ccl.trim()
+  wdfform.wdinr = ""
+  wdfform.wdidt = ""
+  wdfform.wdilocal = ""
+  wdfform.wdidtdes = ""
+  wdfform.wdiexport = ""
+
+  wsel = " SELECT  sum(b.qpeso * a.qpsr) qpeso "
+  wsel += " FROM   ddolt0 a "
+  wsel += "        INNER JOIN bpsrt0 b ON  a.iorg = b.iorg AND a.ipsr = b.ipsr AND a.ipsrlp = b.ipsrlp "
+  wsel += " Where a.iorg    = '" + wrow.iorg.trim() + "' "
+  wsel += "   and a.idoct   = '" + wrow.idoct.trim() + "' "
+  wsel += "   and a.idoc    = '" + wrow.idoc.trim() + "' "
+  wsel += "   and a.ientt   = '" + wrow.ientt.trim() + "' "
+  wsel += "   and a.ient    = '" + wrow.ient.trim() + "' "
+  wqpeso = getSQLNumber(wsel)
+
+  wdfform.wpesol = wqpeso
+  wdfform.wpesob = wqpeso
+
+  expandForm(wdfform, false)
+
+  println(wrow.iuorg + " --- " + wrow.idoct2); flush()
+
+  if ((!inList(wrow.iuorg.trim(), ["F03", "F07", "F00"]) && wrow.idoct2.trim() != "NTS")) {
+    cursor.commitWork()
+    wdfform.showForm()
+    cursor.beginWork()
+    if (wdfform.getLastCmd().equals("CLOSEWINDOW")) { throwError("Operação Cancelada.") }
+  }
+
+  wqvol = wdfform.wqvol
+  wespecie = wdfform.wespecie.trim()
+  wpesol = wdfform.wpesol
+  wpesob = wdfform.wpesob
+  wnome = wdfform.nent.trim()
+  wientttra = wdfform.ientt.trim()
+  wienttra = wdfform.ient.trim()
+  wplaca = wdfform.wplaca.trim()
+  wuf = wdfform.wuf.trim()
+  wccl = wdfform.wccl.trim()
+  wdinr = wdfform.wdinr.trim()
+  wdidt = wdfform.wdidt.trim()
+  wdilocal = wdfform.wdilocal.trim()
+  wdidtdes = wdfform.wdidtdes.trim()
+  wdiexport = wdfform.wdiexport.trim()
+
+
+  if (wrow.cr.trim() == "VX") {
+    wcf = ""
+    wflagfrete = false
+    wdf = "FORA"
+    if (wrow.cit.substring(0, 1) == "5") {
+      wdf = "DENTRO"
+    }
+
+    wsel = " select a.qqcoef1 "
+    wsel += "   from bctxt0 a with (nolock) "
+    wsel += "  where a.ictx  = 'BCTX*FRT*" + wbent.testado.toUpperCase().trim() + "*" + wdf + "' "
+    wsel += "    and a.ivalk = 'VALOR*LIMITE*CIF' "
+    wvalorlimitecif = getSQLNumber(wsel)
+
+    if (wrow.mvalor < wvalorlimitecif && wccl == "CIF") {
+      wcf = "CIF"
+      wflagfrete = true
+    }
+
+    if (wrow.mvalor >= wvalorlimitecif && wccl.trim() == "FOB") {
+      wcf = "FOB"
+      wflagfrete = true
+    }
+
+    if (wflagfrete) {
+      //Pede Confirmação
+      wmsg1 = "Pedidos para " + wdf + " do estado o valor limite para pedidos " + wcf + " é " + wvalorlimitecif
+      wmsg2 = "Confirmar operação?"
+      cursor.commitWork()
+      i = showError("MIN-EEEE01Q", [wmsg1, wmsg2])
+      cursor.beginWork()
+      if (i != 0) {
+        throwError("Operação Cancelada")
+      }
+    }
+  }
+}
+
+//NPP.001652 PARAMETRIZAÇÃO VENDA DE CELULAR F03 E F07
+//NPP.001774 - CADASTRO DE REGRAS TRIBUTÁRIAS F59 
+//verifica se tem iregra de filial para icms
+wparfilial = ""
+wparfilial = x_mc_regra_auto_fil_imp_fn(wrow, "", "", "", "", "")
+
+wvendaicmsst = 0
+if (wparfilial != "") {
+  wzk = formatNumber(wrow.zk, "N00000000000000")
+  wvendaicmsst = x_mc_select_extension_fn("n", "ddoctx", wzk, "vendaicmsst")
+}
+
+wsel = "Select a.idol, a.ipsr, a.qpsr, a.mvalun, a.mvalim2, a.mvalor, a.qbfisc, a.pi, a.pi2, a.ndoc, a.ci, a.cci, a.iuorg, a.iuorg2, b.ipst,a.iixp,a.zk, "
+wsel += "       a.mvalim, a.cit,  a.mvaldc, a.cfpsr2, b.cstat2, b.npsr, b.cur, b.cfpsr, b.cfpsr2 as wimpipi, a.irct1,a.cfpsr as cfpsrl, a.cr, a.ctcf,a.idoct, "
+wsel += "	cbarras = (select top 1 ipsr2 from bpsst0 where iorg = 'TEC' and ipsr = a.ipsr and cpss in ('SI','EA') order by zk desc) "
+wsel += "  From ddolt0 a, bpsrt0 b  "
+wsel += " Where a.iorg    = '" + wrow.iorg.trim() + "' "
+wsel += "   and a.idoct   = '" + wrow.idoct.trim() + "' "
+wsel += "   and a.idoc    = '" + wrow.idoc.trim() + "' "
+wsel += "   and a.ientt   = '" + wrow.ientt.trim() + "' "
+wsel += "   and a.ient    = '" + wrow.ient.trim() + "' "
+//TICKET 13722 - CAMILA MOURA - 03/01/2019
+//if (wrow.ctcf.trim() != "5152C") { wsel += "   and a.qpsr    > 0 " }
+if ((wrow.ctcf.trim() == "5152C") || (wvendaicmsst > 0)) {
+  wsel += "   and a.mvalor > 0.02"
+} else { wsel += "   and a.qpsr    > 0 " }
+
+wsel += "   and b.ipst    <> 'SRV' "
+wsel += "   and a.iorg    = b.iorg "
+wsel += "   and a.ipsr    = b.ipsr "
+
+//TICKET 13722 - CAMILA MOURA - 03/01/2019
+if ((wrow.ctcf.trim() == "5152C") || wvendaicmsst > 0) {
+  wsel += " order by a.idol, a.ipsr, a.qpsr, a.iixp "
+} else {
+  wsel += " order by a.idol, a.iixp  " //b.cfpsr, a.mvalor DESC "
+}
+//wsel += " order by a.idol, a.iixp" //b.cfpsr, a.mvalor DESC "
+vddol = getRows("DDOL", wsel)
+
+wvbcst = 0.00; wpICMSST = 0.00; wvICMSST = 0.00;
+wnumlinha = 1;
+
+foreach wddol(vddol.elements()) {
+
+  wvendaicmsdest = 0
+  wvendalinhast = 0
+  //NPP.001652 PARAMETRIZAÇÃO VENDA DE CELULAR F03 E F07
+  wzklinha = formatNumber(wddol.zk, "N00000000000000")
+  if (wparfilial != "") {
+    //regra automatismo
+    wvendaicmsdest = x_mc_select_extension_fn("n", "ddoltx", wzklinha, "vendaicmsdest")
+    println("1 wvendaicmsdest " + wvendaicmsdest); flush();
+  }
+  if (wvendaicmsst > 0) {
+    // -- linha ST somar valores para danfe
+    wvendalinhast = x_mc_select_extension_fn("n", "ddoltx", wzklinha, "vendalinhast")
+    println("2 wvendalinhast " + wvendalinhast); flush();
+  }
+
+  wsel = "SELECT qqcoef1 FROM bctxt0 WHERE ictx = 'NTS*TRANS*TRIB' and tparms <> ''"
+  wsel += "and ivalk = '" + wrow.iuorg.trim() + "*DENTRO'  "
+  wsel += "and nctx = '" + wddol.ipst.trim() + "' and tparms = '" + wddol.cstat2.trim() + "' and tclass = 'ST' and cst = 'E0'  "
+  wst = getSQLNumber(wsel)
+  wimprimest = false
+  if ((wst > 0) || (wvendaicmsst > 0)) {
+    //if (wst > 0) {
+    wimprimest = true
+  }
+
+  //************************************************************************************************************************************************************ 
+  //INICIO - TICKET 13722 - CAMILA MOURA - 19/12/2018
+  //if (wrow.ctcf.trim() == "5152C" && wddol.qpsr == 0) {
+  if ((wrow.ctcf.trim() == "5152C" && wddol.qpsr == 0) || (wvendaicmsst > 0 && wddol.qpsr == 0)) {
+    wsel = "Select round(sum(a.mvalor),2) "
+    wsel += "  From ddolt0 a  "
+    wsel += " Where a.zk   = " + wddol.zk + " "
+    wsel += "   and a.iuorg2 =  '" + wddol.iuorg2.trim() + "' " //(HL)
+    wddolst = getSQLNumber(wsel)
+    if (wddolst > 0) {
+      wvbcst = round((wddol.mvalor - wddol.mvalim2) * 1.30, 2)
+      wpICMSST = 30
+      wvICMSST = wddolst
+    }
+    continue
+  }
+  //************************************************************************************************************************************************************ 
+  //FIM - TICKET 13722 - CAMILA MOURA - 19/12/2018	
+
+  wlinha += "<det nItem=" + char(34) + wcont.toString() + char(34) + ">"
+  wlinha += "<prod>"
+  wlinha += "<cProd>" + wddol.ipsr + "</cProd>"
+
+  if ((wddol.cbarras.trim() != "") && (wddol.cbarras.trim() != wddol.ipsr.trim() + "00000000")) {
+    wlinha += "<cEAN>" + wddol.cbarras.trim() + "</cEAN>"
+  } else {
+    wlinha += "<cEAN>SEM GTIN</cEAN>"
+  }
+
+  if (inList(wrow.cit.trim().substring(0, 1), ["3", "7"])) {
+
+    wsel = "Select a.* "
+    wsel += "  From ddolt0 a "
+    wsel += " Where a.iorg    = '" + wrow.iorg.trim() + "' "
+    wsel += "   and a.idoct   = '" + wrow.idoct.trim() + "' "
+    wsel += "   and a.idoc    = '" + wrow.idoc.trim() + "' "
+    wsel += "   and a.ientt   = '" + wrow.ientt.trim() + "' "
+    wsel += "   and a.ient    = '" + wrow.ient.trim() + "' "
+    wsel += "   and a.ipsr    = '" + wddol.ipsr.trim() + "' "
+    wddol2 = getMRow("DDOL", wsel)
+
+    wlinha += "<xProd>" + padRight(x_mc_retira_acento_fn(wddol.npsr.trim()) + " " + x_mc_retira_acento_fn(wddol2.getAssociatedText("ROWTXT")).trim(), 115).substring(0, 115).trim() + "</xProd>"
+
+  } else if ((wrow.cit.trim() == "5556") || (wrow.cit.trim() == "6553")) {
+
+    wsel = "Select a.* "
+    wsel += "  From ddolt0 a "
+    wsel += " Where a.iorg    = '" + wrow.iorg.trim() + "' "
+    wsel += "   and a.idoct   = '" + wrow.idoct.trim() + "' "
+    wsel += "   and a.idoc    = '" + wrow.idoc.trim() + "' "
+    wsel += "   and a.ientt   = '" + wrow.ientt.trim() + "' "
+    wsel += "   and a.ient    = '" + wrow.ient.trim() + "' "
+    wsel += "   and a.ipsr    = '" + wddol.ipsr.trim() + "' "
+    wsel += "   and a.idol    = '" + wddol.idol.trim() + "' "
+    wddol2 = getMRow("DDOL", wsel)
+
+    if (wddol2.getAssociatedText("ROWTXT").equals("")) { showMessage("Linhas do produto sem texto associado.") }
+
+    wlinha += "<xProd>" + padRight(x_mc_retira_acento_fn(wddol2.getAssociatedText("ROWTXT")).trim(), 120).substring(0, 120).trim() + "</xProd>"
+
+  } else if (wddol.ndoc.indexOf("VIVO") != -1) {
+
+    wsel = "Select a.* "
+    wsel += "  From ddolt0 a "
+    wsel += " Where a.iorg    = '" + wrow.iorg.trim() + "' "
+    wsel += "   and a.idoct   = '" + wrow.idoct.trim() + "' "
+    wsel += "   and a.idoc    = '" + wrow.idoc.trim() + "' "
+    wsel += "   and a.ientt   = '" + wrow.ientt.trim() + "' "
+    wsel += "   and a.ient    = '" + wrow.ient.trim() + "' "
+    wsel += "   and a.ipsr    = '" + wddol.ipsr.trim() + "' "
+    wddol2 = getMRow("DDOL", wsel)
+
+    wlinha += "<xProd>" + padRight(x_mc_retira_acento_fn(wddol.npsr.trim()) + " IMEI " + x_mc_retira_acento_fn(wddol2.getAssociatedText("DDOL0-V")).trim(), 120).substring(0, 120).trim() + "</xProd>"
+
+  } else {
+
+    // Quando for NNF de avaria concatenar *** com a descrição 
+    wsel = " select count(d.zk) "
+    wsel += "   from ddoet0 d "
+    wsel += "  where d.iorg  = '" + wrow.iorg.trim() + "' "
+    wsel += "    and d.idoct = '" + wrow.idoct.trim() + "' "
+    wsel += "    and d.idoc  = '" + wrow.idoc.trim() + "' "
+    wsel += "    and d.ientt = '" + wrow.ientt.trim() + "' "
+    wsel += "    and d.ient  = '" + wrow.ient.trim() + "' "
+    wsel += "    and d.cdoe  = 'AVA' "
+    wsel += "    and d.ipro  = '" + wddol.ipsr.trim() + "' "
+    wcount = getSQLNumber(wsel)
+    if (wcount > 0) { wflagavaria = true }
+
+    if (wflagavaria == true) {
+      wlinha += "<xProd>" + padRight(x_mc_retira_acento_fn("***" + wddol.npsr.trim()).trim(), 120).substring(0, 120).trim() + "</xProd>"
+
+    } else {
+      wlinha += "<xProd>" + padRight(x_mc_retira_acento_fn(wddol.npsr.trim()).trim(), 120).substring(0, 120).trim() + "</xProd>"
+
+    }
+  }
+
+  if (wddol.cstat2.trim() == "") {
+    throwError("Operação Cancelada. Produto: " + wddol.ipsr.trim() + ", sem NCM cadastrado.")
+  }
+
+  wlinha += "<NCM>" + wddol.cstat2.trim() + "</NCM>"
+  //NPP.002005 - INCLUSÃO DE TAG NO XML DA NF-e E NCF-e
+  wuf_uo = bent_mc_get_atrib_fn("*", wrow.iorg, wrow.iuorgt, wrow.iuorg, "testado")
+  wuf_ent = bent_mc_get_atrib_fn(wrow.ientt, wrow.ient, "*", "*", "testado")
+  wcuf = "D";
+  wcfpsrp = wddol.cfpsr
+  wcstoper = wddol.cfpsrl
+  if (wddol.cfpsrl.trim() != "") { wcstoper = wddol.cfpsrl.trim().substring(1, 3) }
+  wflagbeneficio = false
+  if (wuf_ent != wuf_uo) { wcuf = "F" }
+
+  wbeneficio = getTparms("BCTX*CBNEF", "CBNEF*" + wuf_uo.trim() + "*" + wiuorg.trim() + "*" + wcuf.trim() + "*" + wcfpsrp.trim())
+  println("1  wbeneficio>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" + wbeneficio); flush();
+  if (wbeneficio.trim() != "?" && inList(wcstoper.trim(), ["20", "30", "40", "41", "50", "70", "90"])) {
+    wflagbeneficio = true
+    println("2 true  wflagbeneficio>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" + wcstoper); flush();
+  }
+
+  if (wflagbeneficio) {
+    wlinha += "<cBenef>" + wbeneficio.trim() + "</cBenef>"
+  }
+  wlinha += "<CFOP>" + wddol.cit.trim() + "</CFOP>"
+  wlinha += "<uCom>" + wddol.cur.trim() + "</uCom>"
+  if (wfinNFe == "2") {
+    wlinha += "<qCom>" + formatNumber(1, "N0.0000") + "</qCom>"
+    wlinha += "<vUnCom>" + formatNumber(0.00, "N0.0000") + "</vUnCom>"
+    wlinha += "<vProd>" + formatNumber(0.00, "N0.00") + "</vProd>"
+  } else {
+    wlinha += "<qCom>" + formatNumber(wddol.qpsr, "N0.0000") + "</qCom>"
+    wlinha += "<vUnCom>" + formatNumber(wddol.mvalun, "N0.0000") + "</vUnCom>"
+    wlinha += "<vProd>" + formatNumber(round((wddol.mvalun * wddol.qpsr), 2), "N0.00") + "</vProd>"
+  }
+
+  if ((wddol.cbarras.trim() != "") && (wddol.cbarras.trim() != wddol.ipsr.trim() + "00000000")) {
+    wlinha += "<cEANTrib>" + wddol.cbarras.trim() + "</cEANTrib>"
+  } else {
+    wlinha += "<cEANTrib>SEM GTIN</cEANTrib>"
+  }
+
+  wlinha += "<uTrib>" + wddol.cur.trim() + "</uTrib>"
+  wlinha += "<qTrib>" + formatNumber(wddol.qpsr, "N0.0000") + "</qTrib>"
+  //wlinha += "<vUnTrib>"     + formatNumber((wddol.mvalun*wddol.qbfisc),"N0.0000")                 + "</vUnTrib>"
+  wlinha += "<vUnTrib>" + formatNumber((wddol.mvalun), "N0.0000") + "</vUnTrib>"
+  // Soma o Frete e seu ICMS no primeiro Item da Nota Fiscal
+  if (wprimeiro == 0 && wtotfrete > 0) {
+    wlinha += "<vFrete>" + formatNumber(wtotfrete, "N0.00") + "</vFrete>"
+    wtotvbc += wtotfrete
+    wtoticms += round(wtotfreteicms, 2)
+    wprimeiro++
+  } else {
+    wtotfrete = 0.00
+    wtotfreteicms = 0.00
+  }
+
+  if (wddol.mvaldc > 0) { wlinha += "<vDesc>" + formatNumber(wddol.mvaldc, "N0.00") + "</vDesc>" }
+
+
+  wsel = "Select sum(nvl(a.mvalor,0)) "
+  wsel += "  From ddolt0 a "
+  wsel += " Where a.iorg  = '" + wrow.iorg.trim() + "' "
+  wsel += "   and a.idoct = '" + wrow.idoct.trim() + "' "
+  wsel += "   and a.idoc  = '" + wrow.idoc.trim() + "' "
+  wsel += "   and a.ientt = '" + wrow.ientt.trim() + "' "
+  wsel += "   and a.ient  = '" + wrow.ient.trim() + "' "
+  wsel += "   and a.ipsr  = '" + wddol.ipsr.trim() + "' "
+  wsel += "   and a.idol  = '" + wddol.idol.trim() + "' "
+  wsel += "   and (a.irct1 = 'DA' or a.ndoc  = 'DESPACESS') "
+  wvdespa = getSQLNumber(wsel)
+  if (wvdespa > 0) { wlinha += "<vOutro>" + formatNumber(wvdespa, "N0.00") + "</vOutro>" }
+
+  wlinha += "<indTot>" + "1" + "</indTot>"
+
+  //NPP.001751 - REFERENCIAMENTO DE PEDIDO DO CLIENTE NO XML DA NOTA FISCAL
+  if (wrow.idoct2.trim() == "NPV" && defined("wnpv")) {
+
+    wxped = x_mc_select_extension_fn("c", "ddoctx", formatNumber(wnpv.zk, "N00000000000000"), "xped")
+
+    if (wxped.trim() != "") {
+      wlinha += "<xPed>" + wxped.trim() + "</xPed>";
+      wlinha += "<nItemPed>" + wnumlinha + "</nItemPed>";
+    }
+    wnumlinha++;
+  }
+
+  // Verifica se o produto é nacional ou importação direta              
+  if (inList(wrow.cit.trim().substring(0, 1), ["3", "7"])) {
+
+    //ALTERADO 31-03-2011 BRUNNO - INCLUIR TAG DI     
+    wlinha += "<DI>"
+    x_mc_update_extension_fn("c", "DDOCTX", wrow.zk, "wdinr", wdinr)
+    wlinha += "<nDI>" + wdinr + "</nDI>"
+    x_mc_update_extension_fn("c", "DDOCTX", wrow.zk, "wdidt", wdidt)
+    wlinha += "<dDI>" + wdidt + "</dDI>"
+    x_mc_update_extension_fn("c", "DDOCTX", wrow.zk, "wdilocal", wdilocal)
+    wlinha += "<xLocDesemb>" + wdilocal + "</xLocDesemb>"
+    wlinha += "<UFDesemb>" + wbent.testado.trim() + "</UFDesemb>"
+    x_mc_update_extension_fn("c", "DDOCTX", wrow.zk, "wdidtdes", wdidtdes)
+    wlinha += "<dDesemb>" + wdidtdes + "</dDesemb>"
+
+    //NPP.002296 - TRATAMENTO NO XML PARA INCLUSÃO DE AFRM - NF IMPORTAÇÃO
+    wsel = "select sum(nvl(mvalor,0)) "
+    wsel += "  from ddolt0 with(nolock) "
+    wsel += " where iorg    = '" + wrow.iorg.trim() + "' "
+    wsel += "   and idoct   = '" + wrow.idoct.trim() + "' "
+    wsel += "   and idoc    = '" + wrow.idoc.trim() + "' "
+    wsel += "   and ientt   = '" + wrow.ientt.trim() + "' "
+    wsel += "   and ient    = '" + wrow.ient.trim() + "' "
+    wsel += "   and ipsr    = '" + wddol.ipsr.trim() + "' "
+    wsel += "   and idol    = '" + wddol.idol.trim() + "' "
+    wsel += "   and ndoc like '%AFRMM%' "
+    wafrmm = round(getSQLNumber(wsel), 2)
+    wlinha += "<vAFRMM>" + formatNumber(wafrmm, "N0.00") + "</vAFRMM>"
+
+    x_mc_update_extension_fn("c", "DDOCTX", wrow.zk, "wdiexport", wdiexport)
+    wlinha += "<cExportador>" + wdiexport + "</cExportador>"
+    wlinha += "<adi>"
+    wlinha += "<nAdicao>1</nAdicao>"
+    wlinha += "<nSeqAdic>1</nSeqAdic>"
+    wlinha += "<cFabricante>" + "FABRICANTE" + "</cFabricante>"
+    wlinha += "</adi>"
+    wlinha += "</DI>"
+  }
+
+
+
+
+  wlinha += "</prod>"
+
+  // Verifica se o produto é nacional ou importação direta             
+  if (inList(wrow.cit.trim().substring(0, 1), ["3"])) {
+    worigem = "1"
+  } else {
+    worigem = "0"
+  }
+
+  wlinha += "<imposto>"
+  wlinha += "<ICMS>"
+  if ((wrow.cit.trim() == "5556") && (wddol.ci.trim() == "S")) {
+    wlinha += "<ICMS60>"
+    wlinha += "<orig>0</orig>"
+    wlinha += "<CST>60</CST>"
+    //wlinha += "<vBCSTRet>0</vBCSTRet>"
+    //wlinha += "<vICMSSTRet>0</vICMSSTRet>"
+    if (wtemICMSEfetivo) {
+      wlinha += "<pRedBCEfet>0.00</pRedBCEfet>"
+      wlinha += "<vBCEfet>0.00</vBCEfet>"
+      wlinha += "<pICMSEfet>0.00</pICMSEfet>"
+      wlinha += "<vICMSEfet>0.00</vICMSEfet>"
+    }
+    wlinha += "</ICMS60>"
+
+  } else if (wrow.cit.trim().substring(0, 1) == "3") {
+    //confirmação
+    wmsg1 = "Atenção: "
+    wmsg2 = "Deseja que o ICMS seja impresso na Nota Fiscal, para o Item: " + wddol.ipsr.trim() + " ?"
+    i = showError("MIN-EEEE01Q", [wmsg1, wmsg2])
+    if (i == 0) {
+      wticms = true
+    }
+    //------------------------------------------------------------ICMS IMPORTACAO---------------------------------------------------------------- 
+    if (wrow.iuorg.trim() != "F00") {
+      wlinha += "<ICMS51>"
+      wlinha += "<orig>" + worigem + "</orig>"
+      wlinha += "<CST>51</CST>"
+      wlinha += "</ICMS51>"
+    } else {
+      if (wticms) {
+        wsel = "Select a.iixp, a.mvalor "
+        wsel += "  From ddolt0 a "
+        wsel += " Where a.iorg  = '" + wrow.iorg.trim() + "' "
+        wsel += "   and a.idoct = '" + wrow.idoct.trim() + "' "
+        wsel += "   and a.idoc  = '" + wrow.idoc.trim() + "' "
+        wsel += "   and a.ientt = '" + wrow.ientt.trim() + "' "
+        wsel += "   and a.ient  = '" + wrow.ient.trim() + "' "
+        wsel += "   and a.ipsr  = '" + wddol.ipsr.trim() + "' "
+        wsel += "   and a.idol  = '" + wddol.idol.trim() + "' "
+        wsel += "   and (a.irct1 = 'IM' or a.ndoc = 'ICMS') "
+        //wsel += "   and a.mvalor <> 0 "
+        wddol2 = getRow("DDOL", wsel)
+        wlinha += "<ICMS20>"
+        wlinha += "<orig>" + worigem + "</orig>"
+        wlinha += "<CST>20</CST>"
+        wlinha += "<modBC>3</modBC>"
+        wlinha += "<pRedBC>" + formatNumber(0, "N0.00") + "</pRedBC>"
+        if (wddol2.iixp.trim() != "" && wddol2.iixp.trim() != null && wddol2.iixp.trim() != "0.000") {
+          wlinha += "<vBC>" + formatNumber((wddol2.mvalor / (toNumber(wddol2.iixp.trim()) / 100)), "N0.00") + "</vBC>"
+        } else {
+          wlinha += "<vBC>" + formatNumber(0.01, "N0.00") + "</vBC>"
+        }
+
+        wlinha += "<pICMS>" + formatNumber(toNumber(wddol2.iixp.trim()), "N0.00") + "</pICMS>"
+        wlinha += "<vICMS>" + formatNumber(wddol2.mvalor, "N0.00") + "</vICMS>"
+        wlinha += "</ICMS20>"
+        // Totais
+        wtoticms += round(wddol2.mvalor, 2)
+        if (wddol2.iixp.trim() != "" && wddol2.iixp.trim() != null && wddol2.iixp.trim() != "0.000") {
+          wtotvbc += (wddol2.mvalor / (toNumber(wddol2.iixp.trim()) / 100))
+        } else {
+          wtotvbc += "<vBC>" + formatNumber(0.01, "N0.00") + "</vBC>"
+        }
+
+      } else {
+        wlinha += "<ICMS51>"
+        wlinha += "<orig>" + worigem + "</orig>"
+        wlinha += "<CST>51</CST>"
+        wlinha += "</ICMS51>"
+      }
+    }
+    //---------------------------------------------------------FIM ICMS IMPORTACAO----------------------------------------------------------------
+
+  } else if (inList(wrow.cit.trim(), ["2915", "2916", "6915", "6916", "6901"])) {
+    wlinha += "<ICMS40>"
+    wlinha += "<orig>" + worigem + "</orig>"
+    wlinha += "<CST>50</CST>"
+    wlinha += "</ICMS40>"
+  } else if (inList(wrow.cit.trim(), ["5929", "6929"]) && (!wflagicms)) {
+    wlinha += "<ICMS40>"
+    wlinha += "<orig>" + worigem + "</orig>"
+    wlinha += "<CST>41</CST>"
+    wlinha += "</ICMS40>"
+  } else if ((((wrow.ientt.trim() == "UN" && wrow.ient.trim() == "F00") && (inList(wrow.idoc.substring(0, 3), ["B00", "F00"])) && (inList(wrow.cit.trim(), ["5151", "5152"]))) || (inList(wrow.cit.trim(), ["5915", "5916", "1916", "1915"]))) && (!wflagicms)) {
+    wlinha += "<ICMS51>"
+    wlinha += "<orig>" + worigem + "</orig>"
+    wlinha += "<CST>51</CST>"
+    wlinha += "</ICMS51>"
+  } else {
+
+    //NPP.001653  PARAMETRIZAÇÃO TRIBUTÁRIA DOS PRODUTOS UDA V1
+    worigemregrageral = ""
+    worigemregrageral = getTparms("TRIB*AUTOMAT*FILIA", "NNF*MX*" + wrow.iuorg.trim() + "*" + wddol.ipst.trim()).trim()
+    //if ((wddol.cfpsr.trim() == "000") || (wflagicms && !inList(wddol.cfpsr.trim(), ["010", "041"]))) {		
+    if ((wddol.cfpsr.trim() == "000" && wvendaicmsdest == 0) || (wflagicms && !inList(wddol.cfpsr.trim(), ["010", "041"]) && worigemregrageral == "?")) {
+      println("2 bloco antes automatismo>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"); flush();
+
+      wlinha += "<ICMS00>"
+      //	wlinha += "<orig>"        + worigem                                                          + "</orig>"
+      if (inList(wrow.iuorg.trim(), ["F03"]) && wddol.iuorg2.trim() == "I03") {
+        wlinha += "<orig>1</orig>"
+      } else {
+        wlinha += "<orig>" + worigem + "</orig>"
+      }
+
+      wlinha += "<CST>00</CST>"
+      wlinha += "<modBC>3</modBC>"
+
+      if (wfinNFe == "2") {
+        wlinha += "<vBC>" + formatNumber((wddol.mvalor * wddol.qbfisc) + wtotfrete, "N0.00") + "</vBC>"
+        wlinha += "<pICMS>" + formatNumber(wddol.pi, "N0.00") + "</pICMS>"
+        wlinha += "<vICMS>" + formatNumber(wddol.mvalim + wtotfreteicms, "N0.00") + "</vICMS>"
+        wvbc = (wddol.mvalor * wddol.qbfisc)
+      } else {
+        if (wddol.cci == "NDB") {
+          wlinha += "<vBC>" + formatNumber((wddol.mvalor * wddol.qbfisc) + wtotfrete, "N0.00") + "</vBC>"
+          wlinha += "<pICMS>" + formatNumber(wddol.pi, "N0.00") + "</pICMS>"
+          wlinha += "<vICMS>" + formatNumber(wddol.mvalim + wtotfreteicms, "N0.00") + "</vICMS>"
+          wvbc = (wddol.mvalor * wddol.qbfisc)
+        } else {
+          if (wddol.pi > 0) {
+            wlinha += "<vBC>" + formatNumber(((wddol.qpsr * wddol.mvalun) * wddol.qbfisc) + wtotfrete, "N0.00") + "</vBC>"
+          } else {
+            wlinha += "<vBC>" + formatNumber(0, "N0.00") + "</vBC>"
+          }
+          wlinha += "<pICMS>" + formatNumber(wddol.pi, "N0.00") + "</pICMS>"
+          wlinha += "<vICMS>" + formatNumber(wddol.mvalim + wtotfreteicms, "N0.00") + "</vICMS>"
+          if (wddol.pi > 0) {
+            wvbc = (wddol.qpsr * wddol.mvalun * wddol.qbfisc)
+          } else {
+            wvbc = 0
+          }
+        }
+      }
+      wlinha += "</ICMS00>"
+      wtoticms += round(wddol.mvalim, 2)
+      wtotvbc += wvbc
+
+      //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>	
+    } else if ((wutomatismo) && (!inList(wrow.cit.trim(), ["3101", "3102"]))) { //AUTOMATISMO FISCAL
+
+      //Parametros para impressÃ£o pelo automatismo fiscal
+      wiorg = wrow.iorg
+      widoct = wrow.idoct
+      widoc = wrow.idoc
+      wientt = wrow.ientt
+      wient = wrow.ient
+      wiuorgt = wrow.iuorgt
+      wiuorg = wrow.iuorg
+      wcr = wrow.cr.trim()
+      wctcf = wrow.ctcf.trim()
+
+      wuf_ent = bent_mc_get_atrib_fn(wientt, wient, "*", "*", "testado")
+      wcnatt = bent_mc_get_atrib_fn(wientt, wient, "*", "*", "cnatt")
+      wtidfisc2 = bent_mc_get_atrib_fn(wientt, wient, "*", "*", "tidfisc2")
+
+      wuf_uo = bent_mc_get_atrib_fn("*", wiorg, wiuorgt, wiuorg, "testado")
+      witri = wuf_uo
+
+      // Contribuinte (S/N)?
+      if (wcnatt.trim() == "PF") {
+        wcontrib = "N"
+      } else if (wcnatt.trim() == "") {
+        wcontrib = "N"
+      } else {
+        wcontrib = "S"
+        if (wtidfisc2.trim() == "ISENTO" || wtidfisc2.trim() == "") {
+          wcontrib = "N"
+        }
+      }
+
+      // Dentro ou Fora do Estado
+      wcuf = "D";
+      if (wuf_ent != wuf_uo) {
+        wcuf = "F"
+      }
+
+      //Carrega informaÃ§Ãµes do produto
+      wsel = "select ccl, cfpsr, cstat2, qbfisc, cfpsr2, cep1 "
+      wsel += "  from bpsrt0 "
+      wsel += " where ipsr   = '" + wddol.ipsr.trim() + "' "
+      wsel += "   and ipsrlp = '*' "
+      wbpsr = getRow("BPSR", wsel)
+      if (wbpsr.wdcode == 100) { throwError("Produto nÃ£o encontrado: " + wddol.iorg + " " + wddol.ipsr + " " + wddol.ipsrlp) }
+      wcfpsrp = wbpsr.cfpsr
+      wcstat2 = wbpsr.cstat2
+      wqbfiscp = wbpsr.qbfisc
+      wci2 = wbpsr.cfpsr2
+      wwccl = wbpsr.ccl
+      wcfisc = wbpsr.cep1
+
+      //NPP.001653  PARAMETRIZAÇÃO TRIBUTÁRIA DOS PRODUTOS UDA V1
+      if (wrow.cr == "MX") {
+        w3 = "";
+        worigemautomatismo = ""
+        //Verifica se existe regra específica por filial e se imprime no danfe a origem da linha da nota  
+        worigemautomatismo = x_mc_regra_autom_filial_fn(wddol, wddol.ipsr, wrow.iuorg, wcontrib, wcuf, wrow.cr, wddol.cstat2, wddol.ipst, w3)
+        if (worigemautomatismo != "") {
+          if (wddol.cfpsrl.trim() != "") { worigem = wddol.cfpsrl.trim().substring(0, 1) }
+        }
+      }
+
+      //Carrega informaÃ§Ãµes que serÃ£o impressas na nota fiscal
+      wsel = "select * "
+      wsel += "  from btrit0 with (nolock) "
+      wsel += " where itri     = '" + witri + "' "
+      wsel += "   and cr       = '" + wcr + "' "
+      wsel += "   and ctcf     = '" + wctcf + "' "
+      wsel += "   and cuf      = '" + wcuf + "' "
+      wsel += "   and ccontrib = '" + wcontrib + "' "
+      wsel += "   and ccl      = '" + wwccl + "' "
+      wsel += "   and cfpsrp   = '" + wcfpsrp + "' "
+      wsel += "   and qbfiscp  =  " + wqbfiscp + " "
+
+      //NPP.001652 PARAMETRIZAÇÃO VENDA DE CELULAR F03 E F07
+      //Verifica regra pontual de destaque de icms  por filial
+      if (wvendaicmsdest > 0 || worigemautomatismo != "") {
+        wsel += "   and iuorgt2 = '" + wrow.iuorgt.trim() + "' "
+        wsel += "   and iuorg2  = '" + wrow.iuorg.trim() + "' "
+
+      } else if (inList(wrow.iuorg.trim(), ["F03", "F38"]) && (inList(wddol.iuorg2.trim(), ["I03", "I38"])) && wddol.mvalim2 > 0.0000) {
+        wsel += "   and iuorg2 =  'I03' "
+      } else {
+        wsel += "   and iuorg2 in ('" + wddol.iuorg2.trim() + "','','*') "
+      }
+      wsel += "   and cstat2  in ('*','" + wcstat2 + "') "
+      wsel += " order by cstat2 DESC, iuorg2 DESC "
+      println(wsel); flush()
+      wbtri = getRow("BTRI", wsel)
+      if (wbtri.wdcode == 100) {
+        throwError("Código de Automatização Fiscal não Encontrado: " + witri + " " + wddol.cr + " " + wddol.ctcf + " " + wcuf + " " + wcontrib + " " + wwccl + " " + wcfpsrp + " " + wcstat2 + " " + wqbfiscp)
+      }
+      wci = wbtri.ci.trim()
+      wciprint = wbtri.ciprint.trim()
+
+      if (wciprint != "" && wciprint != wci) {
+        wpi = getSQLNumber("select qqcoef1 from bctxt0 with (nolock) where ictx = 'BCTX*CI' and ivalk = '" + wciprint + "'")
+        wddol.pi = wpi
+        wddol.mvalim = round(((wddol.qpsr * wddol.mvalun) * (wpi / 100)), 2) //formatNumber(mvalun,"N#,##0.00",12)
+      }
+
+      //Parametros para montagem da TAG de ICMS   
+      wcstprod = wbtri.cfpsr.trim().substring(1, 3)
+
+      zglobals.WCSTPROD += wcstprod + "|"
+
+      wfator = wbtri.qbfisc
+      if (wddol.pi > 0) {
+        wbc = round(((wddol.qpsr * wddol.mvalun)) * wfator, 2)
+      } else {
+        wbc = 0.00
+      }
+
+      //Montagem da TAG de ICMS
+      wlinha += "<ICMS" + wcstprod.trim().substring(0, 1) + "0>"
+      if (inList(wrow.iuorg.trim(), ["F03"]) && wddol.iuorg2.trim() == "I03") {
+        wlinha += "<orig>1</orig>"
+      } else {
+        wlinha += "<orig>" + worigem + "</orig>"
+      }
+      wlinha += "<CST>" + wcstprod.trim() + "</CST>"
+
+      if (wcstprod == "00") {
+        wlinha += "<modBC>3</modBC>"
+        wlinha += "<vBC>" + formatNumber(wbc + wtotfrete, "N0.00") + "</vBC>"
+        wlinha += "<pICMS>" + formatNumber(wddol.pi, "N0.00") + "</pICMS>"
+        wlinha += "<vICMS>" + formatNumber(wddol.mvalim + wtotfreteicms, "N0.00") + "</vICMS>"
+        wvBCUFDest = formatNumber(wbc + wtotfrete, "N0.00")
+        wpICMSUFDest = formatNumber(wddol.pi, "N0.00")
+      } else if (wcstprod == "60") {
+        if (wtemICMSEfetivo) {
+          wlinha += "<pRedBCEfet>0.00</pRedBCEfet>"
+          wlinha += "<vBCEfet>0.00</vBCEfet>"
+          wlinha += "<pICMSEfet>0.00</pICMSEfet>"
+          wlinha += "<vICMSEfet>0.00</vICMSEfet>"
+        }
+        // (HL) Retirado trecho do código e colocado em B1 (HL)
+      } else if (wcstprod == "20") {
+        wlinha += "<modBC>3</modBC>"
+        wlinha += "<pRedBC>" + formatNumber((100 - (wddol.qbfisc * 100)), "N0.00") + "</pRedBC>"
+        wbc = round(((wddol.qpsr * wddol.mvalun)) * wfator, 2)
+
+        wlinha += "<vBC>" + formatNumber(wbc + wtotfrete, "N0.00") + "</vBC>"
+        wvBCUFDest = formatNumber(wbc + wtotfrete, "N0.00")
+        wlinha += "<pICMS>" + formatNumber(wddol.pi, "N0.00") + "</pICMS>"
+        wlinha += "<vICMS>" + formatNumber(wddol.mvalim + wtotfreteicms, "N0.00") + "</vICMS>"
+        wpICMSUFDest = formatNumber(wddol.pi, "N0.00")
+
+        //B1 (HL)
+        //} else if (inList(wddol.cit.trim(), ["5409", "5152"]) && wbent2.testado.trim().toUpperCase() == "CE" && wimprimest) {
+        //NPP.001652 PARAMETRIZAÇÃO VENDA DE CELULAR F03 E F07
+      } else if ((inList(wddol.cit.trim(), ["5409", "5152"]) && wbent2.testado.trim().toUpperCase() == "CE" && wimprimest) || (wvendaicmsdest > 0)) {
+
+        wvbcicmsst = 0
+        wvbcicmsst = round((wddol.mvalor - wddol.mvalim2) * 1.30, 2)
+
+        if ((wvendaicmsdest > 0) && (wvendaicmsst == 0)) { wvbcicmsst = 0 } //NPP.001652 PARAMETRIZAÇÃO VENDA DE CELULAR F03 E F07
+
+        //NPP.001774 - CADASTRO DE REGRAS TRIBUTÁRIAS F59
+        if (wvendaicmsdest > 0 && wbent.testado.trim().toUpperCase() == "PE") {
+          wmva = x_mc_select_extension_fn("n", "ddoltx", wddol.zk, "wmva")
+          wpICMSST = wmva
+
+          if (wmva > 0) { wmva = wmva / 100 }
+          println("Produto>>>   " + wddol.ipsr); flush();
+          println("wmva>>>   " + wmva); flush();
+
+          ValorQbfisc = ((wddol.mvalor * wddol.qbfisc))
+          println("Valor*Qbfisc>>>   " + ValorQbfisc); flush()
+
+          MvaValor = (wmva * ValorQbfisc)
+          println("Mva*Valor>>>   " + MvaValor); flush()
+
+          wvbcicmsst = ValorQbfisc + MvaValor
+
+        }
+
+        wlinha += "<modBC>3</modBC>"
+        if (wcstprod == "70") { wlinha += "<pRedBC>" + formatNumber((100 - (wddol.qbfisc * 100)), "N0.00") + "</pRedBC>" }
+        wlinha += "<vBC>" + formatNumber(((wddol.mvalor - wddol.mvalim2) * wddol.qbfisc), "N0.00") + "</vBC>"
+
+        //wlinha += "<vBC>" + formatNumber((wddol.mvalor - wddol.mvalim2), "N0.00") /*formatNumber((wddol.mvalor*wddol.qbfisc)+ wtotfrete,"N0.00")*/ + "</vBC>"
+        wlinha += "<pICMS>" + formatNumber(wddol.pi, "N0.00") + "</pICMS>"
+        wlinha += "<vICMS>" + formatNumber(wddol.mvalim + wtotfreteicms, "N0.00") + "</vICMS>"
+        wlinha += "<modBCST>" + "4" + "</modBCST>"
+        println(">>>>BCICMSST_2203 >>>> " + formatNumber(wvbcst, "N0.00")); flush();
+        //wlinha += "<vBCST>" + formatNumber(wvbcst, "N0.00") + "</vBCST>"
+        wlinha += "<vBCST>" + formatNumber(wvbcicmsst, "N0.00") + "</vBCST>"
+        wlinha += "<pICMSST>" + formatNumber(wpICMSST, "N0.00") + "</pICMSST>"
+        if (wuser == "alopes") { showMessage("wvICMSST - 03>>> " + wvICMSST.toString()) }
+        wlinha += "<vICMSST>" + formatNumber(wvICMSST, "N0.00") + "</vICMSST>"
+
+        wvBCUFDest = formatNumber((wddol.mvalor - wddol.mvalim2), "N0.00")
+        wpICMSUFDest = formatNumber(wddol.pi, "N0.00")
+        wvbc = wddol.mvalor - wddol.mvalim2
+
+        // Totais           
+        //wvbcst2  += wvbcst
+        wvbcst2 += wvbcicmsst
+        wvst += wvICMSST
+        //************************************************************************************************************************************************************ 
+      } else if (inList(wddol.cit.trim(), ["5409", "5152"]) && wbent.testado.trim().toUpperCase() == "PE") {
+        //Imprimir ST transferência interna Pernambuco
+        worigem = wrow.iuorg.trim()
+
+        //Tipo de transferência 
+        wtipodf = if (wbent.testado.trim() == wbent2.testado.trim()) "DENTRO" else "FORA";
+
+        //Regra Tributária da Filial F59 - CD de Pernambuco
+        wsel = " select count(*) "
+        wsel += " from bctxt0 with(nolock) "
+        wsel += " where ictx = 'REG*TRIB*TRANS*PE' "
+        wsel += " and ivalk  = '" + worigem + "' "
+        wsel += " and nctx   = '" + wtipodf + "' "
+        wsel += " and xord = 'ST' "
+        wsel += " and cst    = 'E0' "
+        println(wsel); flush()
+        wimprimest = (getSQLNumber(wsel) > 0)
+
+        if (wimprimest) {
+
+          //Dados da NTS
+          wsel = " Select a.zk "
+          wsel += " From ddolt0 a with(nolock) "
+          wsel += " Where a.iorg   = '" + wrow.iorg.trim() + "' "
+          wsel += "   and a.idoct  = 'NTS' "
+          if (wrow.idoct2.trim() == "NPV") wsel += " and a.idoc like '%" + wrow.idoc.substring(wrow.idoc.indexOf("/") + 1) + "' ";
+          wsel += "   and a.idoct2 = '" + wrow.idoct2.trim() + "' "
+          wsel += "   and a.idoc2  = '" + wrow.idoc2.trim() + "' "
+          wsel += "   and a.iuorgt = '" + wrow.iuorgt.trim() + "' "
+          wsel += "   and a.iuorg  = '" + wrow.iuorg.trim() + "' "
+          wsel += "   and a.ipsr   = '" + wddol.ipsr.trim() + "' "
+          wsel += "   and a.idol   = '" + wddol.idol.trim() + "' "
+          println(wsel); flush()
+          wntszk = getSQLValue(wsel)
+
+          if (wntszk == "") {
+            throwError("Linha da NTS não encontrado.")
+          }
+
+          wmva = x_mc_select_extension_fn("n", "ddoltx", wntszk, "wmva")
+          wreducao = x_mc_select_extension_fn("n", "ddoltx", wntszk, "wreducao")
+
+          wprodred = wddol.mvalor * wreducao
+
+          wvbcicmsst = wprodred + (wprodred * wmva)
+
+          wvbc = (wddol.mvalor - wddol.mvalim2) * wreducao
+
+          wlinha += "<modBC>3</modBC>"
+          wlinha += "<vBC>" + formatNumber(wvbc, "N0.00") + "</vBC>"
+          wlinha += "<pICMS>" + formatNumber(wddol.pi, "N0.00") + "</pICMS>"
+          wlinha += "<vICMS>" + formatNumber(wddol.mvalim, "N0.00") + "</vICMS>"
+          wlinha += "<modBCST>4</modBCST>"
+          wlinha += "<vBCST>" + formatNumber(wvbcicmsst, "N0.00") + "</vBCST>"
+          wlinha += "<pICMSST>" + formatNumber((wmva * 100), "N0.00") + "</pICMSST>"
+          wlinha += "<vICMSST>" + formatNumber(wvICMSST, "N0.00") + "</vICMSST>"
+
+          wvBCUFDest = formatNumber(wvbc, "N0.00")
+          wpICMSUFDest = formatNumber(wddol.pi, "N0.00")
+
+          // Totais           
+          wvbcst2 += wvbcicmsst
+          wvst += wvICMSST
+
+        }
+
+      } else if (wcstprod == "90" && inList(wddol.cit.trim(), ["5403", "5405", "1202"]) && wbent2.testado.trim().toUpperCase() == "CE") {
+        //CONTEMPLAR O DESTAQUE DO ICMS DE PRODUTOS DE INFORMÁTICA PARA CRÉDITO DO ADQUIRENTE - 2023-12-01 - LEMOS/MATEUS
+
+        wlinha += "<modBC>3</modBC>"
+        wlinha += "<vBC>" + formatNumber(wbc + wtotfrete, "N0.00") + "</vBC>"
+
+        wlinha += "<pICMS>" + formatNumber(wddol.pi, "N0.00") + "</pICMS>"
+
+
+        wlinha += "<vICMS>" + formatNumber(wddol.mvalim + wtotfreteicms, "N0.00") + "</vICMS>"
+
+        wvBCUFDest = formatNumber(wbc + wtotfrete, "N0.00")
+        wpICMSUFDest = formatNumber(wddol.pi, "N0.00")
+
+
+
+      }
+      //E1
+      //NPP.002005 - INCLUSÃO DE TAG NO XML DA NF-e E NCF-e
+      wicmsdeson = 0
+      if (wflagbeneficio) {
+        wsel = " select qqcoef1 from bctxt0"
+        wsel += " where ictx = 'BCTX*AUDI*UF'"
+        wsel += " and   ivalk = '" + wuf_uo.trim() + "'"
+        wsel += " and '" + wrow.ddoces.trim() + "' between dini and dfim"
+        wdifalUf = getSQLNumber(wsel)
+        wimpb = (wddol.mvalor * (wdifalUf / 100))
+        wicmsdeson = (wimpb - wddol.mvalim)
+        wlinha += "<vICMSDeson>" + formatNumber(wicmsdeson, "N0.00") + "</vICMSDeson>"
+        wlinha += "<motDesICMS>9</motDesICMS>"
+      }
+      wlinha += "</ICMS" + wcstprod.trim().substring(0, 1) + "0>"
+
+
+      //Totais impostos 
+      wtoticms += round(wddol.mvalim, 2)
+      wtotvbc += wbc
+      //NPP.002005 - INCLUSÃO DE TAG NO XML DA NF-e E NCF-e
+      wtoticmsdeson += wicmsdeson
+
+    } else if ((wddol.cfpsr.trim() == "000") || (wflagicms && wddol.cfpsr.trim() != "010")) {
+      wlinha += "<ICMS00>"
+      wlinha += "<orig>" + worigem + "</orig>"
+
+      wlinha += "<CST>00</CST>"
+      wlinha += "<modBC>3</modBC>"
+      if (wfinNFe == "2") {
+
+        wlinha += "<vBC>" + formatNumber(round((wddol.mvalor * wddol.qbfisc), 2) + wtotfrete, "N0.00") + "</vBC>"
+        wlinha += "<pICMS>" + formatNumber(wddol.pi, "N0.00") + "</pICMS>"
+        wlinha += "<vICMS>" + formatNumber(wddol.mvalim + wtotfreteicms, "N0.00") + "</vICMS>"
+        wvBCUFDest = formatNumber(round((wddol.mvalor * wddol.qbfisc), 2) + wtotfrete, "N0.00")
+        wpICMSUFDest = formatNumber(wddol.pi, "N0.00")
+        wvbc = round((wddol.mvalor * wddol.qbfisc), 2)
+
+      } else {
+
+        if (wddol.cci == "NDB") {
+          wlinha += "<vBC>" + formatNumber((wddol.mvalor * wddol.qbfisc) + wtotfrete, "N0.00") + "</vBC>"
+          wlinha += "<pICMS>" + formatNumber(wddol.pi, "N0.00") + "</pICMS>"
+          wlinha += "<vICMS>" + formatNumber(wddol.mvalim + wtotfreteicms, "N0.00") + "</vICMS>"
+
+          wvBCUFDest = formatNumber((wddol.mvalor * wddol.qbfisc) + wtotfrete, "N0.00")
+          wpICMSUFDest = formatNumber(wddol.pi, "N0.00")
+
+          wvbc = round((wddol.mvalor * wddol.qbfisc), 2)
+
+          wvicms = ((((wddol.qpsr * wddol.mvalun) + wddol.mvalim2) * wddol.qbfisc) + wtotfrete)
+          wvicms = round(((wvicms * wddol.pi) / 100), 2)
+
+        } else {
+          wvicms = (((wddol.qpsr * wddol.mvalun) * wddol.qbfisc) + wtotfrete)
+          wvicms = round(((wvicms * wddol.pi) / 100), 2)
+
+          if (wddol.pi > 0) {
+            wlinha += "<vBC>" + formatNumber(round(((wddol.qpsr * wddol.mvalun) * wddol.qbfisc), 2) + wtotfrete, "N0.00") + "</vBC>"
+            wvBCUFDest = formatNumber(round(((wddol.qpsr * wddol.mvalun) * wddol.qbfisc), 2) + wtotfrete, "N0.00")
+          } else {
+            wlinha += "<vBC>" + formatNumber(0, "N0.00") + "</vBC>"
+            wvBCUFDest = formatNumber(0, "N0.00")
+          }
+          wlinha += "<pICMS>" + formatNumber(wddol.pi, "N0.00") + "</pICMS>"
+          wlinha += "<vICMS>" + formatNumber(wvicms + wtotfreteicms, "N0.00") + "</vICMS>"
+          wpICMSUFDest = formatNumber(wddol.pi, "N0.00")
+
+          if (wddol.pi > 0) {
+            wvbc = round((wddol.qpsr * wddol.mvalun * wddol.qbfisc), 2)
+          } else {
+            wvbc = 0
+          }
+
+        }
+      }
+      wlinha += "</ICMS00>"
+      //wtoticms   += round(wddol.mvalim ,2)
+      wtoticms += round(wvicms, 2)
+      wtotvbc += wvbc
+
+      //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+      //TICKET 13722 - CAMILA MOURA - 03/01/2019
+    } else if (wddol.cfpsr.trim() == "010" && wrow.ctcf.trim() != "5152C") {
+
+      wpmvast = 0.00
+      wpredbcts = 0.00
+      wvbcst = 0.00
+      wpICMSST = 0.00
+      wvICMSST = 0.00
+
+      if ((inList(wrow.cit.trim(), ["6202", "6411"]))) {
+        wdfform = MForm:: getDialogForm(m, "DDOC0NNFDEV", "ME", "Devolução", 3)
+        wdfform.setEnt(m.getEnt())
+        wdfform.setRow(getMRow("DDOC"))
+        wdfform.setAction("VALIDATE_FORM")
+        wdfform.ipsr = wddol.ipsr
+        wdfform.ndoc = wddol.ndoc
+        wdfform.wpmvast = 0.00
+        wdfform.wpredbcst = 0.00
+        wdfform.wvbcst = 0.00
+        wdfform.wpicmsst = 0.00
+        wdfform.wvicmsst = 0.00
+        expandForm(wdfform, false)
+        cursor.commitWork()
+        wdfform.showForm()
+        cursor.beginWork()
+        if (wdfform.getLastCmd().equals("CLOSEWINDOW")) { throwError("Operação Cancelada.") }
+        wpMVAST = wdfform.wpmvast
+        wpRedBCST = wdfform.wpredbcst
+        wvbcst = wdfform.wvbcst
+        wpICMSST = wdfform.wpicmsst
+        wvICMSST = wdfform.wvicmsst
+      }
+
+      wlinha += "<ICMS10>"
+      wlinha += "<orig>" + worigem + "</orig>"
+      wlinha += "<CST>10</CST>"
+      wlinha += "<modBC>3</modBC>"
+      wlinha += "<vBC>" + formatNumber((wddol.mvalor * wddol.qbfisc) + wtotfrete, "N0.00") + "</vBC>"
+      wlinha += "<pICMS>" + formatNumber(wddol.pi, "N0.00") + "</pICMS>"
+      wlinha += "<vICMS>" + formatNumber(wddol.mvalim + wtotfreteicms, "N0.00") + "</vICMS>"
+      wlinha += "<modBCST>" + "4" + "</modBCST>"
+      wlinha += "<vBCST>" + formatNumber(wvbcst, "N0.00") + "</vBCST>"
+      wlinha += "<pICMSST>" + formatNumber(wpICMSST, "N0.00") + "</pICMSST>"
+      wlinha += "<vICMSST>" + formatNumber(wvICMSST, "N0.00") + "</vICMSST>"
+      wlinha += "</ICMS10>"
+
+      wvbc = (wddol.mvalor * wddol.qbfisc)
+
+      // Totais
+      wtoticms += round(wddol.mvalim, 2)
+      wtotvbc += wvbc
+      wvbcst2 += wvbcst
+      wvst += wvICMSST
+
+    } else if (wddol.cfpsr.trim() == "020") {
+
+      wbc = round(((wddol.qpsr * wddol.mvalun)) * wddol.qbfisc, 2)
+
+      wlinha += "<ICMS20>"
+      wlinha += "<orig>" + worigem + "</orig>"
+      wlinha += "<CST>20</CST>"
+      wlinha += "<modBC>3</modBC>"
+      wlinha += "<pRedBC>" + formatNumber((100 - (wddol.qbfisc * 100)), "N0.00") + "</pRedBC>"
+      wlinha += "<vBC>" + formatNumber(wbc + wtotfrete, "N0.00") + "</vBC>"
+      wlinha += "<pICMS>" + formatNumber(wddol.pi, "N0.00") + "</pICMS>"
+      wlinha += "<vICMS>" + formatNumber(wddol.mvalim + wtotfreteicms, "N0.00") + "</vICMS>"
+      wlinha += "</ICMS20>"
+      // Totais
+      //wtoticms   += (((wddol.qpsr*wddol.mvalun)*wddol.qbfisc)*(wddol.pi/100))
+      wtoticms += round(wddol.mvalim, 2)
+      wtotvbc += wbc
+    } else if (wddol.cfpsr.trim() == "041") {
+      wlinha += "<ICMS40>"
+      wlinha += "<orig>0</orig>"
+      wlinha += "<CST>41</CST>"
+      wlinha += "</ICMS40>"
+
+    } else if (wddol.cfpsr.trim() == "060") {
+      wlinha += "<ICMS60>"
+      wlinha += "<orig>0</orig>"
+      wlinha += "<CST>60</CST>"
+      if (wtemICMSEfetivo) {
+        wlinha += "<pRedBCEfet>0.00</pRedBCEfet>"
+        wlinha += "<vBCEfet>0.00</vBCEfet>"
+        wlinha += "<pICMSEfet>0.00</pICMSEfet>"
+        wlinha += "<vICMSEfet>0.00</vICMSEfet>"
+      }
+      wlinha += "</ICMS60>"
+      //wtotvbc    += ((wddol.qpsr*wddol.mvalun)*wddol.qbfisc)
+    }
+  }
+  wlinha += "</ICMS>"
+
+
+  // TAG IPI
+  wlinha += "<IPI>"
+  if (wrow.cit.trim() != "3949") {
+    if (wrow.cit.trim() == "3102") {
+      if (wrow.idoc.trim().substring(0, 3) == "B00") {
+        wlinha += "<cEnq>999</cEnq>"
+        wlinha += "<IPINT>"
+        wlinha += "<CST>03</CST>"
+        wlinha += "</IPINT>"
+      } else {
+        wsel = "Select a.iixp, a.mvalor "
+        wsel += "  From ddolt0 a "
+        wsel += " Where a.iorg  = '" + wrow.iorg.trim() + "' "
+        wsel += "   and a.idoct = '" + wrow.idoct.trim() + "' "
+        wsel += "   and a.idoc  = '" + wrow.idoc.trim() + "' "
+        wsel += "   and a.ientt = '" + wrow.ientt.trim() + "' "
+        wsel += "   and a.ient  = '" + wrow.ient.trim() + "' "
+        wsel += "   and a.ipsr  = '" + wddol.ipsr.trim() + "' "
+        wsel += "   and a.idol  = '" + wddol.idol.trim() + "' "
+        wsel += "   and (a.irct1 = 'IP' or a.ndoc = 'IPI') "
+        wddol2 = getRow("DDOL", wsel)
+
+        if (wddol2.wdcode == 100) {
+          wlinha += "<cEnq>0</cEnq>"
+          wlinha += "<IPITrib>"
+          wlinha += "<CST>00</CST>"
+          wlinha += "<vBC>" + formatNumber(0, "N0.00") + "</vBC>"
+          wlinha += "<pIPI>" + formatNumber(0, "N0.00") + "</pIPI>"
+          wlinha += "<vIPI>" + formatNumber(0, "N0.00") + "</vIPI>"
+          wlinha += "</IPITrib>"
+          //wtotipi += wddol2.mvalor       
+        } else {
+          wlinha += "<cEnq>0</cEnq>"
+          wlinha += "<IPITrib>"
+          wlinha += "<CST>00</CST>"
+
+          if (wddol2.iixp.trim() != "" && wddol2.iixp.trim() != null && wddol2.iixp.trim() != "0.000") {
+            wlinha += "<vBC>" + formatNumber((wddol2.mvalor / (toNumber(wddol2.iixp.trim()) / 100)), "N0.00") + "</vBC>"
+          } else {
+            wlinha += "<vBC>" + formatNumber(0, "N0.00") + "</vBC>"
+          }
+          wlinha += "<pIPI>" + formatNumber(toNumber(wddol2.iixp.trim()), "N0.00") + "</pIPI>"
+          wlinha += "<vIPI>" + formatNumber(wddol2.mvalor, "N0.00") + "</vIPI>"
+          wlinha += "</IPITrib>"
+          wtotipi += wddol2.mvalor
+        }
+
+
+      }
+    } else if (wddol.mvalim2 > 0) {
+      wlinha += "<cEnq>999</cEnq>"
+      wlinha += "<IPITrib>"
+      wlinha += "<CST>50</CST>"
+      wlinha += "<vBC>" + formatNumber((wddol.mvalor - wddol.mvalim2), "N0.00") + "</vBC>"
+      wlinha += "<pIPI>" + formatNumber(wddol.pi2, "N0.00") + "</pIPI>"
+      wlinha += "<vIPI>" + formatNumber(wddol.mvalim2, "N0.00") + "</vIPI>"
+      wlinha += "</IPITrib>"
+      wtotipi += wddol.mvalim2
+    } else {
+      wlinha += "<cEnq>108</cEnq>"
+      wlinha += "<IPINT>"
+      if (inList(wrow.cit.trim().substring(0, 1), ["5", "6", "7"])) {
+        if ((wrow.idoc.substring(0, 3) == "B00") && (wddol.wimpipi.trim() == "52")) {
+          wlinha += "<CST>52</CST>"
+        } else {
+          wlinha += "<CST>53</CST>"
+        }
+      } else {
+        if ((wrow.idoc.substring(0, 3) == "B00") && (wddol.wimpipi.trim() == "52")) {
+          wlinha += "<CST>02</CST>"
+        } else {
+          wlinha += "<CST>03</CST>"
+        }
+      }
+      wlinha += "</IPINT>"
+    }
+
+  } else {
+    wlinha += "<cEnq>999</cEnq>"
+    wlinha += "<IPINT>"
+    wlinha += "<CST>03</CST>"
+    wlinha += "</IPINT>"
+  }
+  // Fim da TAG de IPI
+  wlinha += "</IPI>"
+
+  if (wrow.cit.trim() == "3102" || wrow.cit.trim() == "3949") {
+
+    wsel = "Select a.iixp, a.mvalor "
+    wsel += "  From ddolt0 a "
+    wsel += " Where a.iorg  = '" + wrow.iorg.trim() + "' "
+    wsel += "   and a.idoct = '" + wrow.idoct.trim() + "' "
+    wsel += "   and a.idoc  = '" + wrow.idoc.trim() + "' "
+    wsel += "   and a.ientt = '" + wrow.ientt.trim() + "' "
+    wsel += "   and a.ient  = '" + wrow.ient.trim() + "' "
+    wsel += "   and a.ipsr  = '" + wddol.ipsr.trim() + "' "
+    wsel += "   and a.idol  = '" + wddol.idol.trim() + "' "
+    wsel += "   and (a.irct1 = 'II' or a.ndoc = 'II') "
+    wddol2 = getRow("DDOL", wsel)
+
+    wsel = "Select sum(nvl(a.mvalor,0)) "
+    wsel += "  From ddolt0 a "
+    wsel += " Where a.iorg  = '" + wrow.iorg.trim() + "' "
+    wsel += "   and a.idoct = '" + wrow.idoct.trim() + "' "
+    wsel += "   and a.idoc  = '" + wrow.idoc.trim() + "' "
+    wsel += "   and a.ientt = '" + wrow.ientt.trim() + "' "
+    wsel += "   and a.ient  = '" + wrow.ient.trim() + "' "
+    wsel += "   and a.ipsr  = '" + wddol.ipsr.trim() + "' "
+    wsel += "   and a.idol  = '" + wddol.idol.trim() + "' "
+    wsel += "   and (a.irct1 = 'DA' or a.ndoc  = 'DESPACESS') "
+    wvdespa = getSQLNumber(wsel)
+
+
+    if (wddol2.wdcode != 100) {
+      wlinha += "<II>"
+
+      if (wddol2.iixp.trim() != "" && wddol2.iixp.trim() != null && wddol2.iixp.trim() != "0.000") {
+        wlinha += "<vBC>" + formatNumber((wddol2.mvalor / (toNumber(wddol2.iixp.trim()) / 100)), "N0.00") + "</vBC>"
+      } else {
+        wlinha += "<vBC>" + formatNumber(0, "N0.00") + "</vBC>"
+      }
+
+      wlinha += "<vDespAdu>" + formatNumber(wvdespa, "N0.00") + "</vDespAdu>"
+
+      // Valor total da despesa aduaneira
+      wtotdespadu += round(wvdespa, 2)
+
+      // II
+      if (wddol2.wdcode != 100) {
+        wlinha += "<vII>" + formatNumber(wddol2.mvalor, "N0.00") + "</vII>"
+        wtotii += wddol2.mvalor
+      } else {
+        wlinha += "<vII>" + formatNumber(0, "N0.00") + "</vII>"
+      }
+
+      wlinha += "<vIOF>0</vIOF>"
+      wlinha += "</II>"
+    }
+  }
+
+  wsel = "Select nvl(a.tclass,'') "
+  wsel += "  From bctxt0 a "
+  wsel += " Where a.ictx   = 'BCTX*CIT' "
+  wsel += "   and a.ivalk  = '" + wrow.cit.trim() + "' "
+  wsel += "   and a.tclass like '%PC;%' "
+  wtclass = getSQLValue(wsel).trim()
+
+  // TAG DE PIS
+  wlinha += "<PIS>"
+
+  if (wrow.cit.trim() != "3949") {
+
+    if (wrow.cit.trim() == "3102") {
+
+      wsel = "Select a.iixp, a.mvalor "
+      wsel += "  From ddolt0 a "
+      wsel += " Where a.iorg  = '" + wrow.iorg.trim() + "' "
+      wsel += "   and a.idoct = '" + wrow.idoct.trim() + "' "
+      wsel += "   and a.idoc  = '" + wrow.idoc.trim() + "' "
+      wsel += "   and a.ientt = '" + wrow.ientt.trim() + "' "
+      wsel += "   and a.ient  = '" + wrow.ient.trim() + "' "
+      wsel += "   and a.ipsr  = '" + wddol.ipsr.trim() + "' "
+      wsel += "   and a.idol  = '" + wddol.idol.trim() + "' "
+      wsel += "   and (a.irct1 = 'PI' or a.ndoc = 'PIS') "
+      wddol2 = getRow("DDOL", wsel)
+
+      wlinha += "<PISAliq>"
+      wlinha += "<CST>01</CST>"
+
+      if (wddol2.iixp.trim() != "" && wddol2.iixp.trim() != null && wddol2.iixp.trim() != "0.000") {
+        wlinha += "<vBC>" + formatNumber((wddol2.mvalor / (toNumber(wddol2.iixp.trim()) / 100)), "N0.00") + "</vBC>"
+      } else {
+        wlinha += "<vBC>" + formatNumber(0, "N0.00") + "</vBC>"
+      }
+
+      wlinha += "<pPIS>" + formatNumber(toNumber(wddol2.iixp.trim()), "N0.00") + "</pPIS>"
+      wlinha += "<vPIS>" + formatNumber(wddol2.mvalor, "N0.00") + "</vPIS>"
+      wlinha += "</PISAliq>"
+      wtotpis += wddol2.mvalor
+
+    } else if ((wddol.cfpsr2.trim() != "I") && (wtclass != "")) {
+      wvalpis = getSQLNumber("Select a.qqcoef1 from bctxt0 a where a.ictx = 'BCTX*NFE' and a.ivalk = 'PIS'")
+      wlinha += "<PISAliq>"
+      wlinha += "<CST>01</CST>"
+      // Condição para devolução de compras
+      if (inList(wrow.cit.trim(), ["6202", "5202", "6201", "5201"])) {
+        //NPP.000012 - RETIRADA DO ICMS DA BASE DO PIS E COFINS - SAÍDAS
+        wlinha += "<vBC>" + formatNumber(((wddol.mvalor - wddol.mvalim) - wddol.mvalim2), "N0.00") + "</vBC>"
+        wlinha += "<pPIS>" + formatNumber(wvalpis, "N0.00") + "</pPIS>"
+        //wlinha  += "<vPIS>"       + formatNumber((((wddol.mvalor-wddol.mvalim2)*wvalpis)/100),"N0.00")        + "</vPIS>"
+        //wtotpis += (((wddol.mvalor-wddol.mvalim2)*wvalpis)/100)
+
+        //NPP.000012 - RETIRADA DO ICMS DA BASE DO PIS E COFINS - SAÍDAS
+        wlinha += "<vPIS>" + formatNumber(round(((((wddol.mvalor - wddol.mvalim) - wddol.mvalim2) * wvalpis) / 100), 2), "N0.00") + "</vPIS>"
+        wtotpis += round(((((wddol.mvalor - wddol.mvalim) - wddol.mvalim2) * wvalpis) / 100), 2)
+      } else {
+        //NPP.000012 - RETIRADA DO ICMS DA BASE DO PIS E COFINS - SAÍDAS
+        wlinha += "<vBC>" + formatNumber((wddol.mvalor - wddol.mvalim), "N0.00") + "</vBC>"
+        wlinha += "<pPIS>" + formatNumber(wvalpis, "N0.00") + "</pPIS>"
+        //wlinha  += "<vPIS>"       + formatNumber(((wddol.mvalor*wvalpis)/100),"N0.00")                        + "</vPIS>"
+        //wtotpis += ((wddol.mvalor*wvalpis)/100)
+        wlinha += "<vPIS>" + formatNumber(round((((wddol.mvalor - wddol.mvalim) * wvalpis) / 100), 2), "N0.00") + "</vPIS>"
+        wtotpis += round((((wddol.mvalor - wddol.mvalim) * wvalpis) / 100), 2)
+      }
+      wlinha += "</PISAliq>"
+    } else if ((wddol.cfpsr2.trim() == "I") && (!inList(wrow.cit.trim(), ["5929", "6929"]))) {
+      //wlinha += "<cEnq>999</cEnq>"
+      wlinha += "<PISNT>"
+      wlinha += "<CST>06</CST>"
+      wlinha += "</PISNT>"
+    } else {
+      //wlinha += "<cEnq>999</cEnq>"
+      wlinha += "<PISNT>"
+      wlinha += "<CST>08</CST>"
+      wlinha += "</PISNT>"
+    }
+  } else {
+    wlinha += "<PISNT>"
+    wlinha += "<CST>08</CST>"
+    wlinha += "</PISNT>"
+  }
+
+  // Fim da TAG de PIS
+  wlinha += "</PIS>"
+
+
+
+  // TAG DE COFINS
+  wlinha += "<COFINS>"
+
+  if (wrow.cit.trim() != "3949") {
+    if (wrow.cit.trim() == "3102") {
+
+      wsel = "Select a.iixp, a.mvalor "
+      wsel += "  From ddolt0 a "
+      wsel += " Where a.iorg  = '" + wrow.iorg.trim() + "' "
+      wsel += "   and a.idoct = '" + wrow.idoct.trim() + "' "
+      wsel += "   and a.idoc  = '" + wrow.idoc.trim() + "' "
+      wsel += "   and a.ientt = '" + wrow.ientt.trim() + "' "
+      wsel += "   and a.ient  = '" + wrow.ient.trim() + "' "
+      wsel += "   and a.ipsr  = '" + wddol.ipsr.trim() + "' "
+      wsel += "   and a.idol  = '" + wddol.idol.trim() + "' "
+      wsel += "   and (a.irct1 = 'CF' or a.ndoc = 'COFINS') "
+      wddol2 = getRow("DDOL", wsel)
+
+      wlinha += "<COFINSAliq>"
+      wlinha += "<CST>01</CST>"
+
+
+      if (wddol2.iixp.trim() != "" && wddol2.iixp.trim() != null && wddol2.iixp.trim() != "0.000") {
+        wlinha += "<vBC>" + formatNumber((wddol2.mvalor / (toNumber(wddol2.iixp.trim()) / 100)), "N0.00") + "</vBC>"
+      } else {
+        wlinha += "<vBC>" + formatNumber(0, "N0.00") + "</vBC>"
+      }
+
+      wlinha += "<pCOFINS>" + formatNumber(toNumber(wddol2.iixp.trim()), "N0.00") + "</pCOFINS>"
+      wlinha += "<vCOFINS>" + formatNumber(wddol2.mvalor, "N0.00") + "</vCOFINS>"
+      wlinha += "</COFINSAliq>"
+      wtotcofins += wddol2.mvalor
+    } else if ((wddol.cfpsr2.trim() != "I") && (wtclass != "")) {
+      wvalcof = getSQLNumber("Select a.qqcoef1 from bctxt0 a where a.ictx = 'BCTX*NFE' and a.ivalk = 'COF'")
+      wlinha += "<COFINSAliq>"
+      wlinha += "<CST>01</CST>"
+      //NPP.000012 - RETIRADA DO ICMS DA BASE DO PIS E COFINS - SAÍDAS
+      wlinha += "<vBC>" + formatNumber((wddol.mvalor - wddol.mvalim), "N0.00") + "</vBC>"
+      wlinha += "<pCOFINS>" + formatNumber(wvalcof, "N0.00") + "</pCOFINS>"
+      wlinha += "<vCOFINS>" + formatNumber((((wddol.mvalor - wddol.mvalim) * wvalcof) / 100), "N0.00") + "</vCOFINS>"
+      wlinha += "</COFINSAliq>"
+      wtotcofins += (((wddol.mvalor - wddol.mvalim) * wvalcof) / 100)
+    } else if (wddol.cfpsr2.trim() == "I") {
+      wlinha += "<COFINSNT>"
+      wlinha += "<CST>06</CST>"
+      wlinha += "</COFINSNT>"
+    } else {
+      wlinha += "<COFINSNT>"
+      wlinha += "<CST>08</CST>"
+      wlinha += "</COFINSNT>"
+    }
+  } else {
+    wlinha += "<COFINSNT>"
+    wlinha += "<CST>08</CST>"
+    wlinha += "</COFINSNT>"
+  }
+  wlinha += "</COFINS>"
+
+
+  // >>>>>>>>>>>>>>>> REFORMA TRIBUTARIA - INICIO >>>>>>>>>>>>>>>>>>>>>>>
+  //REFORMA TRIBUTARIA
+  wicst = ""
+  wiclasstrib = ""
+  wvBCIBSCBS = 0.00;
+  wpIBSUF = 0.00; wvIBSUF = 0.00;
+  wpIBSMun = 0.00; wvIBSMun = 0.00;
+  wpCBS = 0.00; wvCBS = 0.00;
+  wvIBS = 0.00;
+  wzkddol = formatNumber(wddol.zk, "N00000000000000")
+
+  //Carrega informacoes que serão impressas na nota fiscal
+  wsel = "select a.* "
+  wsel += "  from ddort0 a "
+  wsel += " Where a.iorg    = '" + wrow.iorg.trim() + "' "
+  wsel += "   and a.idoct   = '" + wrow.idoct.trim() + "' "
+  wsel += "   and a.idoc    = '" + wrow.idoc.trim() + "' "
+  wsel += "   and a.ientt   = '" + wrow.ientt.trim() + "' "
+  wsel += "   and a.ient    = '" + wrow.ient.trim() + "' "
+  wsel += "   and a.ipsr    = '" + wddol.ipsr.trim() + "' "
+  wsel += "   and a.zkddol  = '" + wzkddol + "' "
+  vddor = getRows("DDOR", wsel)
+  println("CONSULTA DDOR - RTC >>> " + wsel); flush()
+
+    foreach wddor(vddor.elements()){
+    wicst = wddor.icst.trim()
+    wiclasstrib = wddor.iclasstrib.trim()
+    wvBCIBSCBS = wddor.mvalor
+
+    if (wddor.ci.trim() == "IBSUF") {
+      wpIBSUF = wddor.pi_efe
+      wvIBSUF = wddor.mvalim
+      wvtIBSUF += wddor.mvalim
+    }
+    if (wddor.ci.trim() == "IBSMUN") {
+      wpIBSMun = wddor.pi_efe
+      wvIBSMun = wddor.mvalim
+      wvtIBSMun += wddor.mvalim
+    }
+    if (wddor.ci.trim() == "CBS") {
+      wpCBS = wddor.pi_efe
+      wvCBS = wddor.mvalim
+      wvtCBS += wddor.mvalim
+    }
+  }
+  if (wvIBSUF > 0 || wvIBSMun > 0 || wvCBS > 0) {
+    wvIBS = (wvIBSUF + wvIBSMun)
+    wvIBSt += (wvIBSUF + wvIBSMun)
+    wvBCIBSCBSt += wvBCIBSCBS
+
+    wlinha += "<IBSCBS>"
+    wlinha += "<CST>" + wicst + "</CST>"
+    wlinha += "<cClassTrib>" + wiclasstrib + "</cClassTrib>"
+    wlinha += "<gIBSCBS>"
+    wlinha += "<vBC>" + formatNumber(wvBCIBSCBS, "N0.00") + "</vBC>"
+    wlinha += "<gIBSUF>"
+    wlinha += "<pIBSUF>" + formatNumber(wpIBSUF, "N0.00") + "</pIBSUF>"
+    wlinha += "<vIBSUF>" + formatNumber(wvIBSUF, "N0.00") + "</vIBSUF>"
+    wlinha += "</gIBSUF>"
+    wlinha += "<gIBSMun>"
+    wlinha += "<pIBSMun>" + formatNumber(wpIBSMun, "N0.00") + "</pIBSMun>"
+    wlinha += "<vIBSMun>" + formatNumber(wvIBSMun, "N0.00") + "</vIBSMun>"
+    wlinha += "</gIBSMun>"
+    wlinha += "<vIBS>" + formatNumber(wvIBS, "N0.00") + "</vIBS>"
+    wlinha += "<gCBS>"
+    wlinha += "<pCBS>" + formatNumber(wpCBS, "N0.00") + "</pCBS>"
+    wlinha += "<vCBS>" + formatNumber(wvCBS, "N0.00") + "</vCBS>"
+    wlinha += "</gCBS>"
+    wlinha += "</gIBSCBS>"
+    wlinha += "</IBSCBS>"
+  }
+
+  // >>>>>>>>>>>>>>>> REFORMA TRIBUTARIA - FIM >>>>>>>>>>>>>>>>>>>>>>>
+
+
+  wlinha += "</imposto>"
+  wlinha += "</det>"
+
+
+  wtotprod += round((wddol.mvalun * wddol.qpsr), 2)
+  if (wddol.mvaldc > 0) { wtotmvaldc += wddol.mvaldc }
+  wcont++
+
+}
+
+wlinha += "<total>"
+wlinha += "<ICMSTot>"
+wlinha += "<vBC>" + formatNumber(wtotvbc, "N0.00") + "</vBC>"
+wlinha += "<vICMS>" + formatNumber(wtoticms, "N0.00") + "</vICMS>"
+//wlinha += "<vICMSDeson>0.00</vICMSDeson>"
+wlinha += "<vICMSDeson>" + formatNumber(wtoticmsdeson, "N0.00") + "</vICMSDeson>"//NPP.002005 - INCLUSÃO DE TAG NO XML DA NF-e E NCF-e
+wlinha += "<vFCP>0.00</vFCP>"
+wlinha += "<vBCST>" + formatNumber(wvbcst2, "N0.00") + "</vBCST>"
+wlinha += "<vST>" + formatNumber(wvst, "N0.00") + "</vST>"
+wlinha += "<vFCPST>0.00</vFCPST>"
+wlinha += "<vFCPSTRet>0.00</vFCPSTRet>"
+wlinha += "<vProd>" + formatNumber(wtotprod, "N0.00") + "</vProd>"
+wlinha += "<vFrete>" + formatNumber(wtotfretet, "N0.00") + "</vFrete>"
+wlinha += "<vSeg>0</vSeg>"
+wlinha += "<vDesc>" + formatNumber(wtotmvaldc, "N0.00") + "</vDesc>"
+wlinha += "<vII>" + formatNumber(wtotii, "N0.00") + "</vII>"
+wlinha += "<vIPI>" + formatNumber(wtotipi, "N0.00") + "</vIPI>"
+wlinha += "<vIPIDevol>0.00</vIPIDevol>"
+wlinha += "<vPIS>" + formatNumber(wtotpis, "N0.00") + "</vPIS>"
+wlinha += "<vCOFINS>" + formatNumber(wtotcofins, "N0.00") + "</vCOFINS>"
+wlinha += "<vOutro>" + formatNumber(wtotdespadu, "N0.00") + "</vOutro>"
+if (!inList(wrow.ctcf.trim(), ["5152C"]) && wrow.iuorg.trim() != "F07") {
+  wvNF = wrow.mvalor + wvst
+  //NPP.001652 PARAMETRIZAÇÃO VENDA DE CELULAR F03 E F07	
+  if (wvendaicmsst > 0) { wvNF = wrow.mvalor }
+} else {
+  wvNF = wrow.mvalor
+}
+wlinha += "<vNF>" + formatNumber(wvNF, "N0.00") + "</vNF>"
+wlinha += "</ICMSTot>"
+
+// >>>>>>>>>>>>>>>> REFORMA TRIBUTARIA - FIM >>>>>>>>>>>>>>>>>>>>>>>
+
+if (wvtIBSUF > 0 || wvtIBSMun > 0 || wvtCBS > 0) {
+  wlinha += "<IBSCBSTot>"
+
+  wlinha += "<vBCIBSCBS>" + formatNumber(wvBCIBSCBSt, "N0.00") + "</vBCIBSCBS>"
+
+  wlinha += "<gIBS>"
+  wlinha += "<gIBSUF>"
+  wlinha += "<vDif>" + formatNumber(0, "N0.00") + "</vDif>"
+  wlinha += "<vDevTrib>" + formatNumber(0, "N0.00") + "</vDevTrib>"
+  wlinha += "<vIBSUF>" + formatNumber(wvtIBSUF, "N0.00") + "</vIBSUF>"
+  wlinha += "</gIBSUF>"
+
+  wlinha += "<gIBSMun>"
+  wlinha += "<vDif>" + formatNumber(0, "N0.00") + "</vDif>"
+  wlinha += "<vDevTrib>" + formatNumber(0, "N0.00") + "</vDevTrib>"
+  wlinha += "<vIBSMun>" + formatNumber(wvtIBSMun, "N0.00") + "</vIBSMun>"
+  wlinha += "</gIBSMun>"
+
+  wlinha += "<vIBS>" + formatNumber(wvIBSt, "N0.00") + "</vIBS>"
+  wlinha += "<vCredPres>" + formatNumber(0, "N0.00") + "</vCredPres>"
+  wlinha += "<vCredPresCondSus>" + formatNumber(0, "N0.00") + "</vCredPresCondSus>"
+  wlinha += "</gIBS>"
+
+  wlinha += "<gCBS>"
+  wlinha += "<vDif>" + formatNumber(0, "N0.00") + "</vDif>"
+  wlinha += "<vDevTrib>" + formatNumber(0, "N0.00") + "</vDevTrib>"
+  wlinha += "<vCBS>" + formatNumber(wvtCBS, "N0.00") + "</vCBS>"
+  wlinha += "<vCredPres>" + formatNumber(0, "N0.00") + "</vCredPres>"
+  wlinha += "<vCredPresCondSus>" + formatNumber(0, "N0.00") + "</vCredPresCondSus>"
+  wlinha += "</gCBS>"
+
+  wlinha += "</IBSCBSTot>"
+}
+
+// >>>>>>>>>>>>>>>> REFORMA TRIBUTARIA - FIM >>>>>>>>>>>>>>>>>>>>>>>
+
+wlinha += "</total>"
+
+wsel = " SELECT COUNT(ZK) "
+wsel += " FROM   bctxt0 "
+wsel += " WHERE  ictx  = 'ZANTHUS*FILIAL' "
+wsel += "   AND  ivalk = '" + wrow.iuorg.trim() + "' "
+wcont = getSQLNumber(wsel)
+
+if (wrow.cr.trim() == "VX" && wcont > 0) {
+  wrow.ccl = "FOB"
+}
+
+if (wrow.ccl.trim() == "FOB") { wfrete = "1" } else { wfrete = "0" }
+//NPP.001740 - DOCUMENTO FISCAL RELATIVO A ECF	
+if (wrow.idoct.trim() == "NNF" && wrow.idoct2.trim() == "NCF" && (wrow.cit.substring(1, 4) == "929")) {
+  wfrete = "9"
+}
+
+if ((inList(wrow.cit.trim().substring(0, 1), ["3", "7"])) || (wrow.iuorg.trim() == "F03") || (wrow.iuorg.trim() == "F07") || (wrow.iuorg.trim() == "F00") || ((wrow.iuorg.trim() == "F08") && wnodo != "610")) {
+
+  //grava nome da transportadora na extensao
+  x_mc_update_extension_fn("c", "ddoctx", wrow.zk, "wtransp", wnome.toUpperCase())
+
+  if (wccl.trim() == "" && wrow.idoct2.trim() != "NTS" && wrow.iuorg.trim() != "F08") {
+    throwError("Operação Cancelada. Campo Tipo Frete Não Preenchido")
+  } else if (wccl.trim() != wrow.ccl.trim()) {
+    if (wccl.trim() != "FOB" && wccl.trim() != "CIF") {
+      throwError("Operação Cancelada. Tipo Frete Incorreto")
+    }
+    if (wccl.trim() == "FOB") { wfrete = "1" } else { wfrete = "0" }
+    //     ddoc0_pr_insert_ddoe_fn(wrow,"FRT","S","",0)            
+  }
+
+  //Colocar Frete por Conta da F03
+  if (!wienttra.isEmpty()) {
+    wsel = " select count(*)"
+    wsel += " from bctxt0 with(nolock) "
+    wsel += " where ictx = 'BCTX*FN*FRTCONTA' "
+    wsel += " and ivalk != '' "
+    wsel += " and ivalk  = '" + wienttra + "' "
+    //showText(m,"",wsel)
+    wfnfrt = getSQLNumber(wsel)
+
+    if (wfrete == "0" && wfnfrt != 0 && wrow.iuorg.trim() != "F03") {
+      wfrete = "2"
+      wfnfrtflag = true
+    }
+  }
+
+  //NPP.001740 - DOCUMENTO FISCAL RELATIVO A ECF	
+  if (wrow.idoct.trim() == "NNF" && wrow.idoct2.trim() == "NCF" && (wrow.cit.substring(1, 4) == "929")) {
+    wfrete = "9"
+  }
+
+  wlinha += "<transp>"
+  wlinha += "<modFrete>" + wfrete + "</modFrete>"
+
+  if (!wienttra.isEmpty()) {
+
+    // Recupera dados da Transportadora
+    wsel = " SELECT ientt, ient, nent, tidfisc, tidfisc2, "
+    wsel += "        tmorad, tmail, testado, tmunicip "
+    wsel += "   FROM bentt0 WITH(NOLOCK) "
+    wsel += "  WHERE ientt  = '" + wientttra + "' "
+    wsel += "    AND ient   = '" + wienttra + "' "
+    wsel += "    AND c1 = 'TR' "
+    println(" WSEL --> BENT: " + wsel.toString()); flush()
+    wntra = getRow("BENT", wsel)
+
+    if (wntra.wdcode != 100) {
+      wnome = wntra.nent.trim()
+      wendtra = wntra.tmorad.trim() + " " + wntra.tmail.trim()
+      wuftra = wntra.testado.trim()
+
+      // Para atender o novo CNPJ Alfanumerico, trocamos a regex antiga "[^0-9]" pela nova "[^A-Z0-9]".
+      wcnpjtra = wntra.tidfisc.trim().replaceAll("[^A-Z0-9]", "")
+      wietra = wntra.tidfisc2.trim().replaceAll("[^0-9]", "")
+      wmuntra = wntra.tmunicip.trim()
+    } else {
+      println("Transportadora nao encontrada: " + wientttra + " - " + wienttra); flush()
+    }
+
+    x_mc_update_extension_fn("c", "DDOCTX", wrow.zk, "wtransp", wnome)
+
+    wlinha += "<transporta>"
+
+    if (wcnpjtra != "") {
+      x_mc_update_extension_fn("c", "DDOCTX", wrow.zk, "wcnpjtransp", wcnpjtra)
+      wlinha += "<CNPJ>" + wcnpjtra + "</CNPJ>"
+    }
+
+    wlinha += "<xNome>" + wnome + "</xNome>"
+
+    if (wietra != "") {
+      x_mc_update_extension_fn("c", "DDOCTX", wrow.zk, "wietransp", wietra)
+      wlinha += "<IE>" + wietra + "</IE>"
+    }
+
+    if (wendtra != "") {
+      x_mc_update_extension_fn("c", "DDOCTX", wrow.zk, "wendtransp", wendtra)
+      wlinha += "<xEnder>" + wendtra + "</xEnder>"
+    }
+
+    if (wmuntra != "") {
+      x_mc_update_extension_fn("c", "DDOCTX", wrow.zk, "wmuntransp", wmuntra)
+      wlinha += "<xMun>" + wmuntra + "</xMun>"
+    }
+
+    if (wuftra != "") {
+      x_mc_update_extension_fn("c", "DDOCTX", wrow.zk, "wuftransp", wuftra)
+      wlinha += "<UF>" + wuftra + "</UF>"
+    }
+
+    wlinha += "</transporta>"
+  }
+  if (wplaca != "") {
+    x_mc_update_extension_fn("c", "DDOCTX", wrow.zk, "wplaca", wplaca)
+    x_mc_update_extension_fn("c", "DDOCTX", wrow.zk, "wuf", wuf)
+    wlinha += "<veicTransp>"
+    wlinha += "<placa>" + wplaca + "</placa>"
+    wlinha += "<UF>" + wuf + "</UF>"
+    wlinha += "</veicTransp>"
+  }
+  wlinha += "<vol>"
+  if (wqvol > 0) {
+    x_mc_update_extension_fn("n", "DDOCTX", wrow.zk, "wqvol", wqvol)
+    wlinha += "<qVol>" + formatNumber(wqvol, "N0") + "</qVol>"
+  }
+  if (wespecie != "") {
+    x_mc_update_extension_fn("c", "DDOCTX", wrow.zk, "wespecie", wespecie)
+    wlinha += "<esp>" + wespecie + "</esp>"
+  }
+  //wlinha += "<marca></marca>"
+  //wlinha += "<nVol></nVol>"
+  if (wpesol > 0) {
+    x_mc_update_extension_fn("n", "DDOCTX", wrow.zk, "wpesol", wpesol)
+    wlinha += "<pesoL>" + formatNumber(wpesol, "N0.000") + "</pesoL>"
+  }
+  if (wpesob > 0) {
+    x_mc_update_extension_fn("n", "DDOCTX", wrow.zk, "wpesob", wpesob)
+    wlinha += "<pesoB>" + formatNumber(wpesob, "N0.000") + "</pesoB>"
+  }
+  wlinha += "</vol>"
+} else {
+
+  //Colocar Frete por Conta da F03
+  if (!wienttra.isEmpty()) {
+    wsel = " select count(*)"
+    wsel += " from bctxt0 with(nolock) "
+    wsel += " where ictx = 'BCTX*FN*FRTCONTA' "
+    wsel += " and ivalk != '' "
+    wsel += " and ivalk  = '" + wienttra + "' "
+    //showText(m,"",wsel)
+    wfnfrt = getSQLNumber(wsel)
+
+    if (wfrete == "0" && wfnfrt != 0 && wrow.iuorg.trim() != "F03") {
+      wfrete = "2"
+      wfnfrtflag = true
+    }
+  }
+  //NPP.001740 - DOCUMENTO FISCAL RELATIVO A ECF	
+  if (wrow.idoct.trim() == "NNF" && wrow.idoct2.trim() == "NCF" && (wrow.cit.substring(1, 4) == "929")) {
+    wfrete = "9"
+  }
+
+  wlinha += "<transp>"
+  wlinha += "<modFrete>" + wfrete + "</modFrete>"
+}
+wlinha += "</transp>"
+
+cursor.commitWork()
+cursor.beginWork()
+
+
+//if((wrow.iuorg.trim() == "F00") || (wrow.iuorg.trim() == "F03")) {
+
+// armazena o total de pagamento em duplicatas
+wtotalEmDuplicatas = 0.00
+
+wsel = "Select a.mvalor, a.idoc, a.item, a.dtem "
+wsel += "  From dtemt0 a "
+wsel += " Where a.iorg  = '" + wrow.iorg.trim() + "' "
+wsel += "   and a.idoct = '" + wrow.idoct2.trim() + "' "
+wsel += "   and a.idoc  = '" + wrow.idoc2.trim() + "' "
+wsel += "   and a.ientt = '" + wrow.ientt.trim() + "' "
+wsel += "   and a.ient  = '" + wrow.ient.trim() + "' "
+wsel += "   and a.item <> '' "
+wsel += "   and a.itemt = 'NDP' "
+wsel += " Order by a.item "
+vdtem = getRows("DTEM", wsel)
+
+if (vdtem.size() > 0) {
+
+  wvtfat = 0.00
+  wnfat = "1"
+	
+	foreach wdtem(vdtem.elements()) { wvtfat += wdtem.mvalor }
+
+  wlinha += "<cobr>"
+
+  wlinha += "<fat>"
+  wlinha += "<nFat>" + wnfat + "</nFat>"
+  wlinha += "<vOrig>" + formatNumber((wvtfat + 0.01), "N0.00") + "</vOrig>"
+  wlinha += "<vDesc>0.01</vDesc>"
+  wlinha += "<vLiq>" + formatNumber(wvtfat, "N0.00") + "</vLiq>"
+  wlinha += "</fat>"
+
+  wndup = 1
+	foreach wdtem(vdtem.elements()) {
+    wlinha += "<dup>"
+    wlinha += "<nDup>" + formatNumber(wndup, "N000") + "</nDup>"
+    wlinha += "<dVenc>" + wdtem.dtem.trim() + "</dVenc>"
+    wlinha += "<vDup>" + formatNumber(wdtem.mvalor, "N0.00") + "</vDup>"
+    wlinha += "</dup>"
+    wtotalEmDuplicatas += wdtem.mvalor
+  }
+  wlinha += "</cobr>"
+}
+//}
+
+// formas de pagamento
+wlinha += "<pag>"
+
+if (wfinNFe == "1") {
+
+  wvTroco = 0.00
+  if (wtotalEmDuplicatas > 0) {
+
+    wlinha += "<detPag>"
+    wlinha += "<tPag>14</tPag>"
+    wlinha += "<vPag>" + formatNumber(wtotalEmDuplicatas, "N0.00") + "</vPag>"
+    wlinha += "</detPag>"
+
+    // faz o calculo para saber se o valor da 
+    // nota é itual ao total do somatorio das duplicatas
+    wdiferencaDup = wvNF - wtotalEmDuplicatas
+    if (wdiferencaDup != 0) {
+      if (wdiferencaDup > 0) {
+        wlinha += "<detPag>"
+        wlinha += "<tPag>99</tPag>"
+        wlinha += "<xPag>Outros</xPag>"
+        wlinha += "<vPag>" + formatNumber(wdiferencaDup, "N0.00") + "</vPag>"
+        wlinha += "</detPag>"
+      } else {
+        wvTroco = wdiferencaDup * -1
+      }
+    }
+
+  } else {
+
+    wlinha += "<detPag>"
+    wlinha += "<tPag>01</tPag>"
+    wlinha += "<vPag>" + formatNumber(wvNF, "N0.00") + "</vPag>"
+    wlinha += "</detPag>"
+
+  }
+
+  if (wvTroco > 0) {
+    wlinha += "<vTroco>" + formatNumber(wvTroco, "N0.00") + "</vTroco>"
+  }
+
+} else {
+
+  wlinha += "<detPag>"
+  wlinha += "<tPag>90</tPag>"
+  wlinha += "<vPag>0.00</vPag>"
+  wlinha += "</detPag>"
+
+}
+
+wlinha += "</pag>"
+
+if (windIntermed == "1") {
+  wlinha += "<infIntermed>"
+  wlinha += "<CNPJ>" + wCNPJ_YB02 + "</CNPJ>"
+  wlinha += "<idCadIntTran>" + widCadIntTran_YB03 + "</idCadIntTran>"
+  wlinha += "</infIntermed>"
+}
+
+// Verifica se existe alguma observação
+wobs = ddoc0_mc_nfe_observacoes_fn(wrow)
+
+if (defined("wxped") && !wxped.trim().isEmpty()) {
+  wobs = " Pedido do Cliente: " + wxped.trim() + ". " + wobs
+}
+
+// Chamado 367856 - Anderson Lopes - 2021-07-30
+// Para atender o novo CNPJ Alfanumerico, trocamos a regex antiga "[^0-9]" pela nova "[^A-Z0-9]".
+if ((wbent2.tidfisc.replaceAll("[^A-Z0-9]", "").length() == 14 && inList(wbent2.tidfisc2.trim().toUpperCase(), ["ISENTO", ""]) || wbent2.tidfisc.replaceAll("[^A-Z0-9]", "").length() == 11) && inList(wrow.ctcf.trim(), ["6102"]) && inList(wbent2.testado.trim().toUpperCase(), ["RN", "BA"])) {
+  wobs += " DIFAL PAGO POR MEIO DE DEPOSITO JUDICIAL CONFORME DECISÃO LIMINAR DO PROCESSO Nº  0859716-27.2020.8.20.5001"
+}
+
+if (wfnfrtflag) {
+  wobs += " CNPJ PAGADOR DO FRETE: 07.272.825/0004-57"
+}
+
+if (wobs.trim() != "") {
+  wlinha += "<infAdic>"
+  //wlinha += "<infAdFisco></infAdFisco>"
+  wlinha += "<infCpl>" + wobs.trim() + "</infCpl>"
+  wlinha += "</infAdic>"
+}
+
+// define o local de impressão	
+wlinha += "<Manager>"
+wlinha += "<PrintManagerRemoto>" + edoc_mc_get_ip_fn() + ":8081</PrintManagerRemoto>"
+wlinha += "<Impressora>" + edoc_mc_get_impressora_fn(wrow) + "</Impressora>"
+if ((x_mc_get_access3_fn("DDOC0-0415", "")) && (wrow.idoct2.trim() == "NPV")) {
+  wlinha += "<QTDCopias>2</QTDCopias>"
+}
+wlinha += "</Manager>"
+
+wlinha += "</infNFe>"
+
+println(wlinha); flush()
+
+cursor.commitWork()
+cursor.beginWork()
+
+println(" FUNCAO -> EDOC_MC_GERAR_XML_400_LOTE_FN -> FINAL "); flush()
+
+return wlinha 

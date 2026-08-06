@@ -1,0 +1,308 @@
+//Função: edoc_mc_nfse_tx2_2211001_fn(wrow, wtipo)
+
+import("java.io.*")
+
+// work
+wdatetime = x_mc_br_get_date_server_fn()
+wdate = wdatetime.substring(0, 10)
+wtime = wdatetime.substring(11, 19)
+wtime = formatNumber(toNumber(wdatetime.substring(11, 13)) - 1, "N00") + wtime.substring(2, 8)
+cursor = MConnection:: getMCursor()
+wbody = StringBuffer()
+
+
+// obtem os dados do prestador de serviço
+wbentp = edoc_mc_nfse_get_prestador_fn(wrow)
+
+// obtem os dados do tomador do servico
+wbentt = edoc_mc_nfse_get_tomador_fn(wrow)
+
+// Busca o código isiafi da tabela de CEP, busca pelo CEP do cliente.
+wcepcliente = ""
+if (wbentt.icpt.trim() != "") {
+  wcepcliente = wbentt.icpt.trim()
+}
+
+println(">>>Cep do Cliente : <<<<" + wcepcliente); flush();
+
+wsel = " select top 1 isiafi "
+wsel += " from bcept0 "
+wsel += " where icep = '" + wcepcliente + "' "
+println(">>>Wsel  bcept0 : <<<<" + wsel); flush();
+wCidadeTomador = getSQLValue(wsel)
+
+
+// Codigo do municipio do tomador
+
+if (wCidadeTomador.trim() == "") {
+  println(">>código isiafi vazio  : <<<<"); flush();
+  wsel = " select tclass "
+  wsel += " from bctxt0 with(nolock) "
+  wsel += " where ictx = 'TABELA*SIAFI' "
+  wsel += " and xord = '" + wbentt.testado.trim() + "' "
+  wsel += " and nctx = '" + wbentt.tmunicip.trim() + "' "
+  println(">>>Wsel  bctxt0 : <<<<" + wsel); flush();
+  wCidadeTomador = getSQLValue(wsel) //edoc_mc_nfse_get_municipio_fn(wbentt.tmunicip, wbentt.testado)
+}
+println(">>>Código do Tomador final  : <<<<" + wCidadeTomador); flush();
+if (wCidadeTomador.trim() == "") throwError("Código SIAFI não encontrado para " + wbentt.tmunicip.trim())
+
+
+// obtem o numero do RPS se basenado no idoc
+wnum = edoc_mc_nfse_get_num_fn(wrow)
+
+// função que monta o conteudo do arquivo tx2
+function append(str) {
+  wbody.append(str + "\r\n")
+}
+
+// faz uma consulta na ddol e retorna o vetor
+function getServicos(iorg, ientt, ient, idoct, idoc) {
+  wsel = "select  * "
+  wsel += "  from ddolt0 "
+  wsel += " where iorg = '" + iorg + "' "
+  wsel += "   and ientt = '" + ientt + "' "
+  wsel += "   and ient = '" + ient + "' "
+  wsel += "   and idoct = '" + idoct + "' "
+  wsel += "   and idoc = '" + idoc + "' "
+  return getRows("DDOL", wsel)
+}
+
+// percorre as linhas dos documento acumulado o total do servico 
+// na variavel wtotal, retornando a mesma
+function getTotalServicos(iorg, ientt, ient, idoct, idoc) {
+  wtotal = 0.00
+  vddol = getServicos(iorg, ientt, ient, idoct, idoc)
+  foreach wddol(vddol.elements()){
+    wtotal += wddol.mvalor
+  }
+  return wtotal
+}
+
+
+//Inserir CNPJ F00
+//wbentp.tidfisc  = "07.272.825/0016-90"
+//wbentp.tidfisc3 = "438113-0"
+
+wIdLote = "L" + wnum
+wCodCidade = "921"
+
+// Para atender o novo CNPJ Alfanumerico, trocamos a regex antiga "[^0-9]" pela nova "[^A-Z0-9]".
+wCPFCNPJRemetente = wbentp.tidfisc.replaceAll("[^A-Z0-9]", "")
+wRazaoSocialRemetente = wbentp.nnomel.toUpperCase().trim()
+wtransacao = "false"
+wdtInicio = wdate
+wdtFim = wdate
+wQtdRPS = "1"
+wValorTotalServicos = getTotalServicos(wrow.iorg, wrow.ientt, wrow.ient, wrow.idoct, wrow.idoc)
+wValorTotalDeducoes = "0.00"
+wVersao = "1"
+wMetodoEnvio = "WS"
+wIdRPS = "R" + wnum
+wInscricaoMunicipalPrestador = wbentp.tidfisc3.trim().replaceAll("[^0-9]", "")
+wRazaoSocialPrestador = wbentp.nnomel.toUpperCase().trim()
+wTipoRPS = "1"
+wSituacaoNota = "1"
+wSerieRPS = edoc_mc_nfse_get_serie_fn(wrow)
+wNumeroRPS = wnum
+wDataEmissaoRPS = wrow.ddoc.trim() + "T" + wtime + ".000"
+wSituacaoRPS = "N"
+wSeriePrestacao = "99"
+wInscricaoMunicipalTomador = wbentt.tidfisc3.trim().replaceAll("[^0-9]", "")
+
+// Para atender o novo CNPJ Alfanumerico, trocamos a regex antiga "[^0-9]" pela nova "[^A-Z0-9]".
+wCPFCNPJTomador = wbentt.tidfisc.replaceAll("[^A-Z0-9]", "")
+wRazaoSocialTomador = wbentt.nnomel.toUpperCase().trim()
+wTipoLogradouroTomador = "RUA"
+wLogradouroTomador = wbentt.tmorad.toUpperCase().trim()
+wNumeroEnderecoTomador = wbentt.tmail.trim()
+wTipoBairroTomador = "Bairro"
+wBairroTomador = wbentt.tlocal.toUpperCase().replaceAll("[^0-9A-Z ]", "")
+wCidadeTomador = wCidadeTomador //edoc_mc_nfse_get_municipio_fn(wbentt.tmunicip, wbentt.testado)
+wCidadeTomadorDescricao = wbentt.tmunicip.toUpperCase().trim()
+wCEPTomador = wbentt.icpt.replaceAll("[^0-9]", "")
+wEmailTomador = wbentt.temail.trim()
+wItemListaServico = "1402"
+wCodigoAtividade = "951180001"
+wCodigoCnae = "951180001"
+wAliquotaAtividade = 5
+wTipoRecolhimento = "A"
+wMunicipioPrestacao = edoc_mc_nfse_get_municipio_fn(wbentp.tmunicip, wbentp.testado)
+wMunicipioPrestacaoDescricao = "TERESINA"
+wOperacao = "A"
+wTributacao = "T"
+wValorPIS = 0.00
+wValorCOFINS = 0.00
+wValorINSS = 0.00
+wValorIR = 0.00
+wValorCSLL = 0.00
+wAliquotaPIS = 0.00
+wAliquotaCOFINS = 0.00
+wAliquotaINSS = 0.00
+wAliquotaIR = 0.00
+wAliquotaCSLL = 0.00
+wDescricaoRPS = "Serviço"
+wDDDPrestador = "86"
+wTelefonePrestador = wbentp.ttelin.trim()
+wDDDTomador = "86"
+wTelefoneTomador = "999810498" //wbentt.ttelin.trim().replaceAll("[^0-9]","")
+
+// codigo do municipio de prestação
+if (wMunicipioPrestacao.trim() == "2211001") {
+  wMunicipioPrestacao = "001219"
+  wCodCidade = "1219"
+}
+
+/*
+// Codigo do municipio do tomador
+if(wCidadeTomador.trim() == "2211001"){
+    wCidadeTomador = "001219"
+} else if (wCidadeTomador.trim() == "2112209") {
+    wCidadeTomador = "000937"
+}
+*/
+
+wValorPIS = round((wValorTotalServicos * wAliquotaPIS), 2)
+wValorCOFINS = round((wValorTotalServicos * wAliquotaCOFINS), 2)
+wValorINSS = round((wValorTotalServicos * wAliquotaINSS), 2)
+wValorIR = round((wValorTotalServicos * wAliquotaIR), 2)
+wValorCSLL = round((wValorTotalServicos * wAliquotaCSLL), 2)
+
+if (!wEmailTomador.matches("^[_A-Za-z0-9-\\+]+(\\.[_A-Za-z0-9-]+)*@[A-Za-z0-9-]+(\\.[A-Za-z0-9]+)*(\\.[A-Za-z]{2,})$")) {
+  wEmailTomador = "-"
+}
+
+//wCPFCNPJRemetente = "07272825000104"
+//wInscricaoMunicipalPrestador = "1965557"
+
+append("formato=tx2")
+append("padrao=TecnoNFSe")
+
+append("INCLUIR")
+append("NumeroLote=" + wnum)
+append("IdLote=" + wIdLote)
+append("CPFCNPJRemetente=" + wCPFCNPJRemetente)
+append("InscricaoMunicipalRemetente=" + wInscricaoMunicipalPrestador)
+append("RazaoSocialRemetente=" + wRazaoSocialRemetente)
+append("transacao=" + wtransacao)
+append("ValorTotalServicos=" + formatNumber(wValorTotalServicos, "N0.00"))
+append("ValorTotalDeducoes=" + formatNumber(wValorTotalDeducoes, "N0.00"))
+append("Versao=" + wVersao)
+append("MetodoEnvio=" + wMetodoEnvio)
+append("SALVAR")
+append("INCLUIRRPS")
+append("IdRPS=" + wIdRPS)
+append("CpfCnpjPrestador=" + wCPFCNPJRemetente)
+append("InscricaoMunicipalPrestador=" + wInscricaoMunicipalPrestador)
+append("RazaoSocialPrestador=" + wRazaoSocialPrestador)
+append("TipoRPS=" + wTipoRPS)
+append("SituacaoNota=" + wSituacaoNota)
+append("SerieRPS=" + wSerieRPS)
+append("NumeroRPS=" + wNumeroRPS)
+append("DataEmissao=" + wDataEmissaoRPS)
+append("SeriePrestacao=" + wSeriePrestacao)
+append("InscricaoMunicipalTomador=" + wInscricaoMunicipalTomador)
+append("CPFCNPJTomador=" + wCPFCNPJTomador)
+append("RazaoSocialTomador=" + wRazaoSocialTomador)
+append("TipoLogradouroTomador=" + wTipoLogradouroTomador)
+append("EnderecoTomador=" + wLogradouroTomador)             // append("LogradouroTomador=" + wLogradouroTomador)
+append("NumeroTomador=" + wNumeroEnderecoTomador)           // append("NumeroEnderecoTomador=" + wNumeroEnderecoTomador)
+append("TipoBairroTomador=" + wTipoBairroTomador)
+append("BairroTomador=" + wBairroTomador)
+append("CodigoCidadeTomador=" + INT(wCidadeTomador))             // append("CidadeTomador=" + wCidadeTomador)
+append("DescricaoCidadeTomador=" + wCidadeTomadorDescricao) // append("CidadeTomadorDescricao=" + wCidadeTomadorDescricao)
+append("CEPTomador=" + wCEPTomador)
+append("EmailTomador=" + wEmailTomador)
+append("CodigoItemListaServico=" + wItemListaServico)
+append("CodigoTributacaoMunicipio=" + wCodigoAtividade)     // append("CodigoAtividade=" + wCodigoAtividade)
+append("CodigoCnae=" + wCodigoCnae)//"4751201"
+append("CodigoCidadePrestador=2211001")
+append("TipoTributacao=6")                                  // append("TipoRecolhimento=" + wTipoRecolhimento)
+append("CodigoCidadePrestacao=2211001")                     // append("MunicipioPrestacao=" + wMunicipioPrestacao)
+append("DescricaoCidadePrestacao=TERESINA")                 // append("MunicipioPrestacaoDescricao=" + wMunicipioPrestacaoDescricao)
+append("ExigibilidadeISS=1")
+append("OptanteSimplesNacional=2")
+append("IncentivoFiscal=2")
+append("Operacao=" + wOperacao)
+//append("AliquotaISS=" + wAliquotaAtividade)                 // append("AliquotaAtividade=" + wAliquotaAtividade)
+append("ValorServicos=" + formatNumber(wValorTotalServicos, "N0.00"))
+//append("ValorISS=" + formatNumber((wAliquotaAtividade / 100) * wValorTotalServicos, "N0.00"))
+
+if (wbentt.cmp4.trim() == "S") {
+  append("AliquotaISS=0.00")
+  append("ValorIss=0.00")
+} else {
+  append("AliquotaISS=5")
+  append("ValorIss=2.50")
+}
+if (wbentt.cmp4.trim() == "S") {
+  append("IssRetido=1")
+} else {
+  append("IssRetido=2")
+}
+if (wbentt.cmp4.trim() == "S") {
+  append("ValorISSRetido=5.00")
+} else {
+  append("ValorISSRetido=0.00")
+}
+
+append("ValorPIS=" + formatNumber(wValorPIS, "N0.00"))
+append("ValorCOFINS=" + formatNumber(wValorCOFINS, "N0.00"))
+append("ValorINSS=" + formatNumber(wValorINSS, "N0.00"))
+append("ValorIR=" + formatNumber(wValorIR, "N0.00"))
+append("ValorCSLL=" + formatNumber(wValorCSLL, "N0.00"))
+append("AliquotaPIS=" + formatNumber(wAliquotaPIS, "N0.0000"))
+append("AliquotaCOFINS=" + formatNumber(wAliquotaCOFINS, "N0.0000"))
+append("AliquotaINSS=" + formatNumber(wAliquotaINSS, "N0.0000"))
+append("AliquotaIR=" + formatNumber(wAliquotaIR, "N0.0000"))
+append("AliquotaCSLL=" + formatNumber(wAliquotaCSLL, "N0.0000"))
+append("DescricaoRPS=Serviço")
+append("DDDPrestador=" + wDDDPrestador)
+append("TelefonePrestador=" + wTelefonePrestador)
+append("DDDTomador=" + wDDDTomador)
+append("TelefoneTomador=" + wTelefoneTomador)
+
+wDiscriminacao = ""
+vddol2 = getServicos(wrow.iorg, wrow.ientt, wrow.ient, wrow.idoct, wrow.idoc)
+foreach wddol2(vddol2.elements()){
+  wdescr = x_mc_retira_acento_fn(wddol2.ndoc.trim())
+  wDiscriminacao += wdescr + ". "
+}
+append("DiscriminacaoServico=" + wDiscriminacao)
+append("SALVARRPS")
+
+/*
+vddol2 = getServicos(wrow.iorg, wrow.ientt, wrow.ient, wrow.idoct, wrow.idoc)
+foreach wddol2 (vddol2.elements()){
+
+    wDiscriminacaoServico= wddol2.ndoc.trim()
+    wQuantidade=wddol2.qpsr
+    wValorUnitario= round(wddol2.mvalor / wddol2.qpsr,2)
+    wValorTotal=wddol2.mvalor
+
+    append("INCLUIRSERVICO")
+    append("DiscriminacaoServico=" + wDiscriminacaoServico)
+    append("Quantidade=" + formatNumber(wQuantidade, "N0.00"))
+    append("ValorUnitario=" + formatNumber(wValorUnitario, "N0.00"))
+    append("ValorTotal=" + formatNumber(wValorTotal, "N0.00"))
+    append("SALVARSERVICO")
+}
+*/
+println(wbody.toString())
+flush()
+
+// wtipo indica se estamos trabalhando com edoc ou componente.
+// se for edoc, então retornamos o tx2
+if (wtipo == "edoc") {
+  return wbody.toString()
+} else {
+  //Grava arquivo txt 
+  wpath = System:: getProperty("user.dir") + "\\NFSe\\" + wrow.iuorg.trim() + "\\Tx2\\"
+  wfilenameObj = wpath + int(wrow.idoc.substring(4)) + ".tx2"
+  wfileObj = MFile(wfilenameObj)
+  wfileObj.setBytes(wbody.toString().getBytes())
+  wfileObj.saveFile(wfilenameObj)
+}
+
+cursor.commitWork()
+cursor.beginWork()

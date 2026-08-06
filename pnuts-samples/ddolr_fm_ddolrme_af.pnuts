@@ -1,0 +1,364 @@
+//*************************************************************************************************
+// Nome.....: ddolr_fm_ddolrme_af()
+// Objetivo.: Gera Rota de Transporte
+// Histórico:
+// 2010-09-01 - OZANA SPINOSA - Atualizar no site os pedidos com sit. interna RI
+// 2010-11-19 - OZANA SPINOSA - Adiciona evento indicando que pedido foi excluido da rota
+// 2011-10-25 - OZANA SPINOSA - Não permitir inserir pedido na rota se não tiver sido faturado
+// 2012-02-02 - LILIANE CHAVES - Não permitir inserir pedido em rota pendente(Jeferson e Roner)
+// 2012-04-02 - OZANA SPINOSA  - Permitir incluir pedido na rota quando for "Retira Fábrica"
+// 2013-06-03 - OZANA SPINOSA  - Quando for inserir um NPV na rota não colocar mais o número no NPV nos campos descrição, mas sim o número da sua NF (Rodrigo)
+// 2013-06-03 - OZANA SPINOSA  - Quando for inserir um NPV na rota passar a inserir também o valor da NF no campo destinado ao valor, na linha do documento (Rodrigo)
+// 2014-09-15 - FILIPE RIBEIRO - Validar se o pedido já possui uma rota terminada
+// 2015-12-08 - OZANA SPINOSA  - Permitir a inclusão de pedidos da F07 nas NRO da F03
+//*************************************************************************************************
+
+
+// Gera Rota de Transporte
+
+// Pega data do Server
+wdatetime = x_mc_br_get_date_server_fn()
+wdate = wdatetime.substring(0, 10)
+wtime = wdatetime.substring(11, 16)
+cursor = MConnection:: getMCursor()
+
+if (m.formAction == "UPDATE_ROW" || m.formAction == "INSERT_ROW") {
+  widoct2 = "NPV"
+
+  wsel = " select c.idoc from ddoctx a with (nolock)"
+  wsel += " inner join ddoct0 b on a.zkent = b.zk"
+  wsel += " inner join ddoct0 c on b.idoct2 = c.idoct and b.idoc2 = c.idoc2 and c.cstc <> 'XA' and c.csto <> 'XA' "
+  wsel += " where a.zcomp = 'widnfe'"
+  wsel += " and   a.zchar = '" + m.wchave.trim() + "'"
+  widoc2 = getSQLValue(wsel)
+
+  if (widoc2.trim() == "") {
+    wsel = " select c.idoc from ddoctx a with (nolock)"
+    wsel += " inner join ddoct0 b on a.zkent = b.zk"
+    wsel += " inner join ddoct0 c on b.idoct2 = c.idoct and b.idoc2 = c.idoc and c.cstc <> 'XA' and c.csto <> 'XA' "
+    wsel += " where a.zcomp = 'widnfe'"
+    wsel += " and   a.zchar = '" + m.wchave.trim() + "'"
+    widoc2 = getSQLValue(wsel)
+  }
+
+  // Validar NPV
+  wsel = " select * "
+  wsel += "   from ddoct0 "
+  wsel += "  where iorg  = '" + m.iorg + "' "
+  wsel += "    and idoct = '" + widoct2 + "' "
+  wsel += "    and idoc  = '" + widoc2 + "' "
+  yrow = getRow("DDOC", wsel)
+
+  if (yrow.wdcode == SQL_NOTFOUND) {
+    throwError("Pedido de Venda não encontrado.")
+  }
+  if (yrow.csto.trim() != "CT") {
+    cursor.commitWork()
+    throwError("Pedido ainda não faturado.")
+    cursor.beginWork()
+    continue
+  }
+
+
+  if (yrow.iixp2.trim() == "05") {
+    //throwError ("Pedido do tipo retira fábrica")
+  }
+
+
+  if (yrow.cstc.trim() != "X0") {
+    wsel = " select * "
+    wsel += "   from ppzpt0 "
+    wsel += "  where iorg  = '" + m.iorg + "' "
+    wsel += "    and idoct = '" + widoct2 + "' "
+    wsel += "    and idoc  = '" + widoc2 + "' "
+    wsel += "    and cdoce = '01' "
+    wpgto = getRow("PPZP", wsel)
+
+    if (wpgto.wdcode == 100 && yrow.cstc.trim() != "E0") {
+      cursor.commitWork()
+      showError("Pedido ainda não foi enviado para tesouraria.")
+      cursor.beginWork()
+      continue
+    }
+  }
+
+  wsel = " SELECT d.zk                                                                                                        "
+  wsel += "   FROM ddoet0 d                                                                                                    "
+  wsel += "  WHERE d.iorg  = '" + m.iorg + "' "
+  wsel += "    AND d.idoct = '" + widoct2 + "' "
+  wsel += "    AND d.idoc  = '" + widoc2 + "' "
+  wsel += "  GROUP BY d.zk,d.idoct,d.idoc,d.ientt,d.ient                                                                       "
+  wsel += " HAVING MAX(d.zk) >= ALL (SELECT MAX(de.zk)                                                                         "
+  wsel += "                            FROM ddoet0 de                                                                          "
+  wsel += "                           WHERE d.idoct = de.idoct AND d.idoc = de.idoc AND d.ientt = de.ientt AND d.ient = de.ient) "
+  wzk = getSQLValue(wsel)
+
+  wsel = " SELECT COUNT(zk) AS count     "
+  wsel += "   FROM ddoet0 d               "
+  //wsel  +=  "  WHERE d.zk  = '" + wzk  + "' "
+  wsel += "  WHERE d.zk  = " + formatNumber(wzk, "N00000000000000") // Correção para resolver Error converting data type varchar to numeric - Anderson Lopes - 2020-05-28
+  wsel += "    AND d.cdoe  = 'RT'         "
+  wcount = getSQLNumber(wsel)
+
+  if (wcount > 0) {
+    throwError("O Documento " + widoct2.trim() + " " + widoc2.trim() + " já possui rota terminada no documento " + m.idoct.trim() + " " + m.idoc.trim())
+  }
+
+  wsel = " select a.idoc  "
+  wsel += "   from ddoct0 a with (nolock) "
+  wsel += "   join ddolt0 b with (nolock) "
+  wsel += "   on a.idoct = b.idoct        "
+  wsel += "   and a.idoc = b.idoc         "
+  wsel += "  where a.idoct = 'NRO' "
+  wsel += "    and b.idoc2  = '" + widoc2 + "' "
+  wsel += "    and a.csto   = 'PD' "
+  wddol = getSQLValue(wsel)
+  //if(wddol != ""){throwError("Pedido está em rota pendente:  " + wddol)}
+
+  //}
+
+
+  // Verifica se pedido já existe na rota selecionada - Anderson Lopes - 2020-05-19 - Solicitado pelo Rodrigo
+  wsel = " select count(a.idoc)  "
+  wsel += "   from ddoct0 a with (nolock) "
+  wsel += "   join ddolt0 b with (nolock) "
+  wsel += "   on a.idoct = b.idoct        "
+  wsel += "   and a.idoc = b.idoc         "
+  wsel += "  where a.idoct = 'NRO' "
+  wsel += "    and a.idoc = '" + m.idoc.trim() + "' "
+  wsel += "    and b.idoc2  = '" + widoc2.trim() + "' "
+  wcdol = getSQLNumber(wsel)
+  if (wcdol > 0) { throwError("Pedido já inserido nessa rota:  " + m.idoc.trim()) }
+
+
+  //Pega a nota fiscal 
+  wsel = " select * "
+  wsel += "   from ddoct0 "
+  wsel += "  where iorg  = 'TEC' "
+  wsel += "    and idoct in ('NNF','NCF')"
+  wsel += "    and idoct2 = '" + widoct2.trim() + "'"
+  //if (yrow.ctcf.trim() == "VX-WEB") {
+  if (inList(yrow.ctcf.trim(), ["VX-WEB", "VX-WIO"])) {
+    wsel += "    and idoc2  = '" + yrow.idoc2 + "' "
+  } else {
+    wsel += "    and idoc2   = '" + widoc2 + "' "
+  }
+  mrow = getRow("DDOC", wsel)
+
+  if (mrow.wdcode == 100) { // Pega nota fiscal foi identificado casos de pedidos site onde a referencia da nota não é o pedido site mas sim o pedido minimal - Anderson Lopes - 2020-05-20
+    if (inList(yrow.ctcf.trim(), ["VX-WEB", "VX-WIO"])) {
+      //Pega a nota fiscal 
+      wsel = " select * "
+      wsel += "   from ddoct0 "
+      wsel += "  where iorg  = 'TEC' "
+      wsel += "    and idoct in ('NNF','NCF')"
+      wsel += "    and idoct2 = '" + widoct2.trim() + "'"
+      wsel += "    and idoc2   = '" + yrow.idoc.trim() + "' "
+      mrow = getRow("DDOC", wsel)
+    }
+  }
+
+
+
+  /*
+     // Valores Linha Rota   
+     m.ndoc    = widoct2 + " " + widoc2
+     m.idoct2  = widoct2
+     m.idoc2   = widoc2
+     m.ddoc    = wdate
+     m.dcnt    = wdate
+     m.ddoces  = wdate
+     m.ddocv   = wdate
+  */
+
+  // Valores Linha Rota      
+  m.ndoc = mrow.idoct + " - " + mrow.idoc
+  m.idoct2 = widoct2
+  m.idoc2 = widoc2
+  m.ddoc = wdate
+  m.dcnt = wdate
+  m.ddoces = wdate
+  m.ddocv = wdate
+  m.mvalun = mrow.mvalor         //mrow.mvalor
+  m.qpsr = "1"
+
+
+  zglobals.wwientt = m.ientt
+  zglobals.wwient = m.ient
+  zglobals.wwcdoe = ""
+
+  // Insere Evento
+  ddoc0_pr_insert_ddoe_fn(yrow, "RI", "N", m.idoc, row.mvalor)
+  // Insere rastreio
+  dsit0_mc_insert_tracking_fn(m.ientt.trim(), m.ient.trim(), yrow.idoct.trim(), yrow.idoc.trim(), "TL", wdate, yrow.idoct2, yrow.idoc2.trim())
+
+
+  //if (yrow.ctcf.trim() == "VX-WEB") {
+  if (inList(yrow.ctcf.trim(), ["VX-WEB", "VX-WIO"])) {
+
+    wsel = "select zk "
+    wsel += "  from dsitt0 "
+    wsel += " where iorg  = '" + m.iorg + "' "
+    wsel += "   and idoct = '" + widoct2 + "' "
+    wsel += "   and substring(idoc,1,13)  = '" + yrow.idoc2.trim() + "' "
+    wzk = formatNumber(getSQLNumber(wsel), "N00000000000000")
+
+    //if (yrow.ndoc.trim() != "VENDA SITE MARKETPLACE"){                 
+
+    wintNnf = ""
+    wsel = " select (rtrim(RIGHT(idoc,9))) from ddoct0 "
+    wsel += " where iorg = 'TEC'"
+    wsel += " and   idoct = 'NNF'"
+    wsel += " and   cstc not in ('PD','XA')"
+    wsel += " and   csto not in ('PD','XA')"
+    wsel += " and   idoct2 = 'NPV'"
+    wsel += " and   idoc2  = '" + yrow.idoc2.trim() + "'"
+    wintNnf = getSQLValue(wsel)
+
+    if (wintNnf.trim() == "") {
+      wsel = " select (rtrim(RIGHT(idoc,9))) from ddoct0 "
+      wsel += " where iorg = 'TEC'"
+      wsel += " and   idoct = 'NNF'"
+      wsel += " and   cstc not in ('PD','XA')"
+      wsel += " and   csto not in ('PD','XA')"
+      wsel += " and   idoct2 = 'NPV'"
+      wsel += " and   idoc2  = '" + yrow.idoc.trim() + "'"
+      wintNnf = getSQLValue(wsel)
+    }
+
+    wsel = " select a.zchar from ddoctx a "
+    wsel += "  inner join ddoct0 b on a.zkent = b.zk"
+    //wsel += "  inner join ddoct0 c on b.idoct = c.idoct and c.idoc = b.idoc and b.idoc2 = c.idoc2"
+    wsel += "  where a.zcomp = 'widnfe'"
+    wsel += "  and   b.idoct = 'NNF'"
+    wsel += "  and   b.cstc not in ('PD','XA')"
+    wsel += "  and   b.csto not in ('PD','XA')"
+    wsel += "  and   b.idoct2 = 'NPV'"
+    wsel += "  and   b.idoc2  = '" + yrow.idoc2.trim() + "'"
+    wwidnnf = getSQLValue(wsel)
+
+
+    if (wwidnnf.trim() == "") {
+      wsel = " select a.zchar from ddoctx a "
+      wsel += "  inner join ddoct0 b on a.zkent = b.zk"
+      //wsel += "  inner join ddoct0 c on b.idoct = c.idoct and c.idoc = b.idoc and b.idoc2 = c.idoc2"
+      wsel += "  where a.zcomp = 'widnfe'"
+      wsel += "  and   b.idoct = 'NNF'"
+      wsel += "  and   b.cstc not in ('PD','XA')"
+      wsel += "  and   b.csto not in ('PD','XA')"
+      wsel += "  and   b.idoct2 = 'NPV'"
+      wsel += "  and   b.idoc2  = '" + yrow.idoc.trim() + "'"
+      wwidnnf = getSQLValue(wsel)
+    }
+
+    wsel = " Select top 1 a.tidfisc"
+    wsel += "  From bentt0 a, bendt0 b "
+    wsel += " Where a.ientt  = '*' "
+    wsel += " and a.ientt = b.ientt "
+    wsel += " and a.ient = b.ient"
+    wsel += " and b.iendt  = 'LG'"
+    wsel += " and a.ient   = 'TEC' "
+    wsel += " and a.iuorgt = 'UO'"
+    wsel += " and a.iuorg  = '" + yrow.iuorg.trim() + "'"
+    wcnpjun = getSQLValue(wsel)
+
+    wsel = " select carrier from dsitt0"
+    wsel += " where iorg  = '" + yrow.iorg + "' "
+    wsel += "   and idoct = '" + yrow.idoct2 + "' "
+    wsel += "   and substring(idoc,1,13)  = '" + yrow.idoc2 + "' "
+    wcarrier = getSQLValue(wsel)
+
+    wcarrier = wcarrier.toUpperCase()
+
+    wtransp = getTparms("TRANSP*SITE", wcarrier)
+
+    wlink = getTparms("BCTX*TRACKING*SITE", wcarrier)
+
+    switch (wcarrier.trim()) {
+
+      // Rota Ibyte
+      case "903":
+        wlink = wlink + yrow.idoc2.trim()
+        break;
+
+      // Braspress	   
+      case "901":
+        wlink = wlink + "cnpj=" + wcnpjun.replaceAll("[^A-Z0-9]", "").trim() + "&numero=" + wintNnf.trim() + "&documentType=NOTAFISCAL"
+        break;
+
+      // Padrão			 
+      default:
+        wlink = wlink
+        break;
+
+    }
+
+
+    if (wtransp.trim() == "?") {
+      wtransp = ""
+    }
+
+    // Atualiza
+    wsel = "update dsitt0 "
+    wsel += "   set iixp  = '" + wintNnf.trim() + "', idnfe = '" + wwidnnf + "', iixp2 = '" + wtransp.trim() + "', cstc = 'RI'" + ", iixp4 = '" + wlink.trim() + "'"
+    wsel += " where zk   = " + wzk
+    x = executeSQL(wsel)
+    cursor.commitWork()
+    cursor.beginWork()
+
+    wsel = "exec dbo.minsiteupdiixp " + wzk
+    x = executeSQL(wsel)
+
+    // Insere rastreio
+    dsit0_mc_insert_tracking_fn(m.ientt.trim(), m.ient.trim(), yrow.idoct2.trim(), yrow.idoc2.trim(), "TL", wdate, yrow.idoct2, yrow.idoc2.trim())
+
+    // Pega CPF para envio de Whatsapp - Anderson Lopes - 2020-06-12
+    wsel = " select tidfisc from dsitt0"
+    wsel += " where iorg  = '" + yrow.iorg + "' "
+    wsel += "   and idoct = '" + yrow.idoct2 + "' "
+    wsel += "   and substring(idoc,1,13)  = '" + yrow.idoc2 + "' "
+    wcpf = getSQLValue(wsel)
+
+    //Envia Whatsapp
+    dsit0_mc_envia_whatsapp_fn(wcpf, "XP", yrow.idoc2.trim(), "")
+
+    //}
+
+  }
+
+}
+
+if (m.formAction == "DELETE_ROW") {
+
+  if (m.idoct.trim() == "NRO" && m.idoct2.trim() == "NPV") {
+    // Pega dados do pedido deletado
+    wsel = " select * "
+    wsel += "   from ddoct0 with (nolock) "
+    wsel += "  where iorg  = '" + m.iorg.trim() + "' "
+    wsel += "    and idoct = '" + m.idoct2.trim() + "' "
+    wsel += "    and idoc  = '" + m.idoc2.trim() + "' "
+    vddoc = getMRows("DDOC", wsel)
+    if (vddoc.size() > 0) {
+      wddoc = vddoc.elementAt(0)
+      if (wddoc.c3 == "RI") {
+        //Adiciona evento genérico indicando que pedido foi excluido da rota
+
+        ddoc0_pr_insert_ddoe_fn(wddoc, "GEN", "", "Pedido Excluido da Rota: " + m.idoct.trim() + " " + m.idoc.trim(), wddoc.mvalor)
+        ddoc0_pr_insert_ddoe_fn(wddoc, "XL", "N", "", row.mvalor)
+
+        // Atualiza pedido para status RP
+        wsel = " update ddoct0 "
+        wsel += "    set c3 = 'RP', zprc = -1 "
+        wsel += "  where iorg  = '" + wddoc.iorg.trim() + "' "
+        wsel += "    and idoct = '" + wddoc.idoct.trim() + "' "
+        wsel += "    and idoc  = '" + wddoc.idoc.trim() + "' "
+        wsel += "    and ientt = '" + wddoc.ientt.trim() + "' "
+        wsel += "    and ient  = '" + wddoc.ient.trim() + "' "
+        x = executeSQL(wsel)
+      }
+    }
+  }
+}
+
+
+// EOF

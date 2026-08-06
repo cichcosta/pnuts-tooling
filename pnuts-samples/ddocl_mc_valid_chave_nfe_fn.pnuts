@@ -1,0 +1,62 @@
+import()
+
+// Function: ddocl_mc_valid_chave_nfe_fn(wchave)
+// Funcao para validar Chave da nota Pistolada.
+
+wdatetime = x_mc_br_get_date_server_fn()
+wdate = wdatetime.substring(0, 10)
+wtime = wdatetime.substring(11, 16)
+wrow = wrows.elementAt(0)
+wsel = StringBuilder()
+
+println(" --> FUNCAO: DDOCL_MC_VALID_CHAVE_NFE_FN - INICIO <-- "); flush()
+
+if (!wchave.trim().isEmpty()) {
+
+  // vlida tamanho da chave
+  if (wchave.trim().length() < 44) {
+    throwError("Operação cancelada! Quantidade de caracteres da chave é inválido.")
+  }
+
+  wchestado = wchave.substring(0, 2)
+  wchano = wchave.substring(2, 4)
+  wchmes = wchave.substring(4, 6)
+  wchcnpj = wchave.substring(6, 20)
+  wchmodel = wchave.substring(20, 22)
+  wchserie = wchave.substring(22, 25)
+  wchnumn = wchave.substring(25, 34)
+  wchdigc = wchave.substring(34, wchave.length())
+
+  println("<-- WCHNUMN --> " + formatNumber(wrow.idoc.trim().split("/")[1], "N000000000")); flush()
+  if (wchnumn != formatNumber(wrow.idoc.trim().split("/")[1], "N000000000")) {
+    throwError(" Operação Cancelada! Chave Inválida, Num. Doc não corresponde ao Num. da Nota")
+  }
+
+  wfncnpj = getSQLValue("SELECT tidfisc FROM bentt0 WITH(NOLOCK) WHERE ientt = '" + wrow.ientt.trim() + "' AND ient = '" + wrow.ient.trim() + "' ")
+
+  wintserie = int(toNumber(wchserie))
+
+  if (wintserie < 890 && wintserie > 899) {
+
+    println("<-- WCHCNPJ --> " + wfncnpj.replaceAll("[^A-Z0-9]", "")); flush()
+    if (wchcnpj != wfncnpj.replaceAll("[^A-Z0-9]", "")) {
+      throwError(" Operação Cancelada! Chave Inválida, CNPJ Doc não corresponde ao CNPJ da Nota")
+    }
+  }
+  println("<-- WCHANO --> " + wrow.ddoc.split("-")[0].toString()); flush()
+  if (wchano != MDate(wrow.ddoc.split("-")[0]).setFormat("yy").toString()) {
+    throwError(" Operação Cancelada! Chave Inválida, Ano Doc não corresponde ao Ano. da Nota")
+  }
+
+  println("<-- WCHMES --> " + wrow.ddoc.split("-")[1].toString()); flush()
+  if (wchmes != wrow.ddoc.split("-")[1]) {
+    throwError(" Operação Cancelada! Chave Inválida, Mês Doc não corresponde ao Mês. da Nota")
+  }
+
+} else {
+  throwError("Operação Cancelada! O campo não pode ser vazio.")
+}
+
+println(" --> FUNCAO: DDOCL_MC_VALID_CHAVE_NFE_FN - FINAL <-- "); flush()
+
+// EOL

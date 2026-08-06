@@ -1,0 +1,138 @@
+//edoc_mc_nfse_res_env_fn(wiuorg)
+
+import("java.lang.StringBuilder")
+import("java.util.HashMap")
+
+wdatetime = x_mc_br_get_date_server_fn()
+wdate = wdatetime.substring(0, 10)
+
+wlog = StringBuilder()
+
+function log(msg) {
+  wlog.append(msg)
+  wlog.append(EOL)
+}
+
+// select que traz todas as uos ou pelo menos
+// as que se deseja trabalhar (consultar no edoc)
+wsel = "select * "
+wsel += "  from bentt0 with(nolock) "
+wsel += " where ientt = '*' "
+wsel += "   and ient = 'TEC' "
+wsel += "   and iuorgt = 'UO' "
+wsel += "   and iuorg = '" + wiuorg.trim() + "'"
+vuo = getRows("BENT", wsel)
+
+if (vuo.size() > 0) {
+
+    // percorremos todas as UOS
+  foreach wuo(vuo.elements()){
+
+    log("PROCESSANDO UO: " + wuo.iuorg.trim())
+
+    // Agora com os dados da uo em mãos, consultamos
+    // um documento para que possamos passar o mesmo
+    // para a função que devolve a instancia do objeto 
+    // que faz a comunicação com o edoc.
+    wsel = "select top 1 * "
+    wsel += "  from ddoct0 with(nolock) "
+    wsel += " where iorg = 'TEC' "
+    wsel += "   and idoct = 'RPS' "
+    wsel += "   and iuorgt = 'UO' "
+    wsel += "   and iuorg = '" + wuo.iuorg.trim() + "' "
+    wddoc = getRow("DDOC", wsel)
+    if (wddoc.wdcode == 100) {
+      continue
+    }
+
+    // obtemos a instancia do objeto de
+    // comunicação com o edoc
+    oManager = edoc_mc_get_http_service_fn(wddoc, "nfse")
+
+    // monta a query string para a consulta
+    // Para atender o novo CNPJ Alfanumerico, trocamos a regex antiga "[^0-9]" pela nova "[^A-Z0-9]".
+    wQueryString = "consulta?encode=true&grupo=IBYTE&cnpj=" + wuo.tidfisc.replaceAll("[^A-Z0-9]", "")
+    wQueryString += "&Campos=handle,cidade,cnpj,nrps&Filtro=1=1"
+    //wQueryString += "+and+nrps=20019892"
+    wQueryString += "+and+situacao=REGISTRADA+or+situacao=ENVIADA"
+
+    // solicita a listagem das notas no edoc
+    wGet = oManager.doRequestGet(wQueryString)
+
+    // verifica se o retorno da consulta inicia com exception, caso sim,
+    // continua o processamento
+    if (wGet.toLowerCase().substring(0, 9) == "exception") {
+      log(wGet)
+      continue
+    }
+
+    // verifica se o retorno da consulta veio "nenhum registro encontrado", se sim,
+    // continua o processo
+    if (wGet.toLowerCase().indexOf("nenhum registro encontrado") != -1) {
+      log("Nenhum registro encontrado")
+      continue
+    }
+
+    // monta um array com o retorno da solicitação
+    wgetArray = wGet.split("\r\n")
+
+    // verifica se o array do retorno contem elementos, se não,
+    // continua o processamento
+    if (wgetArray.length == 0) {
+      log("Falha no array do GET")
+      continue
+    }
+
+    // percorre os itens do array
+    for (i = 0; i < wgetArray.length; i++) {
+
+      // obtem o item do array
+      wlinha = wgetArray[i]
+
+      // monta um array da linha separando os dados por virgula
+      wlinhaArray = wlinha.split(",")
+
+      // obtem os dados separadamente
+      whandle = wlinhaArray[0]
+      wcidade = wlinhaArray[1]
+      wcnpj = wlinhaArray[2]
+      wnrps = wlinhaArray[3]
+
+      //seleciona o cnpj da UO para verificar se  o mesmo que vem do edoc
+      wsel = "select top 1 tidfisc "
+      wsel += "  from bentt0 with(nolock) "
+      wsel += " where ientt = '*' "
+      wsel += "   and ient = 'TEC' "
+      wsel += "   and iuorgt = 'UO' "
+      wsel += "   and iuorg = '" + wuo.iuorg + "' "
+
+      // Para atender o novo CNPJ Alfanumerico, trocamos a regex antiga "[^0-9]" pela nova "[^A-Z0-9]".
+      wcnpjUO = getSQLValue(wsel).replaceAll("[^A-Z0-9]", "")
+      if (wcnpjUO != wcnpj) {
+        log("CNPJ diferentes " + wcnpjUO + "/" + wcnpj)
+        continue
+      }
+
+      //mapa contendo os dados
+      wdadosResolve = HashMap()
+      wdadosResolve.put("Handle", whandle)
+      wdadosResolve.put("NomeCidade", wcidade)
+      println("Handle: " + whandle + " Cidade: " + wcidade + " Nrps: " + wnrps); flush()
+      wrequest = oManager.doRequestPost("resolve", wdadosResolve)
+      println(wrequest); flush()
+      log(wrequest)
+
+    }
+
+    log("--------------------------------------------------------")
+
+  }
+
+}
+
+if (wlog.toString() != "") {
+  println(wlog.toString())
+  flush()
+}
+
+//EOF

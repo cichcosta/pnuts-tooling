@@ -1,0 +1,101 @@
+x_mc_inserir_log_fn("EDOC", "edoc_mc_nfse_resolver_fn", "DDOCLBR7")
+// importa os pacotes necessarios
+import("java.util.HashMap")
+import("br.com.unigex.Util")
+
+// work
+oManager = edoc_mc_get_http_service_fn(wrow, "nfse")
+cursor = MConnection:: getMCursor()
+wzk = formatNumber(wrow.zk, "N00000000000000")
+util = Util()
+
+// obtem os dados do prestador de serviço
+wbentp = edoc_mc_nfse_get_prestador_fn(wrow)
+
+println(wbentp.tmunicip + " - " + wbentp.testado); flush();
+
+// codigo domunicipio do prestator
+wCodigoMunicipio = edoc_mc_nfse_get_municipio_fn(wbentp.tmunicip, wbentp.testado)
+
+wNomeCidade = edoc_mc_nfse_get_cidade_fn(wCodigoMunicipio, true)
+wSerieRPS = edoc_mc_nfse_get_serie_fn(wrow)
+wNumRPS = edoc_mc_nfse_get_num_fn(wrow)
+wTipoRPS = edoc_mc_nfse_get_tipo_rps_fn(wrow)
+
+// Para atender o novo CNPJ Alfanumerico, trocamos a regex antiga "[^0-9]" pela nova "[^A-Z0-9]".
+wCnpj = wbentp.tidfisc.replaceAll("[^A-Z0-9]", "")
+
+// Fazer consulta da Nota fisal
+// monta a query string para a consulta
+wQueryString = "consulta?encode=true&grupo=IBYTE&cnpj=" + wCnpj
+wQueryString += "&Campos=handle,cidade,cnpj,nrps&Filtro=1=1"
+wQueryString += "+and+nrps=" + wNumRPS
+println("wQueryString >> " + wQueryString); flush();
+
+// solicita a listagem das notas no edoc
+wGet = oManager.doRequestGet(wQueryString)
+wGet = wGet.toLowerCase()
+println("wGet >> " + wGet); flush();
+
+if (wGet.contains("exception") || wGet.contains("nenhum")) {
+  showError(wGet)
+  return
+}
+
+// monta um array com o retorno da solicitação
+wgetArray = wGet.split("\r\n")
+
+if (wgetArray.length == 0) {
+  showError("Erro ao obter dados da NFSE.")
+  return
+}
+
+wlinha = wgetArray[0]
+wlinhaArray = wlinha.split(",")
+
+if (wlinhaArray.length < 4) {
+  showError("Erro ao obter dados da NFSE.")
+  return
+}
+
+// obtem os dados separadamente
+whandle = wlinhaArray[0]
+wcidade = wlinhaArray[1]
+wcnpj = wlinhaArray[2]
+wnrps = wlinhaArray[3]
+
+// Cria um hashmap para armazenar os dados que serão 
+// passados para o WebService do Manager EDoc.
+wDados = HashMap()
+wDados.put("NomeCidade", wcidade)
+wDados.put("handle", whandle)
+wDados.put("cnpj", wCnpj)
+
+println(wDados.toString()); flush();
+
+// Armazena na variavel wPost o retorno dos dados enviados
+// via post para o Web Service do Manager EDoc
+
+
+function request_post(wDados, oManager) {
+    // Tratamento de erros 
+    catch (Exception, function(e) {
+    return e.toString()
+  })
+  wPost = oManager.doRequestPost("resolve", wDados, 120000)
+  wPost = wPost.toLowerCase()
+  return wPost
+}
+
+wPost = request_post(wDados, oManager)
+println(wPost.toString()); flush();
+
+if (wPost.contains("autorizada")) {
+  edoc_mc_nfse_resolver_newt_fn(wrow.iuorg.trim(), wNumRPS)
+} else {
+  showError(wPost)
+}
+
+wrow.refreshRow()
+
+//EOF

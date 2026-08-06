@@ -1,0 +1,90 @@
+// FUNCAO: bpsru_mc_remove_stq_min_cds_fn(wcd, wipsr)
+// Rotina para zerar estoque mínimo dos CD's caso não haja giro do produto
+
+println("FUNC: BPSRU_MC_REMOVE_STQ_MIN_CDS_FN - INICIO"); flush();
+
+wiorg = "TEC";
+wcanal = "";
+wdini = "";
+wdfim = "";
+WZERO = "0";
+
+/* Gerar base de vendas para em tabela temporárias */
+bpsru_mc_temp_analise_giro_fn(wiorg, wcd, wcanal, wipsr, wdini, wdfim);
+wcacheDate = zglobals.ABC_VENDAS_CACHE_DATE;
+wcacheKeyEsc = ("" + zglobals.ABC_VENDAS_CACHE_KEY).replace("'", "''");
+
+// Recupra produtos para remover estoque minimo
+WN = "\n"
+wsel = ""
+wsel += WN + " IF OBJECT_ID('tempdb.dbo.#tt_remove_minimum', 'U') IS NOT NULL DROP TABLE #tt_remove_minimum; "
+wsel += WN + " SELECT "
+wsel += WN + "     stq.iorg, "
+wsel += WN + "     stq.ipsr, "
+wsel += WN + "     v.npsr, "
+wsel += WN + "     a.iuorg, "
+wsel += WN + "     stq.iuorg2 AS armazem, "
+wsel += WN + "     ISNULL(SUM(v.qpsr_ven - v.qpsr_dev), 0) AS qpsr, "
+wsel += WN + "     x.zkent, "
+wsel += WN + "     x.zdec "
+wsel += WN + " INTO #tt_remove_minimum "
+wsel += WN + " FROM ppsrtx AS x WITH (NOLOCK) "
+wsel += WN + " INNER JOIN ppsrt0 AS stq "
+wsel += WN + "     ON "
+wsel += WN + "         stq.iuorgt2 = 'AR' "
+wsel += WN + "         AND x.zkent = stq.zk "
+wsel += WN + " INNER JOIN benxt0 AS a WITH (NOLOCK) "
+wsel += WN + "     ON "
+wsel += WN + "         a.ientt = '* ' "
+wsel += WN + "         AND stq.iorg = a.ient "
+wsel += WN + "         AND a.iuorgt = 'UO' "
+wsel += WN + "         AND a.ccx = 'TF' "
+wsel += WN + "         AND a.tid = 'CD' "
+if (!wcd.trim().equals("")) {
+  wsel += WN + "         AND a.iuorg = '" + wcd.trim() + "' "
+}
+wsel += WN + "         AND 'N' + RIGHT(TRIM(a.iuorg), 2) = stq.iuorg2 "
+wsel += WN + " LEFT JOIN dbo.abc_vendas_cache AS v "
+wsel += WN + "     ON "
+wsel += WN + "         stq.iorg = v.iorg "
+wsel += WN + "         AND v.cache_key = '" + wcacheKeyEsc + "' "
+wsel += WN + "         AND v.cache_date = '" + wcacheDate + "' "
+wsel += WN + "         AND stq.ipsr = v.ipsr "
+wsel += WN + "         AND a.iuorg = v.iuorg_doc "
+wsel += WN + " WHERE "
+wsel += WN + "     x.zcomp = 'wqpsrMIN' "
+wsel += WN + "     AND x.zdec > 0 "
+if (!wipsr.trim().equals("")) {
+  wsel += WN + "     AND stq.ipsr = '" + wipsr.trim() + "' "
+}
+wsel += WN + " GROUP BY stq.iorg, stq.ipsr, v.npsr, a.iuorg, stq.iuorg2, x.zkent, x.zdec "
+wsel += WN + " HAVING ISNULL(SUM(v.qpsr_ven - v.qpsr_dev), 0) <= 0 "
+wsel += WN + " /*bpsru_mc_remove_stq_min_cds_fn() SELECT 1*/ "
+println("TT_REMOVE_MINIMUM: " + wsel); flush();
+x = executeSQL(wsel);
+
+// Remover estoque mínimo
+wsel = ""
+wsel += WN + " SELECT "
+wsel += WN + "     psr.*, "
+wsel += WN + "     tt.iuorg, "
+wsel += WN + "     tt.armazem, "
+wsel += WN + "     tt.zkent, "
+wsel += WN + "     tt.zdec "
+wsel += WN + " FROM #tt_remove_minimum AS tt "
+wsel += WN + " INNER JOIN bpsrt0 AS psr WITH (NOLOCK) "
+wsel += WN + "     ON "
+wsel += WN + "         tt.iorg = psr.iorg "
+wsel += WN + "         AND tt.ipsr = psr.ipsr "
+println("VNPSR: " + wsel); flush();
+vbpsr = getRows("BPSR", wsel);
+
+foreach wbpsr(vbpsr.elements()) {
+
+  x_mc_update_extension_fn("n", "PPSRTX", wbpsr.zkent, "wqpsrMIN", WZERO);
+  ddoc0_pr_insert_bpse_fn(wbpsr, "REM", "Remove Estoque Mínimo CD: " + wbpsr.armazem.trim() + " - Qtd: " + wbpsr.zdec, 0);
+}
+
+println("FUNC: BPSRU_MC_REMOVE_STQ_MIN_CDS_FN - FINAL"); flush();
+
+// EOF

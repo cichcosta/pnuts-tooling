@@ -1,0 +1,149 @@
+// CHECK_TIDFISC_ALFANUMERICO FN - validação do CNPJ alfanumérico
+// Versão estendida para suportar CNPJ com letras (A-Z)
+
+println(" FUNC: INICIO"); flush()
+isValid = false
+
+function validarCPF(cpf) {
+  if (cpf.length() != 11) return false
+
+  // Verifica se todos os dígitos são iguais
+  if (cpf.matches("(\\d)\\1{10}")) return false
+
+  // Primeiro dígito verificador
+  wtot = 0
+  for (i = 0; i < 9; i++) {
+    wtot += Character:: digit(cpf.charAt(i), 10) * (10 - i)
+  }
+  wdigit = 11 - (wtot % 11)
+  if (wdigit >= 10) wdigit = 0
+
+  if (wdigit != Character:: digit(cpf.charAt(9), 10)) return false
+
+  // Segundo dígito verificador
+  wtot = 0
+  for (i = 0; i < 10; i++) {
+    wtot += Character:: digit(cpf.charAt(i), 10) * (11 - i)
+  }
+  wdigit = 11 - (wtot % 11)
+  if (wdigit >= 10) wdigit = 0
+
+  return wdigit == Character:: digit(cpf.charAt(10), 10)
+}
+
+function validarCNPJNumerico(cnpj) {
+  if (cnpj.length() != 14) return false
+  if (cnpj.matches("(\\d)\\1{13}")) return false
+
+  // Primeiro DV
+  int[] pesos1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+  wtot = 0
+  for (i = 0; i < 12; i++) {
+    wtot += Character:: digit(cnpj.charAt(i), 10) * pesos1[i]
+  }
+  wdigit = 11 - (wtot % 11)
+  if (wdigit >= 10) wdigit = 0
+
+  if (wdigit != Character:: digit(cnpj.charAt(12), 10)) return false
+
+  // Segundo DV
+  int[] pesos2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+  wtot = 0
+  for (i = 0; i < 13; i++) {
+    wtot += Character:: digit(cnpj.charAt(i), 10) * pesos2[i]
+  }
+  wdigit = 11 - (wtot % 11)
+  if (wdigit >= 10) wdigit = 0
+
+  return wdigit == Character:: digit(cnpj.charAt(13), 10)
+}
+
+function validarCNPJAlfanumerico(cnpj) {
+  // Se tem 14 caracteres, extrai os 12 primeiros para validação
+  wbase = cnpj.length() == 14 ? cnpj.substring(0, 12) : cnpj
+  wdv = cnpj.length() == 14 ? cnpj.substring(12, 14) : null
+
+  // Verifica se tem apenas letras e números
+  if (!wbase.matches("[A-Z0-9]{12}")) return false
+
+  // Converte caracteres para valores numéricos (ASCII - 48)
+  int[] valores = new int[12]
+  for (i = 0; i < 12; i++) {
+    wchar = wbase.charAt(i)
+    if (Character:: isDigit(wchar)) {
+      valores[i] = Character:: digit(wchar, 10)
+    } else if (Character:: isLetter(wchar)) {
+      valores[i] = (int)wchar - 48  // A=17, B=18, ..., Z=42
+    } else {
+      return false
+    }
+  }
+
+  // Calcula primeiro DV
+  int[] pesos1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+  wtot = 0
+  for (i = 0; i < 12; i++) {
+    wtot += valores[i] * pesos1[i]
+  }
+  wdv1 = 11 - (wtot % 11)
+  if (wdv1 >= 10) wdv1 = 0
+
+  // Se foi fornecido DV, valida
+  if (wdv != null) {
+    wdv1_fornecido = Character:: digit(wdv.charAt(0), 10)
+    if (wdv1 != wdv1_fornecido) return false
+
+    // Calcula segundo DV
+    int[] pesos2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+    wtot = 0
+    for (i = 0; i < 12; i++) {
+      wtot += valores[i] * pesos2[i]
+    }
+    wtot += wdv1 * 2  // Adiciona o primeiro DV
+
+    wdv2 = 11 - (wtot % 11)
+    if (wdv2 >= 10) wdv2 = 0
+
+    wdv2_fornecido = Character:: digit(wdv.charAt(1), 10)
+    return wdv2 == wdv2_fornecido
+  }
+
+  return true  // CNPJ base válido (sem DV fornecido)
+}
+
+if (wtidfisc.trim() != "" &&
+  (wtidfisc.trim().length() == 18 ||    // CPF formatado
+    wtidfisc.trim().length() == 14 ||    // CNPJ numérico formatado
+    wtidfisc.trim().length() == 12 ||    // CNPJ alfanumérico sem DV
+    wtidfisc.trim().length() == 14) &&   // CNPJ alfanumérico com DV
+  (Character:: isDigit(wtidfisc.charAt(0)) || Character:: isLetter(wtidfisc.charAt(0)))) {
+
+  import("java.math.BigDecimal")
+
+  // Remove máscara (pontos, barras, hífens)
+  wclean = wtidfisc.replaceAll("[./-]", "")
+  wlen = wclean.length()
+
+  // Detecta tipo de documento
+  if (wlen == 11) {
+    // CPF sem máscara
+    isValid = validarCPF(wclean)
+  } else if (wlen == 14 && wclean.matches("[0-9]{14}")) {
+    // CNPJ numérico puro
+    isValid = validarCNPJNumerico(wclean)
+  } else if (wlen == 12 || wlen == 14) {
+    // CNPJ alfanumérico (com ou sem DV)
+    isValid = validarCNPJAlfanumerico(wclean)
+  }
+}
+
+if (isValid == false && wtidfisc.trim() != "") {
+  throwError("Validação de CPF/CNPJ alfanumérico inválida")
+}
+
+println(" FUNC: FINAL"); flush()
+println(" ----------- isValid: FINAL ----------------" + isValid.toString()); flush()
+return isValid
+
+
+// EOF

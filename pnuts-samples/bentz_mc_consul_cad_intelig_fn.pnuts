@@ -1,0 +1,149 @@
+//bentz_mc_consul_cad_intelig_fn(wtidfisc)
+//Consulta cadastro inteligente
+
+import("java.util.HashMap")
+import("org.json.JSONObject")
+import("org.apache.commons.httpclient.HttpClient")
+import("org.apache.commons.httpclient.methods.PostMethod")
+import("org.apache.commons.httpclient.methods.StringRequestEntity")
+import("org.apache.commons.httpclient.HttpClient")
+import("org.apache.commons.httpclient.HttpState")
+
+//Incializando variaveis
+wtimelimit = 30000
+whttpClient = HttpClient()
+winitialState = HttpState()
+
+whttpClient.getHttpConnectionManager().getParams().setSoTimeout(wtimelimit)
+whttpClient.setState(winitialState)
+
+function getCodigoAutorizacao(login, senha) {
+  import("java.util.Base64")
+  encodedBytes = Base64:: getEncoder().encodeToString((login + ":" + senha).getBytes())
+  return String(encodedBytes)
+}
+
+wientu = getSQLValue("select ient from suact0 with (nolock) where iutl = '" + MLogin:: getUser() + "'")
+wiuorg = getSQLValue("select dbo.benxposxn('TEC','EM','" + wientu + "',convert(varchar(10),getdate(),126),'UORG') from dual")
+wiuorg2 = getSQLValue("select dbo.benxposxn('TEC','EM','" + wientu + "',convert(varchar(10),getdate(),126),'ACTV') from dual")
+
+// Para atender o novo CNPJ Alfanumerico, trocamos a regex antiga "[^0-9]" pela nova "[^A-Z0-9]".
+wcnpj = wtidfisc.replaceAll("[^A-Z0-9]", "")
+
+wperfil = getSQLValue(" select dbo.tablecred_perfil('TEC','" + wiuorg + "','" + wiuorg2 + "','','C','" + wcnpj + "') ").trim()
+if (wperfil == "") {
+  println("PERFIL NÃO CADASTRADO."); flush()
+  return
+}
+
+wlogin = getTparms("TABLECRED*PARAM", "LOGIN").trim()
+wsenha = getTparms("TABLECRED*PARAM", "SENHA").trim()
+wurl = getTparms("TABLECRED*PARAM", "URL*CONSULTA").trim()
+
+wtoken = "Basic " + getCodigoAutorizacao(wlogin, wsenha)
+println(">>>> wtoken >>> " + wtoken); flush()
+
+// Nova abordagem: construir JSONObject diretamente
+dadosJson = JSONObject()
+dadosJson.put("perfil", wperfil)
+dadosJson.put("cpfcnpj", wcnpj)
+dadosJson.put("organizacao", "TEC")
+
+println(">>>> dadosJson >>> " + dadosJson); flush()
+
+wmethod = PostMethod(wurl)
+wmethod.setRequestHeader("Content-Type", "application/json")
+wmethod.setRequestHeader("Authorization", wtoken)
+wmethod.setRequestEntity(StringRequestEntity(dadosJson.toString()))
+
+codeResponse = whttpClient.executeMethod(wmethod)
+println(">>>> code response >>> " + codeResponse); flush()
+
+if (codeResponse != 200) {
+  println("Sem informação de Cadastro."); flush()
+  return
+}
+
+
+response = wmethod.getResponseBodyAsString()
+responseJson = JSONObject(response)
+
+println(">>>> responseJson >>> \n" + responseJson.toString(2)); flush()
+
+if (!responseJson.get("success")) {
+  println("Não foi possivel consultar o cadastro."); flush()
+  return
+}
+
+responseDados = responseJson.get("result").get("response")
+bent = responseDados.get("bent")
+
+wnent = bent.get("nent")
+wnentf = bent.get("nentf")
+wtidfisc2 = bent.get("tidfisc2")
+wtmorad = bent.get("tmorad")
+wtlocal = bent.get("tlocal")
+wtmunicip = bent.get("tmunicip")
+wtestado = bent.get("cuf")
+wicpt = bent.get("icpt")
+wttelex = ""
+wtmail = bent.get("tmail")
+wtemail = bent.get("temail")
+wtcend = bent.get("tcend")
+wcactiv = bent.get("cactiv")
+
+if (bent.get("ttelf1") != null) {
+  wttelex = bent.get("ttelf1")
+  // devido a ter dois telefones separados por /. ex.tidfisc = '30.570.278/0001-65', ttelex = '(98) 2107-3597 / (98) 9971-2210',
+  if (wttelex.contains("/")) {
+    wttelex = wttelex.split("/")[0]
+  }
+}
+
+wdnasc = ""
+if (bent.get("dnasc") != null) {
+  wdnasc = bent.get("dnasc")
+  wdnasc = padRight(wdnasc, 10)
+  wdnasc = wdnasc.substring(6, 10).toString() + "-" + wdnasc.substring(3, 5).toString() + "-" + wdnasc.substring(0, 2).toString()
+}
+
+println(">> wnent >>> " + wnent); flush()
+println(">> wnentf >>> " + wnentf); flush()
+println(">> wtidfisc2 >>> " + wtidfisc2); flush()
+println(">> wtmorad >>> " + wtmorad); flush()
+println(">> wtlocal >>> " + wtlocal); flush()
+println(">> wtmunicip >>> " + wtmunicip); flush()
+println(">> wtestado >>> " + wtestado); flush()
+println(">> wicpt >>> " + wicpt); flush()
+println(">> wttelex >>> " + wttelex); flush()
+println(">> wtmail >>> " + wtmail); flush()
+println(">> wtemail >>> " + wtemail); flush()
+println(">> wtcend >>> " + wtcend); flush()
+println(">> wdnasc >>> " + wdnasc); flush()
+println(">> wcactiv >>> " + wcactiv); flush()
+
+wmap = HashMap()
+wmap.put("nent", wnent)
+wmap.put("nentf", wnentf)
+wmap.put("tidfisc2", wtidfisc2)
+wmap.put("tmorad", wtmorad)
+wmap.put("tlocal", wtlocal)
+wmap.put("tmunicip", wtmunicip)
+wmap.put("testado", wtestado)
+wmap.put("icpt", wicpt)
+wmap.put("ttelex", wttelex)
+wmap.put("tmail", wtmail)
+wmap.put("temail", wtemail)
+wmap.put("tcend", wtcend)
+wmap.put("dnasc", wdnasc)
+wmap.put("cactiv", wcactiv)
+
+//Verificar de algum desses campos contem "null".
+if (wmap.containsValue("null")) {
+  println(">> contem null <<"); flush()
+  return null
+}
+
+return wmap
+
+//EOF

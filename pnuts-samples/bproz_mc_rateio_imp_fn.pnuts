@@ -1,0 +1,133 @@
+// Função: bproz_mc_rateio_imp_fn(wrow)
+// Objetivo: Rateio Valor Impostos
+// 2014-09-10 - OZANA SPINOSA - alterado o valor do icms para pegar perdcentual de 2.4 F03 e 7% para F00 - Solicitação Cláudio - Importação.
+
+// FORMULAS
+// CIF...: Valor do produto + Frete
+// II....:  CIF * %II
+// IPI...: (CIF + II) * %IPI
+// COFINS: 0,0760 * (( CIF * (1 + %ICMS *( %II + %IPI * (1 + %II))) / (( 1 - 0,0165 - 0,076) * (1 - %ICMS))))
+// PIS...: 0,0165 * (( CIF * (1 + %ICMS *( %II + %IPI * (1 + %II))) / (( 1 - 0,0165 - 0,076) * (1 - %ICMS))))
+// ICMS..: (CIF + Tx de Utilização + II + IPI + COFINS + PIS) / (1-%ICMS) * %ICMS
+
+// Work
+wdatetime = x_mc_br_get_date_server_fn()
+wdate = wdatetime.substring(0, 10)
+wtime = wdatetime.substring(11, 19)
+cursor = MConnection:: getMCursor()
+
+println("FUNCAO: BPROZ_MC_RATEIO_IMP_FN - INICIO"); flush();
+
+
+wmvalor = 0.00;
+
+// Valida Rateio Impostos
+if (zglobals.contains("RATEIA_IMP") && !zglobals.RATEIA_IMP) {
+
+  wsel = ""
+  wsel += " select sum(a.mvalort2 + a.mvalort3 + a.mvalort4 + a.mvalort5 + a.mvalort6) as mvalor "
+  wsel += "   from oitot0 a "
+  wsel += "  where a.iorg  = '" + wrow.iorg.trim() + "' "
+  wsel += "    and a.iprot = '" + wrow.iprot.trim() + "' "
+  wsel += "    and a.ipro  = '" + wrow.ipro.trim() + "' "
+  if (getSQLNumber(wsel) > 0) {
+
+    wmsg1 = "Já existem Impostos Rateados nos Produtos! "
+    wmsg2 = "Deseja Ratear Novamente?"
+    cursor.commitWork()
+    i = showError("MIN-EEEE01Q", [wmsg1, wmsg2])
+    cursor.beginWork()
+    if (i != 0) { return }
+  }
+}
+
+// Rateia Impostos
+wsel = ""
+wsel += " select a.zk, a.ipsr, b.npsr, b.cstat2, a.mvalor, a.qpsr, a.mvalunc, a.iuorg "
+wsel += "   from oitot0 a, bpsrt0 b "
+wsel += "  where a.iorg  = '" + wrow.iorg.trim() + "' "
+wsel += "    and a.iprot = '" + wrow.iprot.trim() + "' "
+wsel += "    and a.ipro  = '" + wrow.ipro.trim() + "' "
+wsel += "    and a.iorg  = b.iorg "
+wsel += "    and a.ipsr  = b.ipsr "
+wsel += "    and a.ipsr  <> '' "
+voito = getRows("OITO", wsel)
+
+foreach woito(voito.elements()) {
+
+  wzk = formatNumber(woito.zk, "N00000000000000")
+
+  wsel = " select ivalk, qqcoef1, qqcoef2, qqcoef3 "
+  wsel += "   from bctxt0 "
+  wsel += "  where ictx  = 'BCTX*CSTAT2' "
+  wsel += "    and ivalk = '" + woito.cstat2.trim() + "' "
+  wsel += "    and tclass = '' "
+  wbctx = getRow("BCTX", wsel)
+  if (wbctx.wdcode == 100) { throwError("Produto sem Aliquotas NCM: " + woito.ipsr) }
+
+  wmvalor = woito.mvalor + (woito.qpsr * woito.mvalunc)
+
+  wpIPI = wbctx.qqcoef1 / 100
+  wpII = wbctx.qqcoef2 / 100
+  wpICMS = wbctx.qqcoef3 / 100
+  wpPIS = 0.0165
+  wpCOFINS = 0.0760
+  wtxutil = 0.00
+
+  // Aliquotas NCM Diferenciada para PIS e COFINS
+  wsel = " select a.qqcoef1,a.qqcoef2"
+  wsel += "   from bctxt0 a "
+  wsel += "  where a.ictx  = 'BCTX*CSTAT2*DIFER' "
+  wsel += "    and a.ivalk = '" + woito.cstat2.trim() + "' "
+  wbctx = getRow("BCTX", wsel)
+  if (wbctx.wdcode != 100) {
+    wpCOFINS = wbctx.qqcoef1 / 100
+    wpPIS = wbctx.qqcoef2 / 100
+  }
+
+  // II
+  wbase = wmvalor
+  wvalorii = round(wbase * wpII, 2)
+
+  // IPI
+  wbase = wmvalor + wvalorii
+  wvaloripi = round(wbase * wpIPI, 2)
+
+  // PIS / COFINS
+  // alteração solicitado por Olivio.
+  // wbase = (( wmvalor * (1 + wpICMS *( wpII + wpIPI * (1 + wpII))) / (( 1 - wpPIS - wpCOFINS) * (1 - wpICMS))))
+  wbase = wmvalor
+
+  wvalorpis = round(wbase * wpPIS, 2)
+  wvalorcof = round(wbase * wpCOFINS, 2)
+
+  // ICMS
+  //Solicitado por Cláudio - Importação.
+  if (woito.iuorg.trim() == "F03") {
+    ticms = 2.4 / 100
+  } else {
+    ticms = 0.07
+  }
+
+  wvaloricms = (wmvalor + wtxutil + wvalorii + wvaloripi + wvalorpis + wvalorcof) / (1 - ticms) * ticms
+
+  // Atualiza Item 
+  wsel = " update oitot0 "
+  wsel += "    set mvalort2 = " + round(wvalorii, 2) + ", "
+  wsel += "        mvalort3 = " + round(wvaloripi, 2) + ", "
+  wsel += "        mvalort4 = " + round(wvalorpis, 2) + ", "
+  wsel += "        mvalort5 = " + round(wvalorcof, 2) + ", "
+  wsel += "        mvalort6 = " + round(wvaloricms, 2) + ", "
+  wsel += "        qpsrc    = " + 100 * wpII + ", "
+  wsel += "        qpsrc2   = " + 100 * wpIPI + ", "
+  wsel += "        qpsrc3   = " + 100 * wpPIS + ", "
+  wsel += "        qpsrex   = " + 100 * wpCOFINS + ", "
+  wsel += "        pi       = " + 100 * wpICMS
+  wsel += "  where zk = " + wzk
+  x = executeSQL(wsel)
+}
+
+println("FUNCAO: BPROZ_MC_RATEIO_IMP_FN - FINAL"); flush();
+
+// EOF
+
