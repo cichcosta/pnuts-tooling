@@ -7,5 +7,6 @@ description = "Pnuts language support for Zed, including syntax highlighting and
 repository = "https://github.com/pnuts-tooling/zed-pnuts"
 
 [grammars.pnuts]
-repository = "https://github.com/pnuts-tooling/tree-sitter-pnuts"
-commit = "53c42ac6ed5f0c4c4d4c342bebec1668a272112a"
+repository = "file:///home/chsilva/personal/projects/pnuts-tooling"
+commit = "e109c058d2110175dcd5a941ade6cdad2216ca30"
+path = "tree-sitter-pnuts"
