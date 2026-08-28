@@ -181,6 +181,6 @@ REGRAS DE SEGURANÇA
 - Se perceber que está prestes a consumir uma quantidade grande de
   chamadas/contexto do free tier em uma única tarefa (ex: ler todos os
   6.944 arquivos de uma vez), me avise antes e sugira uma abordagem em
-  lotes menores.
+  lotes menores.•
 
 Comece pela FASE 0 e me reporte o resultado antes de avançar.

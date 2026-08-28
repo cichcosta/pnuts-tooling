@@ -1,0 +1,17 @@
+# Build and binary artifacts
+*.so
+*.dylib
+*.dll
+*.o
+*.a
+*.vsix
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.cache/

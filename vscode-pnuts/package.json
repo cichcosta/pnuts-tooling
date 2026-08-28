@@ -1,0 +1,64 @@
+{
+  "name": "vscode-pnuts",
+  "displayName": "Pnuts Language Support",
+  "description": "Syntax highlighting and formatting support for the Pnuts language",
+  "version": "0.1.1",
+  "publisher": "pnuts-tooling",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Formatters"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:pnuts"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "pnuts",
+        "aliases": [
+          "Pnuts",
+          "pnuts"
+        ],
+        "extensions": [
+          ".pnuts",
+          ".pnut"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "pnuts",
+        "scopeName": "source.pnuts",
+        "path": "./syntaxes/pnuts.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Pnuts",
+      "properties": {
+        "pnuts.topiary.path": {
+          "type": "string",
+          "default": "topiary",
+          "description": "Path to topiary executable binary"
+        },
+        "pnuts.topiary.configPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional path to topiary languages.ncl configuration file"
+        },
+        "pnuts.topiary.queryPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional path to directory containing pnuts.scm topiary formatting query"
+        }
+      }
+    }
+  }
+}

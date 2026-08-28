@@ -1,0 +1,24 @@
+{
+  "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/config.schema.json",
+  "grammars": [
+    {
+      "name": "pnuts",
+      "camelcase": "Pnuts",
+      "scope": "source.pnuts",
+      "file-types": [
+        "pnuts"
+      ],
+      "highlights": "queries/highlights.scm"
+    }
+  ],
+  "metadata": {
+    "version": "0.1.0",
+    "description": "Tree-sitter grammar for Pnuts",
+    "authors": [
+      {
+        "name": "Pnuts Tooling Team"
+      }
+    ],
+    "license": "MIT"
+  }
+}

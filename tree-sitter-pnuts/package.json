@@ -1,0 +1,15 @@
+{
+  "name": "tree-sitter-pnuts",
+  "version": "0.1.0",
+  "description": "Pnuts grammar for tree-sitter",
+  "main": "bindings/node",
+  "types": "bindings/node",
+  "scripts": {
+    "test": "tree-sitter test"
+  },
+  "keywords": [
+    "tree-sitter",
+    "pnuts"
+  ],
+  "license": "MIT"
+}

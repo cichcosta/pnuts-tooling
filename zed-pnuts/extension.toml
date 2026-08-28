@@ -1,0 +1,11 @@
+id = "pnuts"
+name = "Pnuts"
+version = "0.1.0"
+schema_version = 1
+authors = ["Pnuts Tooling Team"]
+description = "Pnuts language support for Zed, including syntax highlighting and tree-sitter integration."
+repository = "https://github.com/pnuts-tooling/zed-pnuts"
+
+[grammars.pnuts]
+repository = "https://github.com/pnuts-tooling/tree-sitter-pnuts"
+commit = "53c42ac6ed5f0c4c4d4c342bebec1668a272112a"

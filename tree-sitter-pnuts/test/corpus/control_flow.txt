@@ -1,0 +1,249 @@
+==================
+If and Foreach Control Flow
+==================
+
+if (wddoc.iuorg === "F00") {
+  println("Match");
+} else {
+  println("No match");
+}
+
+foreach wrow (wrows.elements()) {
+  println(wrow);
+}
+
+---
+
+(source_file
+  (if_statement
+    (binary_expression
+      (member_expression
+        (identifier)
+        (identifier))
+      (string_literal))
+    (block
+      (expression_statement
+        (call_expression
+          (identifier)
+          (argument_list
+            (string_literal)))))
+    (block
+      (expression_statement
+        (call_expression
+          (identifier)
+          (argument_list
+            (string_literal))))))
+  (foreach_statement
+    (identifier)
+    (call_expression
+      (member_expression
+        (identifier)
+        (identifier)))
+    (block
+      (expression_statement
+        (call_expression
+          (identifier)
+          (argument_list
+            (identifier)))))))
+
+==================
+While and Do While Loops
+==================
+
+while (i < 10) {
+  i++;
+}
+
+do {
+  i--;
+} while (i > 0);
+
+---
+
+(source_file
+  (while_statement
+    (binary_expression
+      (identifier)
+      (number_literal))
+    (block
+      (expression_statement
+        (update_expression
+          (identifier)))))
+  (do_while_statement
+    (block
+      (expression_statement
+        (update_expression
+          (identifier))))
+    (binary_expression
+      (identifier)
+      (number_literal))))
+
+==================
+For Loops (C-style and Iterator)
+==================
+
+for (i = 0; i < 10; i++) {
+  total += i;
+}
+
+for (item : list) {
+  process(item);
+}
+
+for (i : 0..10) {
+  print(i);
+}
+
+---
+
+(source_file
+  (for_statement
+    (assignment_expression
+      (identifier)
+      (number_literal))
+    (binary_expression
+      (identifier)
+      (number_literal))
+    (update_expression
+      (identifier))
+    (block
+      (expression_statement
+        (assignment_expression
+          (identifier)
+          (identifier)))))
+  (for_statement
+    (identifier)
+    (identifier)
+    (block
+      (expression_statement
+        (call_expression
+          (identifier)
+          (argument_list
+            (identifier))))))
+  (for_statement
+    (identifier)
+    (binary_expression
+      (number_literal)
+      (number_literal))
+    (block
+      (expression_statement
+        (call_expression
+          (identifier)
+          (argument_list
+            (identifier)))))))
+
+==================
+Switch Case
+==================
+
+switch (status) {
+  case 1:
+    println("Active");
+    break;
+  case 2:
+    println("Pending");
+    break;
+  default:
+    println("Unknown");
+}
+
+---
+
+(source_file
+  (switch_statement
+    (identifier)
+    (switch_case
+      (number_literal)
+      (expression_statement
+        (call_expression
+          (identifier)
+          (argument_list
+            (string_literal))))
+      (break_statement))
+    (switch_case
+      (number_literal)
+      (expression_statement
+        (call_expression
+          (identifier)
+          (argument_list
+            (string_literal))))
+      (break_statement))
+    (switch_default
+      (expression_statement
+        (call_expression
+          (identifier)
+          (argument_list
+            (string_literal)))))))
+
+==================
+Try Catch Finally and Throw
+==================
+
+try {
+  riskyOperation();
+} catch (e) {
+  handleError(e);
+} finally {
+  cleanup();
+}
+
+if (error) {
+  throw "An error occurred";
+}
+
+---
+
+(source_file
+  (try_statement
+    (block
+      (expression_statement
+        (call_expression
+          (identifier))))
+    (catch_clause
+      (identifier)
+      (block
+        (expression_statement
+          (call_expression
+            (identifier)
+            (argument_list
+              (identifier))))))
+    (finally_clause
+      (block
+        (expression_statement
+          (call_expression
+            (identifier))))))
+  (if_statement
+    (identifier)
+    (block
+      (throw_statement
+        (string_literal)))))
+
+==================
+Jump Statements
+==================
+
+function test() {
+  if (done) return 42;
+  if (skip) continue;
+  if (stop) break;
+  yield val;
+}
+
+---
+
+(source_file
+  (function_definition
+    (identifier)
+    (block
+      (if_statement
+        (identifier)
+        (return_statement
+          (number_literal)))
+      (if_statement
+        (identifier)
+        (continue_statement))
+      (if_statement
+        (identifier)
+        (break_statement))
+      (yield_statement
+        (identifier)))))
