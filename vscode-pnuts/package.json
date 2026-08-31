@@ -1,8 +1,8 @@
 {
   "name": "vscode-pnuts",
   "displayName": "Pnuts Language Support",
-  "description": "Syntax highlighting and formatting support for the Pnuts language",
-  "version": "0.1.1",
+  "description": "Syntax highlighting and zero-dependency standalone Topiary-based code formatting for the Pnuts language",
+  "version": "0.2.0",
   "publisher": "pnuts-tooling",
   "engines": {
     "vscode": "^1.75.0"

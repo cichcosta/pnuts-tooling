@@ -10,16 +10,17 @@ Syntax highlighting and Topiary-based code formatting for the **Pnuts** scriptin
 
 ## Requirements
 
-- `topiary` CLI installed and available in your `PATH` (e.g. `cargo install topiary-cli`).
-  - **Remote SSH / WSL Users**: When running VS Code in WSL or Remote-SSH mode, Topiary must be installed in the **remote environment** (inside the WSL distribution or on the remote SSH server), not only on the Windows host.
+- **Zero configuration / Zero external installation required!**
+  The extension now comes pre-packaged with standalone Topiary binaries and Tree-sitter grammars for Windows (x64), Linux (x64), and macOS (Apple Silicon & Intel).
+- Optional: If you prefer using your own system-installed Topiary build, you can set `pnuts.topiary.path` in VS Code settings.
 
 ## Extension Settings
 
-This extension contributes the following settings:
+This extension contributes the following optional settings:
 
-* `pnuts.topiary.path`: Path to the Topiary executable (default: `"topiary"`).
-* `pnuts.topiary.configPath`: Path to `languages.ncl` (falls back automatically to bundled grammar configuration).
-* `pnuts.topiary.queryPath`: Path to the queries directory (falls back automatically to bundled queries).
+* `pnuts.topiary.path`: Path to custom Topiary executable (default: auto-detects bundled binary).
+* `pnuts.topiary.configPath`: Path to custom `languages.ncl` (default: auto-generated from bundled grammar).
+* `pnuts.topiary.queryPath`: Path to custom queries directory (default: auto-detected from bundled `pnuts.scm`).
 
 ## Usage
 
