@@ -8,5 +8,5 @@ repository = "https://github.com/pnuts-tooling/zed-pnuts"
 
 [grammars.pnuts]
 repository = "file:///C:/Users/chsilva/AppData/Local/Zed/extensions/pnuts-tooling"
-commit = "dcd1930777e43b177fcde6428c05e1975e532b2b"
+rev = "v0.2.2"
 path = "tree-sitter-pnuts"
