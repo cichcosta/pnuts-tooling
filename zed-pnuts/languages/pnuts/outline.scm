@@ -2,7 +2,7 @@
   (identifier) @name) @item
 
 (method_definition
-  (identifier) @name) @item
+  (property_identifier) @name) @item
 
 (class_definition
   (package_path) @name) @item
