@@ -6,3 +6,6 @@
 
 (class_definition
   (package_path) @name) @item
+
+(package_statement
+  (package_path) @name) @item

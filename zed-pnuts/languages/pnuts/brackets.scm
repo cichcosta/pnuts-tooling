@@ -1,3 +1,3 @@
-("{" @bracket.start "}" @bracket.end)
-("[" @bracket.start "]" @bracket.end)
-("(" @bracket.start ")" @bracket.end)
+("{" @open "}" @close)
+("[" @open "]" @close)
+("(" @open ")" @close)

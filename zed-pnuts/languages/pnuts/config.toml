@@ -4,13 +4,3 @@ path_suffixes = ["pnuts", "pnut"]
 line_comments = ["// "]
 block_comment = ["/*", "*/"]
 autoclose_before = ";:.,=}])>"
-
-[brackets]
-paired = [
-    ["{", "}"],
-    ["[", "]"],
-    ["(", ")"],
-    ["\"", "\""],
-    ["'", "'"],
-    ["`", "`"]
-]

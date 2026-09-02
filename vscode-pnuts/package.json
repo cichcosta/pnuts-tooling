@@ -2,8 +2,9 @@
   "name": "vscode-pnuts",
   "displayName": "Pnuts Language Support",
   "description": "Syntax highlighting and zero-dependency standalone Topiary-based code formatting for the Pnuts language",
-  "version": "0.2.0",
+  "version": "0.2.3",
   "publisher": "pnuts-tooling",
+  "icon": "icons/pnuts.png",
   "engines": {
     "vscode": "^1.75.0"
   },
@@ -19,6 +20,13 @@
     "onLanguage:pnuts"
   ],
   "contributes": {
+    "iconThemes": [
+      {
+        "id": "pnuts-icons",
+        "label": "Pnuts File Icons",
+        "path": "./icons/icon-theme.json"
+      }
+    ],
     "languages": [
       {
         "id": "pnuts",
@@ -30,7 +38,11 @@
           ".pnuts",
           ".pnut"
         ],
-        "configuration": "./language-configuration.json"
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/pnuts.svg",
+          "dark": "./icons/pnuts.svg"
+        }
       }
     ],
     "grammars": [

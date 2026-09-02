@@ -395,16 +395,178 @@ function formatWithTopiary(text, context) {
         child.on('close', (code) => {
             if (code === 0) {
                 log('Formatting completed successfully.');
-                resolve(stdout);
+                resolve(normalizeFlush(stdout));
             } else {
                 log(`Topiary failed with exit code ${code}. Stderr: ${stderr}`);
                 reject(new Error(`Topiary exit code ${code}: ${stderr || stdout || 'Unknown error'}`));
             }
         });
 
-        child.stdin.write(text);
+        const preprocessedText = preprocessComments(text);
+        child.stdin.write(preprocessedText);
         child.stdin.end();
     });
+}
+
+/**
+ * Finds the starting index of a line comment (//) outside of string literals.
+ * Returns -1 if no comment is found.
+ */
+function findCommentStart(line) {
+    let inStr = null;
+    let escaped = false;
+    const n = line.length;
+    let i = 0;
+    while (i < n) {
+        const c = line[i];
+        if (escaped) {
+            escaped = false;
+            i++;
+            continue;
+        }
+        if (c === '\\' && inStr) {
+            escaped = true;
+            i++;
+            continue;
+        }
+        if (inStr) {
+            if (c === inStr) {
+                inStr = null;
+            }
+            i++;
+            continue;
+        }
+        if (c === '"' || c === "'" || c === '`') {
+            inStr = c;
+            i++;
+            continue;
+        }
+        if (c === '/' && i + 1 < n && line[i + 1] === '/') {
+            return i;
+        }
+        i++;
+    }
+    return -1;
+}
+
+/**
+ * Ensures that comments starting with // have a space after the slashes.
+ * Example:
+ *   //este é um comentario -> // este é um comentario
+ * Preserves visual divider lines like //***, //---, //=== (3+ identical non-alphanumeric chars).
+ */
+function formatComment(comment) {
+    if (!comment.startsWith('//')) {
+        return comment;
+    }
+    const rest = comment.slice(2);
+    if (rest === '') {
+        return comment;
+    }
+    if (rest[0] === ' ' || rest[0] === '\t') {
+        return comment;
+    }
+    if (rest.length >= 3 && '*=-/#~.'.includes(rest[0]) && rest.slice(0, 3) === rest[0].repeat(3)) {
+        return comment;
+    }
+    return '// ' + rest;
+}
+
+/**
+ * Preprocesses comments in Pnuts source code:
+ * 1. Ensures space after // in all comments.
+ * 2. Moves trailing comments at the end of code lines to the line directly above that code,
+ *    preserving the code line's indentation.
+ *    Example:
+ *      var variavel = 1; // esse é o valor da variavel
+ *    becomes:
+ *      // esse é o valor da variavel
+ *      var variavel = 1;
+ */
+function preprocessComments(text) {
+    if (!text) return text;
+    const lines = text.split(/\r?\n/);
+    const hasCrlf = text.includes('\r\n');
+    const eol = hasCrlf ? '\r\n' : '\n';
+    const out = [];
+
+    for (const line of lines) {
+        const idx = findCommentStart(line);
+        if (idx === -1) {
+            out.push(line);
+            continue;
+        }
+
+        const codePart = line.slice(0, idx);
+        const commentPart = line.slice(idx);
+        const formattedComment = formatComment(commentPart);
+
+        const codeStripped = codePart.trim();
+        const indentMatch = codePart.match(/^\s*/);
+        const indent = indentMatch ? indentMatch[0] : '';
+
+        if (!codeStripped) {
+            out.push(indent + formattedComment);
+        } else {
+            if (codeStripped.startsWith('}') || codeStripped.startsWith('else') || codeStripped.startsWith('catch') || codeStripped.startsWith('finally')) {
+                out.push(codePart.trimEnd() + ' ' + formattedComment);
+            } else {
+                out.push(indent + formattedComment);
+                out.push(codePart.trimEnd());
+            }
+        }
+    }
+    return out.join(eol);
+}
+
+/**
+ * Normalizes flush() calls to stay on the same line as the preceding command.
+ * Example:
+ *   println(...);
+ *   flush();
+ * becomes:
+ *   println(...); flush();
+ */
+function normalizeFlush(text) {
+    if (!text) return text;
+    const lines = text.split(/\r?\n/);
+    const hasCrlf = text.includes('\r\n');
+    const eol = hasCrlf ? '\r\n' : '\n';
+    const out = [];
+    const flushRegex = /^\s*flush\s*\([^)]*\)\s*;?\s*$/;
+
+    for (const line of lines) {
+        if (flushRegex.test(line) && out.length > 0) {
+            let prevIdx = out.length - 1;
+            while (prevIdx >= 0 && out[prevIdx].trim() === '') {
+                prevIdx--;
+            }
+
+            if (prevIdx >= 0) {
+                let prevLine = out[prevIdx];
+                const prevTrimmed = prevLine.trim();
+
+                const isComment = prevTrimmed.startsWith('//') || prevTrimmed.startsWith('/*') || prevTrimmed.endsWith('*/');
+                const isBlockBoundary = prevTrimmed.endsWith('{') || prevTrimmed.endsWith('}') || prevTrimmed.endsWith(':');
+
+                if (!isComment && !isBlockBoundary && prevTrimmed !== '') {
+                    if (!prevTrimmed.endsWith(';')) {
+                        prevLine += ';';
+                    }
+
+                    let flushCmd = line.trim();
+                    if (!flushCmd.endsWith(';')) {
+                        flushCmd += ';';
+                    }
+
+                    out[prevIdx] = prevLine + ' ' + flushCmd;
+                    continue;
+                }
+            }
+        }
+        out.push(line);
+    }
+    return out.join(eol);
 }
 
 /**

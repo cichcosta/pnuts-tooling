@@ -38,7 +38,29 @@
 ;; 2. Statement Terminations & Line Breaks
 ;; --------------------------------------------------------------------
 
-(_statement) @append_hardline @allow_blank_line_before
+(source_file
+  (_) @append_hardline @allow_blank_line_before
+)
+
+(block
+  (_) @append_hardline @allow_blank_line_before
+)
+
+(closure_expression
+  (_) @append_hardline @allow_blank_line_before
+)
+
+(switch_case
+  (_) @append_hardline @allow_blank_line_before
+)
+
+(switch_default
+  (_) @append_hardline @allow_blank_line_before
+)
+
+(class_body
+  (_) @append_hardline @allow_blank_line_before
+)
 
 ;; --------------------------------------------------------------------
 ;; 3. Keywords & Control Flow Spacing
@@ -74,6 +96,7 @@
 "catch" @prepend_space @append_space
 "finally" @prepend_space @append_space
 "else" @prepend_space @append_space
+"while" @prepend_space @append_space
 "extends" @prepend_space @append_space
 "implements" @prepend_space @append_space
 

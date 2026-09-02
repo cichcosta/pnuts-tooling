@@ -30,7 +30,7 @@ class MyService extends BaseService implements ServiceInterface {
       (method_definition
         (type
           (primitive_type))
-        (identifier)
+        (property_identifier)
         (parameter_list
           (parameter
             (type
@@ -42,7 +42,7 @@ class MyService extends BaseService implements ServiceInterface {
             (call_expression
               (member_expression
                 (identifier)
-                (identifier)))))))))
+                (property_identifier)))))))))
 
 ==================
 Class Expressions and Instantiations
@@ -63,9 +63,9 @@ arr = new int[10]
             (class_expression
               (package_path
                 (identifier)))
-            (identifier))
-          (identifier))
-        (identifier))
+            (property_identifier))
+          (property_identifier))
+        (property_identifier))
       (argument_list
         (identifier)
         (null_literal)

@@ -43,34 +43,51 @@
 (number_literal) @number
 (comment) @comment
 
-;; Functions & Methods
+;; Identifiers & Variables
+(identifier) @variable
+(global_identifier) @variable.builtin
+
+;; Parameters
+(parameter
+  (identifier) @variable.parameter)
+
+;; Property Access (obj.prop or Class::prop)
+(property_identifier) @property
+
+;; Regular Function Calls (func())
+(call_expression
+  (identifier) @function)
+
+;; Method Calls (obj.method() or Class::method())
+(call_expression
+  (member_expression
+    (property_identifier) @function.method @function))
+
+(call_expression
+  (static_member_expression
+    (property_identifier) @function.method @function))
+
+;; Function & Method Definitions
 (function_definition
   (identifier) @function)
 
 (method_definition
-  (identifier) @function.method)
+  (property_identifier) @function.method @function)
 
-(call_expression
-  (identifier) @function)
+;; Special Identifiers (this, super)
+((identifier) @variable.special
+ (#match? @variable.special "^(this|super)$"))
 
-(call_expression
-  (member_expression
-    (identifier) @function.method))
+;; Constants (ALL_CAPS)
+((identifier) @constant
+ (#match? @constant "^[A-Z][A-Z0-9_]+$"))
 
-(call_expression
-  (static_member_expression
-    (identifier) @function.method))
+((property_identifier) @constant
+ (#match? @constant "^[A-Z][A-Z0-9_]+$"))
 
-;; Properties & Variables
-(member_expression
-  (identifier) @property)
-
-(static_member_expression
-  (identifier) @property)
-
-(global_identifier) @variable.builtin
-
-(identifier) @variable
+;; Types / Classes (PascalCase)
+((identifier) @type
+ (#match? @type "^[A-Z][a-zA-Z0-9_]*$"))
 
 ;; Operators & Delimiters
 [

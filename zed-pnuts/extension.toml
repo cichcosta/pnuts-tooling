@@ -1,12 +1,12 @@
 id = "pnuts"
 name = "Pnuts"
-version = "0.1.0"
+version = "0.2.2"
 schema_version = 1
 authors = ["Pnuts Tooling Team"]
-description = "Pnuts language support for Zed, including syntax highlighting and tree-sitter integration."
+description = "Pnuts language support for Zed, including syntax highlighting, code navigation, brackets, indents, and standalone Topiary formatter integration."
 repository = "https://github.com/pnuts-tooling/zed-pnuts"
 
 [grammars.pnuts]
-repository = "file:///home/chsilva/personal/projects/pnuts-tooling"
-commit = "e109c058d2110175dcd5a941ade6cdad2216ca30"
+repository = "file:///C:/Users/chsilva/AppData/Local/Zed/extensions/pnuts-tooling"
+commit = "f8c1d6db4321789ee15e3a1d76a39850b126a1f5"
 path = "tree-sitter-pnuts"

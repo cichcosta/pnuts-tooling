@@ -24,6 +24,7 @@ module.exports = grammar({
     [$.new_expression],
     [$.wildcard_import, $.package_path],
     [$.package_path, $._expression],
+    [$.identifier, $.property_identifier],
   ],
 
   rules: {
@@ -161,13 +162,13 @@ module.exports = grammar({
       $.block
     ),
 
-    class_definition: $ => seq(
+    class_definition: $ => prec(17, seq(
       'class',
       $.package_path,
       optional(seq('extends', $.package_path)),
       optional(seq('implements', commaSep1($.package_path))),
       $.class_body
-    ),
+    )),
 
     class_body: $ => seq(
       '{',
@@ -180,7 +181,7 @@ module.exports = grammar({
 
     method_definition: $ => prec(2, seq(
       optional($.type),
-      $.identifier,
+      $.property_identifier,
       '(',
       optional($.parameter_list),
       ')',
@@ -248,6 +249,7 @@ module.exports = grammar({
     )),
 
     primitive_type: $ => choice(
+      'var',
       'boolean',
       'byte',
       'char',
@@ -423,13 +425,13 @@ module.exports = grammar({
     member_expression: $ => prec(15, seq(
       $._expression,
       '.',
-      choice($.identifier, 'class')
+      choice($.property_identifier, 'class')
     )),
 
     static_member_expression: $ => prec(15, seq(
       $._expression,
       '::',
-      $.identifier
+      choice($.property_identifier, 'class')
     )),
 
     subscript_expression: $ => prec(15, seq(
@@ -530,6 +532,7 @@ module.exports = grammar({
     global_identifier: $ => seq('::', $.identifier),
 
     identifier: $ => /[a-zA-Z_$][a-zA-Z0-9_$]*/,
+    property_identifier: $ => /[a-zA-Z_$][a-zA-Z0-9_$]*/,
 
     comment: $ => token(choice(
       seq('//', /.*/),

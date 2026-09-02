@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Pnuts Formatter Wrapper for Linux & macOS
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+UNAME_S="$(uname -s)"
+UNAME_M="$(uname -m)"
+
+if command -v python3 >/dev/null 2>&1; then
+    if [ -f "$DIR/format_pnuts.py" ]; then
+        exec python3 "$DIR/format_pnuts.py" "$@"
+    else
+        exec python3 "$DIR/../../scripts/format_pnuts.py" "$@"
+    fi
+elif [ "$UNAME_S" = "Linux" ] && [ -x "$DIR/pnuts-format" ]; then
+    exec "$DIR/pnuts-format" "$@"
+elif [ "$UNAME_S" = "Darwin" ]; then
+    if [ "$UNAME_M" = "arm64" ] && [ -x "$DIR/pnuts-format-darwin-arm64" ]; then
+        exec "$DIR/pnuts-format-darwin-arm64" "$@"
+    elif [ -x "$DIR/pnuts-format-darwin-x64" ]; then
+        exec "$DIR/pnuts-format-darwin-x64" "$@"
+    fi
+fi
+    if [ "$UNAME_S" = "Darwin" ]; then
+        BIN="$DIR/../resources/bin/darwin-arm64/topiary"
+        GRAMMAR="$DIR/../resources/grammars/darwin-arm64/libtree-sitter-pnuts.dylib"
+    else
+        BIN="$DIR/../resources/bin/linux-x64/topiary"
+        GRAMMAR="$DIR/../resources/grammars/linux-x64/libtree-sitter-pnuts.so"
+    fi
+    QUERY="$DIR/../resources/queries/pnuts.scm"
+    TMP_CFG="/tmp/pnuts-topiary-languages.ncl"
+    cat <<EOF > "$TMP_CFG"
+{
+  languages = {
+    pnuts = {
+      extensions = ["pnuts"],
+      grammar = {
+        source = {
+          path = "$GRAMMAR",
+        },
+        symbol = "tree_sitter_pnuts",
+      },
+      indent = "  ",
+    },
+  },
+}
+EOF
+    chmod +x "$BIN" 2>/dev/null || true
+    export TOPIARY_LANGUAGE_DIR="$DIR/../resources/queries"
+    exec "$BIN" format -C "$TMP_CFG" -q "$QUERY" -l pnuts "$@"
+fi

@@ -43,13 +43,13 @@ pkg::func(a, b)
         (string_literal)
         (member_expression
           (identifier)
-          (identifier))
+          (property_identifier))
         (identifier))))
   (expression_statement
     (call_expression
       (static_member_expression
         (identifier)
-        (identifier))
+        (property_identifier))
       (argument_list
         (identifier)
         (identifier)))))

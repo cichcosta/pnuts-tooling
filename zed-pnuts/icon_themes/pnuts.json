@@ -1,0 +1,47 @@
+{
+  "$schema": "https://zed.dev/schema/icon_themes/v0.3.0.json",
+  "name": "Pnuts Icon Theme",
+  "author": "Pnuts Tooling Team",
+  "themes": [
+    {
+      "name": "Pnuts Icon Theme",
+      "appearance": "dark",
+      "directory_icons": {
+        "collapsed": "./icons/folder.svg",
+        "expanded": "./icons/folder-open.svg"
+      },
+      "file_icons": {
+        "default": {
+          "path": "./icons/file.svg"
+        },
+        "pnuts": {
+          "path": "./icons/pnuts.svg"
+        }
+      },
+      "file_suffixes": {
+        "pnuts": "pnuts",
+        "pnut": "pnuts"
+      }
+    },
+    {
+      "name": "Pnuts Icon Theme Light",
+      "appearance": "light",
+      "directory_icons": {
+        "collapsed": "./icons/folder.svg",
+        "expanded": "./icons/folder-open.svg"
+      },
+      "file_icons": {
+        "default": {
+          "path": "./icons/file.svg"
+        },
+        "pnuts": {
+          "path": "./icons/pnuts.svg"
+        }
+      },
+      "file_suffixes": {
+        "pnuts": "pnuts",
+        "pnut": "pnuts"
+      }
+    }
+  ]
+}

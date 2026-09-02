@@ -19,7 +19,7 @@ foreach wrow (wrows.elements()) {
     (binary_expression
       (member_expression
         (identifier)
-        (identifier))
+        (property_identifier))
       (string_literal))
     (block
       (expression_statement
@@ -38,7 +38,7 @@ foreach wrow (wrows.elements()) {
     (call_expression
       (member_expression
         (identifier)
-        (identifier)))
+        (property_identifier)))
     (block
       (expression_statement
         (call_expression

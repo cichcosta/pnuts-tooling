@@ -1,0 +1,14 @@
+{
+  "languages": {
+    "Pnuts": {
+      "formatter": {
+        "external": {
+          "command": "python3",
+          "arguments": ["scripts/format_pnuts.py", "--stdin"]
+        }
+      },
+      "format_on_save": "on",
+      "tab_size": 2
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "iconDefinitions": {
+    "_file_pnuts": {
+      "iconPath": "./pnuts.svg"
+    }
+  },
+  "fileExtensions": {
+    "pnuts": "_file_pnuts",
+    "pnut": "_file_pnuts"
+  },
+  "languageIds": {
+    "pnuts": "_file_pnuts"
+  }
+}
