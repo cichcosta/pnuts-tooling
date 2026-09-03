@@ -674,13 +674,23 @@ function normalizeBlockSpacing(text) {
         }
     }
 
+    const linesToRemove = new Set();
     const needBlankAfter = new Set();
+
     for (const [openLine, closeLine] of matchedBlocks) {
+        // Remove any blank lines immediately before closing brace }
+        let k = closeLine - 1;
+        while (k > openLine && lines[k].trim() === '') {
+            linesToRemove.add(k);
+            k--;
+        }
+
+        // Check content lines
         if (closeLine > openLine + 1) {
             const nestedContentLines = [];
-            for (let k = openLine + 1; k < closeLine; k++) {
-                if (lines[k].trim() !== '') {
-                    nestedContentLines.push(lines[k]);
+            for (let idx = openLine + 1; idx < closeLine; idx++) {
+                if (!linesToRemove.has(idx) && lines[idx].trim() !== '') {
+                    nestedContentLines.push(lines[idx]);
                 }
             }
             if (nestedContentLines.length > 1) {
@@ -693,6 +703,9 @@ function normalizeBlockSpacing(text) {
 
     const newLines = [];
     for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+        if (linesToRemove.has(lineIdx)) {
+            continue;
+        }
         newLines.push(lines[lineIdx]);
         if (needBlankAfter.has(lineIdx)) {
             newLines.push('');

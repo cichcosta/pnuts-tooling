@@ -457,19 +457,31 @@ def normalize_block_spacing(text: str) -> str:
 
             i += 1
 
+    lines_to_remove = set()
     need_blank_after = set()
+
     for open_line, close_line in matched_blocks:
+        # Remove any blank lines immediately before closing brace }
+        k = close_line - 1
+        while k > open_line and lines[k].strip() == "":
+            lines_to_remove.add(k)
+            k -= 1
+
+        # Check content lines
         if close_line > open_line + 1:
-            nested_content_lines = [
-                lines[k] for k in range(open_line + 1, close_line)
-                if lines[k].strip() != ""
+            nested_content = [
+                lines[idx] for idx in range(open_line + 1, close_line)
+                if idx not in lines_to_remove and lines[idx].strip() != ""
             ]
-            if len(nested_content_lines) > 1:
+            if len(nested_content) > 1:
+                # Need blank line after opening brace if not already present
                 if lines[open_line + 1].strip() != "":
                     need_blank_after.add(open_line)
 
     new_lines = []
     for line_idx, line in enumerate(lines):
+        if line_idx in lines_to_remove:
+            continue
         new_lines.append(line)
         if line_idx in need_blank_after:
             new_lines.append("")

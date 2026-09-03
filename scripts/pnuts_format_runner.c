@@ -151,16 +151,204 @@ static void format_line_comments(const char *src, char *dst, size_t dst_size) {
     dst[j] = '\0';
 }
 
+typedef struct {
+    char **lines;
+    size_t count;
+    size_t cap;
+} LineList;
+
+static void ll_init(LineList *ll) {
+    ll->cap = 128;
+    ll->count = 0;
+    ll->lines = (char **)malloc(sizeof(char *) * ll->cap);
+}
+
+static void ll_push(LineList *ll, const char *str) {
+    if (ll->count + 1 > ll->cap) {
+        ll->cap *= 2;
+        ll->lines = (char **)realloc(ll->lines, sizeof(char *) * ll->cap);
+    }
+    ll->lines[ll->count++] = strdup(str);
+}
+
+static void ll_free(LineList *ll) {
+    for (size_t i = 0; i < ll->count; i++) {
+        free(ll->lines[i]);
+    }
+    free(ll->lines);
+    ll->lines = NULL;
+    ll->count = ll->cap = 0;
+}
+
+static int is_line_blank(const char *line) {
+    while (*line) {
+        if (*line != ' ' && *line != '\t' && *line != '\r' && *line != '\n') return 0;
+        line++;
+    }
+    return 1;
+}
+
+static void normalize_block_spacing_and_print(LineList *ll, FILE *out) {
+    size_t stack_cap = 256;
+    size_t stack_len = 0;
+    size_t *stack = (size_t *)malloc(sizeof(size_t) * stack_cap);
+
+    typedef struct {
+        size_t open_line;
+        size_t close_line;
+    } BlockPair;
+    size_t blocks_cap = 256;
+    size_t blocks_len = 0;
+    BlockPair *blocks = (BlockPair *)malloc(sizeof(BlockPair) * blocks_cap);
+
+    int in_block_comment = 0;
+    char in_str = 0;
+    int escaped = 0;
+
+    for (size_t line_idx = 0; line_idx < ll->count; line_idx++) {
+        const char *line = ll->lines[line_idx];
+        size_t n = strlen(line);
+        size_t i = 0;
+
+        while (i < n) {
+            char c = line[i];
+
+            if (in_block_comment) {
+                if (c == '*' && i + 1 < n && line[i + 1] == '/') {
+                    in_block_comment = 0;
+                    i += 2;
+                    continue;
+                }
+                i++;
+                continue;
+            }
+
+            if (in_str) {
+                if (escaped) {
+                    escaped = 0;
+                    i++;
+                    continue;
+                }
+                if (c == '\\' && in_str) {
+                    escaped = 1;
+                    i++;
+                    continue;
+                }
+                if (c == in_str) {
+                    in_str = 0;
+                    i++;
+                    continue;
+                }
+                i++;
+                continue;
+            }
+
+            if (c == '"' || c == '\'' || c == '`') {
+                in_str = c;
+                i++;
+                continue;
+            }
+
+            if (c == '/' && i + 1 < n) {
+                if (line[i + 1] == '/') break;
+                if (line[i + 1] == '*') {
+                    in_block_comment = 1;
+                    i += 2;
+                    continue;
+                }
+            }
+
+            if (c == '{') {
+                if (stack_len + 1 > stack_cap) {
+                    stack_cap *= 2;
+                    stack = (size_t *)realloc(stack, sizeof(size_t) * stack_cap);
+                }
+                stack[stack_len++] = line_idx;
+                i++;
+                continue;
+            }
+
+            if (c == '}') {
+                if (stack_len > 0) {
+                    size_t open_line = stack[--stack_len];
+                    if (blocks_len + 1 > blocks_cap) {
+                        blocks_cap *= 2;
+                        blocks = (BlockPair *)realloc(blocks, sizeof(BlockPair) * blocks_cap);
+                    }
+                    blocks[blocks_len].open_line = open_line;
+                    blocks[blocks_len].close_line = line_idx;
+                    blocks_len++;
+                }
+                i++;
+                continue;
+            }
+
+            i++;
+        }
+    }
+
+    char *lines_to_remove = (char *)calloc(ll->count, sizeof(char));
+    char *need_blank = (char *)calloc(ll->count, sizeof(char));
+
+    for (size_t b = 0; b < blocks_len; b++) {
+        size_t open_line = blocks[b].open_line;
+        size_t close_line = blocks[b].close_line;
+
+        // Remove any blank lines immediately before closing brace }
+        size_t k = close_line;
+        while (k > open_line + 1) {
+            k--;
+            if (is_line_blank(ll->lines[k])) {
+                lines_to_remove[k] = 1;
+            } else {
+                break;
+            }
+        }
+
+        // Check content lines
+        if (close_line > open_line + 1) {
+            size_t non_blank = 0;
+            for (size_t idx = open_line + 1; idx < close_line; idx++) {
+                if (!lines_to_remove[idx] && !is_line_blank(ll->lines[idx])) {
+                    non_blank++;
+                }
+            }
+            if (non_blank > 1) {
+                if (!is_line_blank(ll->lines[open_line + 1])) {
+                    need_blank[open_line] = 1;
+                }
+            }
+        }
+    }
+
+    for (size_t line_idx = 0; line_idx < ll->count; line_idx++) {
+        if (lines_to_remove[line_idx]) {
+            continue;
+        }
+        fputs(ll->lines[line_idx], out);
+        fputc('\n', out);
+        if (need_blank[line_idx]) {
+            fputc('\n', out);
+        }
+    }
+
+    free(lines_to_remove);
+    free(need_blank);
+    free(stack);
+    free(blocks);
+}
+
 static void normalize_and_print(FILE *in, FILE *out) {
     char line[8192];
     char prev_line[8192] = {0};
     int has_prev = 0;
 
+    LineList ll;
+    ll_init(&ll);
+
     while (fgets(line, sizeof(line), in)) {
         size_t len = strlen(line);
-        char eol[3] = "\n";
         if (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) {
-            if (len > 1 && line[len - 2] == '\r') strcpy(eol, "\r\n");
             while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) {
                 line[--len] = '\0';
             }
@@ -215,8 +403,7 @@ static void normalize_and_print(FILE *in, FILE *out) {
         }
 
         if (has_prev) {
-            fputs(prev_line, out);
-            fputs(eol, out);
+            ll_push(&ll, prev_line);
         }
         strncpy(prev_line, line, sizeof(prev_line) - 1);
         prev_line[sizeof(prev_line) - 1] = '\0';
@@ -224,9 +411,11 @@ static void normalize_and_print(FILE *in, FILE *out) {
     }
 
     if (has_prev) {
-        fputs(prev_line, out);
-        fputc('\n', out);
+        ll_push(&ll, prev_line);
     }
+
+    normalize_block_spacing_and_print(&ll, out);
+    ll_free(&ll);
 }
 
 int main(int argc, char **argv) {
