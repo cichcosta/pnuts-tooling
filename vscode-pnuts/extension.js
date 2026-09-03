@@ -395,7 +395,8 @@ function formatWithTopiary(text, context) {
         child.on('close', (code) => {
             if (code === 0) {
                 log('Formatting completed successfully.');
-                resolve(normalizeFlush(stdout));
+                const flushed = normalizeFlush(stdout);
+                resolve(normalizeBlockSpacing(flushed));
             } else {
                 log(`Topiary failed with exit code ${code}. Stderr: ${stderr}`);
                 reject(new Error(`Topiary exit code ${code}: ${stderr || stdout || 'Unknown error'}`));
@@ -409,7 +410,7 @@ function formatWithTopiary(text, context) {
 }
 
 /**
- * Finds the starting index of a line comment (//) outside of string literals.
+ * Finds the starting index of a line comment (// or /* ... * /) outside of string literals.
  * Returns -1 if no comment is found.
  */
 function findCommentStart(line) {
@@ -441,8 +442,16 @@ function findCommentStart(line) {
             i++;
             continue;
         }
-        if (c === '/' && i + 1 < n && line[i + 1] === '/') {
-            return i;
+        if (c === '/' && i + 1 < n) {
+            if (line[i + 1] === '/') {
+                return i;
+            }
+            if (line[i + 1] === '*') {
+                const closeIdx = line.indexOf('*/', i + 2);
+                if (closeIdx !== -1 && line.slice(closeIdx + 2).trim() === '') {
+                    return i;
+                }
+            }
         }
         i++;
     }
@@ -456,6 +465,9 @@ function findCommentStart(line) {
  * Preserves visual divider lines like //***, //---, //=== (3+ identical non-alphanumeric chars).
  */
 function formatComment(comment) {
+    if (comment.startsWith('/*')) {
+        return comment;
+    }
     if (!comment.startsWith('//')) {
         return comment;
     }
@@ -567,6 +579,131 @@ function normalizeFlush(text) {
         out.push(line);
     }
     return out.join(eol);
+}
+
+/**
+ * Ensures that any block { ... } with more than one nested line of content
+ * has a blank line immediately following the opening brace line.
+ * Applies to control structures (if/else, loops: for, foreach, while, do..while),
+ * functions, methods, classes, try/catch/finally, and switch blocks.
+ */
+function normalizeBlockSpacing(text) {
+    if (!text) return text;
+    const lines = text.split(/\r?\n/);
+    const hasCrlf = text.includes('\r\n');
+    const eol = hasCrlf ? '\r\n' : '\n';
+
+    const openBraces = [];
+    const matchedBlocks = [];
+
+    let inBlockComment = false;
+    let inString = null;
+    let escaped = false;
+
+    for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+        const line = lines[lineIdx];
+        const n = line.length;
+        let i = 0;
+
+        while (i < n) {
+            const c = line[i];
+
+            if (inBlockComment) {
+                if (c === '*' && i + 1 < n && line[i + 1] === '/') {
+                    inBlockComment = false;
+                    i += 2;
+                    continue;
+                }
+                i++;
+                continue;
+            }
+
+            if (inString) {
+                if (escaped) {
+                    escaped = false;
+                    i++;
+                    continue;
+                }
+                if (c === '\\' && inString) {
+                    escaped = true;
+                    i++;
+                    continue;
+                }
+                if (c === inString) {
+                    inString = null;
+                    i++;
+                    continue;
+                }
+                i++;
+                continue;
+            }
+
+            if (c === '"' || c === "'" || c === '`') {
+                inString = c;
+                i++;
+                continue;
+            }
+
+            if (c === '/' && i + 1 < n) {
+                if (line[i + 1] === '/') {
+                    break;
+                }
+                if (line[i + 1] === '*') {
+                    inBlockComment = true;
+                    i += 2;
+                    continue;
+                }
+            }
+
+            if (c === '{') {
+                openBraces.push(lineIdx);
+                i++;
+                continue;
+            }
+
+            if (c === '}') {
+                if (openBraces.length > 0) {
+                    const openLine = openBraces.pop();
+                    matchedBlocks.push([openLine, lineIdx]);
+                }
+                i++;
+                continue;
+            }
+
+            i++;
+        }
+    }
+
+    const needBlankAfter = new Set();
+    for (const [openLine, closeLine] of matchedBlocks) {
+        if (closeLine > openLine + 1) {
+            const nestedContentLines = [];
+            for (let k = openLine + 1; k < closeLine; k++) {
+                if (lines[k].trim() !== '') {
+                    nestedContentLines.push(lines[k]);
+                }
+            }
+            if (nestedContentLines.length > 1) {
+                if (lines[openLine + 1].trim() !== '') {
+                    needBlankAfter.add(openLine);
+                }
+            }
+        }
+    }
+
+    const newLines = [];
+    for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+        newLines.push(lines[lineIdx]);
+        if (needBlankAfter.has(lineIdx)) {
+            newLines.push('');
+        }
+    }
+
+    let result = newLines.join(eol);
+    if (text.endsWith('\n') || text.endsWith('\r\n')) {
+        result += eol;
+    }
+    return result;
 }
 
 /**

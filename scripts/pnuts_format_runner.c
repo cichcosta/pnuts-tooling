@@ -238,6 +238,33 @@ int main(int argc, char **argv) {
     char self_dir[1024] = {0};
     get_self_dir(self_dir, sizeof(self_dir));
 
+    // Priority 1: Delegate to format_pnuts.py if python3/python is available
+    char py_script[1024] = {0};
+    char cand1[1024] = {0}, cand2[1024] = {0}, cand3[1024] = {0};
+    snprintf(cand1, sizeof(cand1), "%s" PATH_SEP_STR "format_pnuts.py", self_dir);
+    snprintf(cand2, sizeof(cand2), "%s" PATH_SEP_STR ".." PATH_SEP_STR "scripts" PATH_SEP_STR "format_pnuts.py", self_dir);
+    snprintf(cand3, sizeof(cand3), "%s" PATH_SEP_STR ".." PATH_SEP_STR "bin" PATH_SEP_STR "format_pnuts.py", self_dir);
+
+    if (file_exists(cand1)) strncpy(py_script, cand1, sizeof(py_script) - 1);
+    else if (file_exists(cand2)) strncpy(py_script, cand2, sizeof(py_script) - 1);
+    else if (file_exists(cand3)) strncpy(py_script, cand3, sizeof(py_script) - 1);
+
+    if (py_script[0] != '\0') {
+#ifndef _WIN32
+        if (system("python3 --version >/dev/null 2>&1") == 0) {
+            char **py_argv = (char **)malloc((argc + 3) * sizeof(char *));
+            py_argv[0] = "python3";
+            py_argv[1] = py_script;
+            for (int i = 1; i < argc; i++) {
+                py_argv[i + 1] = argv[i];
+            }
+            py_argv[argc + 1] = NULL;
+            execvp("python3", py_argv);
+            free(py_argv);
+        }
+#endif
+    }
+
     char topiary_bin[1024] = {0};
     char grammar_dll[1024] = {0};
     char query_file[1024] = {0};

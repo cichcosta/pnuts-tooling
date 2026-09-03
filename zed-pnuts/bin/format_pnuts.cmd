@@ -5,6 +5,22 @@ setlocal enabledelayedexpansion
 set "BIN_DIR=%~dp0"
 set "RUNNER_EXE=%BIN_DIR%pnuts-format.exe"
 
+where python >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+    if exist "%BIN_DIR%format_pnuts.py" (
+        python "%BIN_DIR%format_pnuts.py" %*
+        exit /b %ERRORLEVEL%
+    )
+)
+
+where python3 >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+    if exist "%BIN_DIR%format_pnuts.py" (
+        python3 "%BIN_DIR%format_pnuts.py" %*
+        exit /b %ERRORLEVEL%
+    )
+)
+
 if exist "%RUNNER_EXE%" (
     "%RUNNER_EXE%" %*
     exit /b %ERRORLEVEL%

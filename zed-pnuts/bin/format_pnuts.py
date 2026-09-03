@@ -254,6 +254,7 @@ def format_code(source: str) -> Tuple[int, str, str]:
         )
         if proc.returncode == 0:
             formatted = normalize_flush(proc.stdout)
+            formatted = normalize_block_spacing(formatted)
             return 0, formatted, proc.stderr
         return proc.returncode, proc.stdout, proc.stderr
     except Exception as e:
@@ -262,7 +263,7 @@ def format_code(source: str) -> Tuple[int, str, str]:
 
 def find_comment_start(line: str) -> int:
     """
-    Finds the starting index of a line comment (//) outside of string literals.
+    Finds the starting index of a trailing comment (// or /* ... */) outside of string literals.
     Returns -1 if no comment is found.
     """
     in_str = None
@@ -288,8 +289,13 @@ def find_comment_start(line: str) -> int:
             in_str = c
             i += 1
             continue
-        if c == "/" and i + 1 < n and line[i + 1] == "/":
-            return i
+        if c == "/" and i + 1 < n:
+            if line[i + 1] == "/":
+                return i
+            if line[i + 1] == "*":
+                close_idx = line.find("*/", i + 2)
+                if close_idx != -1 and line[close_idx + 2:].strip() == "":
+                    return i
         i += 1
     return -1
 
@@ -301,6 +307,8 @@ def format_comment(comment: str) -> str:
       //este é um comentario -> // este é um comentario
     Preserves visual divider lines like //***, //---, //=== (3+ identical non-alphanumeric chars).
     """
+    if comment.startswith("/*"):
+        return comment
     if not comment.startswith("//"):
         return comment
     rest = comment[2:]
@@ -358,6 +366,118 @@ def preprocess_comments(text: str) -> str:
                 out.append(code_part.rstrip() + eol)
 
     return "".join(out)
+
+
+def normalize_block_spacing(text: str) -> str:
+    """
+    Ensures that any block { ... } with more than one nested line of content
+    has a blank line immediately following the opening brace line.
+    Applies to control structures (if/else, loops: for, foreach, while, do..while),
+    functions, methods, classes, try/catch/finally, and switch blocks.
+    Example:
+      if (a > b) {
+        showMessage(exemplo muitline sem, o espcaco);
+        showMessage(mai uma linha para exemplo;)
+      }
+    becomes:
+      if (a > b) {
+
+        showMessage(exemplo muitline sem, o espcaco);
+        showMessage(mai uma linha para exemplo;)
+      }
+    """
+    if not text:
+        return text
+
+    lines = text.splitlines()
+    has_crlf = "\r\n" in text
+    eol = "\r\n" if has_crlf else "\n"
+
+    open_braces = []
+    matched_blocks = []
+
+    in_block_comment = False
+    in_string = None
+    escaped = False
+
+    for line_idx, line in enumerate(lines):
+        i = 0
+        n = len(line)
+        while i < n:
+            c = line[i]
+
+            if in_block_comment:
+                if c == "*" and i + 1 < n and line[i + 1] == "/":
+                    in_block_comment = False
+                    i += 2
+                    continue
+                i += 1
+                continue
+
+            if in_string:
+                if escaped:
+                    escaped = False
+                    i += 1
+                    continue
+                if c == "\\" and in_string:
+                    escaped = True
+                    i += 1
+                    continue
+                if c == in_string:
+                    in_string = None
+                    i += 1
+                    continue
+                i += 1
+                continue
+
+            if c in ('"', "'", "`"):
+                in_string = c
+                i += 1
+                continue
+
+            if c == "/" and i + 1 < n:
+                if line[i + 1] == "/":
+                    break
+                if line[i + 1] == "*":
+                    in_block_comment = True
+                    i += 2
+                    continue
+
+            if c == "{":
+                open_braces.append(line_idx)
+                i += 1
+                continue
+
+            if c == "}":
+                if open_braces:
+                    open_line = open_braces.pop()
+                    matched_blocks.append((open_line, line_idx))
+                i += 1
+                continue
+
+            i += 1
+
+    need_blank_after = set()
+    for open_line, close_line in matched_blocks:
+        if close_line > open_line + 1:
+            nested_content_lines = [
+                lines[k] for k in range(open_line + 1, close_line)
+                if lines[k].strip() != ""
+            ]
+            if len(nested_content_lines) > 1:
+                if lines[open_line + 1].strip() != "":
+                    need_blank_after.add(open_line)
+
+    new_lines = []
+    for line_idx, line in enumerate(lines):
+        new_lines.append(line)
+        if line_idx in need_blank_after:
+            new_lines.append("")
+
+    result = eol.join(new_lines)
+    if text.endswith("\n") or text.endswith("\r\n"):
+        result += eol
+    return result
 
 
 def normalize_flush(text: str) -> str:
