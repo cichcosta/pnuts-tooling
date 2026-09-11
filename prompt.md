@@ -2,185 +2,91 @@ CONTEXTO DO PROJETO
 
 Trabalho em uma empresa que usa uma linguagem de scripting legada chamada
 Pnuts, rodando sobre a JVM (compatível até Java 8), com sintaxe parecida
-com JavaScript/Java. Não existe formatter, linter, LSP ou syntax
-highlighting moderno para essa linguagem. Temos atualmente 6.944 arquivos
-`.pnuts` no projeto, com esse número crescendo diariamente.
+com JavaScript/Java, além de scripts em Groovy. Não existe formatter,
+linter, LSP ou syntax highlighting moderno e integrado para essas linguagens.
+Temos milhares de arquivos `.pnuts` e `.groovy` no projeto.
 
 Você está rodando localmente, com acesso ao sistema de arquivos e a
-comandos de shell. Você tem free tier limitado, então trabalhe de forma
-incremental, evitando reprocessar arquivos grandes desnecessariamente
-mais de uma vez, e me avise se perceber que uma tarefa vai consumir
-muito contexto/chamadas antes de executá-la.
+comandos de shell. Trabalhe de forma incremental, evitando reprocessar
+arquivos grandes desnecessariamente mais de uma vez, e me avise se perceber
+que uma tarefa vai consumir muito contexto antes de executá-la.
 
 OBJETIVO GERAL
 
-Construir uma gramática Tree-sitter mínima e tolerante a erros para a
-linguagem Pnuts, associada à extensão de arquivo `.pnuts`, com:
+1. Manter e aperfeiçoar a gramática Tree-sitter tolerante a erros para
+   Pnuts e Groovy, cobrindo syntax highlighting e formatação sintática.
+2. Evoluir o ecossistema de ferramentas para um **Language Server (LSP)**
+   unificado (`pnuts-lsp`), suportando tanto **Pnuts** quanto **Groovy**,
+   com:
+   a. **Formatação Nativa de Documento e Seleção:** Via protocolo LSP
+      (`textDocument/formatting`), permitindo que editores como Zed e
+      VSCode formatem buffers salvos e não salvos instantaneamente sem
+      nenhuma dependência de configurações manuais de shell ou `settings.json`.
+   b. **Autocomplete e Sugestão de Código:** Sugestão contextual baseada na
+      árvore sintática (AST), cobrindo palavras-chave, variáveis de escopo,
+      funções declaradas, blocos de controle (`foreach`, `if`, etc.) e
+      padrões comuns do framework interno.
+   c. **Syntax Highlighting e Diagnósticos:** Detecção e exibição visual de
+      erros de sintaxe em tempo real (`textDocument/publishDiagnostics`).
+   d. **Navegação de Código:** Navegação para definição (`textDocument/definition`)
+      e outline de símbolos (`textDocument/documentSymbol`).
 
-1. Highlighting básico funcionando no VSCode e no Zed.
-2. Um formatter baseado em Topiary (queries .scm sobre a árvore
-   Tree-sitter), cobrindo, em ordem de prioridade:
-   a. Indentação consistente baseada em profundidade de blocos `{}`.
-   b. Quebra de linha automática/normalizada.
-   c. Inserção/normalização de ponto e vírgula ao fim de statements.
-3. NÃO é objetivo deste projeto: autocomplete, LSP completo, análise
-   semântica profunda, ou validação de tipos. O foco é estritamente
-   formatação sintática superficial.
+A gramática e o LSP devem ser TOLERANTES: comandos e funções desconhecidas
+ou dinâmicas não devem quebrar o parsing do arquivo inteiro nem travar o
+servidor LSP.
 
-A gramática deve ser TOLERANTE: comandos/estruturas específicas do Pnuts
-que não forem totalmente mapeadas devem virar nós genéricos de
-expressão/statement, sem quebrar o parsing do arquivo inteiro (Pnuts
-mistura sintaxe JS-like com comandos próprios do framework interno da
-empresa, ainda não totalmente documentados).
+DECISÕES TÉCNICAS CONSOLIDADAS
 
-DECISÕES TÉCNICAS JÁ TOMADAS
+- Linguagem de implementação do LSP e tooling: Rust.
+- Motor de parsing: Tree-sitter (`tree-sitter-pnuts`, grammar.js -> C parser).
+- Motor de formatação: Topiary e AST Tree-sitter.
+- Framework de LSP: `tower-lsp` (Rust assíncrono via tokio / stdio).
+- Extensões suportadas:
+  - VSCode (`vscode-pnuts`): Integração direta via Language Client.
+  - Zed (`zed-pnuts`): Integração via `extension.toml` com Language Server.
+- Repositório e Branch de trabalho:
+  - Branch do LSP: `feature/pnuts-groovy-lsp`
+  - Documentos de referência rápida: `LSP_ROADMAP.md` e `CONTEXT.md`.
 
-- Linguagem de implementação do tooling: Rust.
-- Motor de parsing: Tree-sitter (grammar.js -> parser em C, com bindings
-  Rust via crate tree-sitter).
-- Motor de formatação: Topiary, usando queries declarativas (.scm) em
-  cima da árvore Tree-sitter, em vez de um pretty-printer escrito à mão.
-- Extensão de arquivo definida: .pnuts (já confirmado que não conflita
-  com uso relevante existente).
-- Ferramenta de execução deste prompt: Gemini CLI, no free tier.
+DOCUMENTAÇÃO TÉCNICA E GUIAS DE FOCO
 
-FONTES DISPONÍVEIS LOCALMENTE
+- [LSP_ROADMAP.md]: Mapa detalhado de fases, milestones e capacidades do LSP.
+- [CONTEXT.md]: Memória técnica do projeto, histórico de bugs corrigidos e regras para evitar regressões.
+- [docs/GUIA_DE_PNUTS.md]: Guia consolidado de sintaxe e padrões da linguagem Pnuts.
+- [ZED_FORMATTER_DEBUG.md]: Histórico de diagnóstico de formatação no Zed.
 
-1. Repositório oficial (abandonado há ~9 anos) do Pnuts, em:
-   [/pnuts-repo]
+FASES DE EXECUÇÃO DO PROJETO
 
-   Estrutura relevante já identificada:
-   - doc/lang.html          -> especificação formal da sintaxe (PRIORITÁRIO)
-   - doc/quickref.html      -> referência rápida de palavras-chave
-   - doc/convention.html    -> possíveis convenções oficiais de estilo
-   - doc/type.html          -> sistema de tipos
-   - doc/command.html       -> comandos/estruturas de controle
-   - doc.ja/ e doc.pl/      -> traduções, IGNORAR
-   - api/src/               -> provável parser/lexer Java original
-   - launcher/              -> scripts de execução, baixa prioridade
+- FASES 0 a 7 (CONCLUÍDAS):
+  Bootstrap da gramática Tree-sitter, motor Topiary CLI, queries básicas de
+  highlighting, criação dos pacotes iniciais de extensão para VSCode e Zed.
 
-2. Amostra de arquivos `.pnuts` reais do meu projeto de trabalho, em:
-   [/pnuts-samples]
+- FASE 8 - ESTABILIZAÇÃO DO PARSER E TESTES CONTÍNUOS (EM ANDAMENTO):
+  Garantir robustez total contra bugs recentes (`char(34)`, `for (in)`, `[:]`,
+  `catch (Exception e)`), mantendo testes de regressão em `test/corpus/`.
 
-   Inclui arquivos pequenos, médios, grandes, com `foreach`, `if/else`,
-   `for`, `while`, `try/catch`, chamadas encadeadas tipo
-   `wrows.elements()`, strings com caracteres especiais, e comentários
-   de linha e bloco.
+- FASE 9 - CORE DO SERVIDOR LSP (`pnuts-lsp`):
+  Criação da crate Rust `pnuts-lsp`, ciclo de vida do servidor (initialize,
+  shutdown) e gerenciamento de buffers em memória via JSON-RPC / stdio.
 
-   Exemplo real de sintaxe que precisa ser reconhecido:
-     foreach wrow(wrows.elements()) {
-       // corpo do loop
-     }
+- FASE 10 - FORMATAÇÃO NATIVA VIA LSP:
+  Implementação de `textDocument/formatting`, eliminando de vez a necessidade
+  de comandos externos manuais em `settings.json` no Zed e no VSCode.
 
-DOCUMENTAÇÃO TÉCNICA DE REFERÊNCIA
+- FASE 11 - AUTOCOMPLETE E SUGESTÕES CONTEXTUAIS:
+  Implementação de `textDocument/completion` para palavras-chave, variáveis
+  locais, parâmetros de função e snippets do framework.
 
-- Tree-sitter (docs principais):
-  <https://tree-sitter.github.io/tree-sitter/>
-- Tree-sitter (criação de gramáticas):
-  <https://tree-sitter.github.io/tree-sitter/creating-parsers>
-- Tree-sitter (CLI):
-  <https://tree-sitter.github.io/tree-sitter/cli>
-- Tree-sitter (repositório oficial):
-  <https://github.com/tree-sitter/tree-sitter>
-- Lista de gramáticas existentes (referência, linguagens tipo JS/Java):
-  <https://github.com/tree-sitter/tree-sitter/wiki/List-of-parsers>
-- Topiary (repositório oficial, docs de queries .scm de formatação):
-  <https://github.com/tweag/topiary>
-- VSCode (Extension API):
-  <https://code.visualstudio.com/api>
-- VSCode (syntax highlighting via TextMate grammar):
-  <https://code.visualstudio.com/api/language-extensions/syntax-highlight-guide>
-- VSCode (language extensions, visão geral):
-  <https://code.visualstudio.com/api/language-extensions/overview>
-- VSCode (DocumentFormattingEditProvider):
-  <https://code.visualstudio.com/api/references/vscode-api>
-- Zed (docs gerais):
-  <https://zed.dev/docs>
-- Zed (desenvolvimento de extensões):
-  <https://zed.dev/docs/extensions/developing-extensions>
-- Zed (suporte a linguagens):
-  <https://zed.dev/docs/extensions/languages>
-- Zed (repositório oficial de extensões, exemplos reais):
-  <https://github.com/zed-industries/extensions>
-- Repositório oficial (inativo) do Pnuts:
-  <https://github.com/tomatsu/pnuts>
+- FASE 12 - DIAGNÓSTICOS E NAVEGAÇÃO:
+  Implementação de `textDocument/publishDiagnostics`, `textDocument/definition`
+  e `textDocument/hover`.
 
-FASES DE EXECUÇÃO (respeite esta ordem, não pule etapas)
+- FASE 13 - EMPACOTAMENTO E DISTRIBUIÇÃO PLUG & PLAY:
+  Geração de binários estáticos multiplataforma e publicação das extensões.
 
-FASE 0 - VALIDAÇÃO DE AMBIENTE
+REGRAS DE SEGURANÇA E CONDUTA
 
-- Confirme que rustc, cargo, tree-sitter-cli e topiary estão instalados
-  e acessíveis no PATH. Reporte as versões encontradas.
-- Confirme que os caminhos locais do repositório Pnuts e da amostra de
-  arquivos .pnuts existem e não estão vazios.
-
-FASE 1 - LEVANTAMENTO DA GRAMÁTICA
-
-- Leia doc/lang.html, doc/quickref.html, doc/convention.html,
-  doc/type.html e doc/command.html.
-- Liste, de forma estruturada: tokens, delimitadores, regras de bloco,
-  regra de terminação de statement (ponto e vírgula obrigatório,
-  opcional, ou ASI), e convenções de estilo já documentadas oficialmente.
-- Identifique o arquivo principal de parser/lexer dentro de api/src/ e
-  reporte se há divergências entre o código-fonte e o que está
-  documentado em doc/lang.html.
-
-FASE 2 - CRUZAMENTO COM CÓDIGO REAL
-
-- Percorra a amostra em pnuts-samples/ e identifique construções
-  sintáticas usadas no dia a dia que NÃO estão cobertas pela
-  documentação/parser original (prováveis comandos customizados do
-  framework interno, como o exemplo `foreach wrow(...)` acima).
-- Gere uma lista consolidada dessas divergências antes de prosseguir.
-
-FASE 3 - PROPOSTA DE ARQUITETURA (aguarde minha aprovação aqui)
-
-- Apresente a estrutura de pastas proposta para o projeto (gramática,
-  queries de highlighting, queries de formatação do Topiary, extensão
-  VSCode, extensão Zed, corpus de testes).
-- Não crie os arquivos ainda nesta fase, apenas descreva o plano.
-
-FASE 4 - GRAMÁTICA TREE-SITTER
-
-- Implemente grammar.js de forma tolerante a erros, cobrindo o que foi
-  levantado nas Fases 1 e 2.
-- Trate comandos desconhecidos do framework interno como nós genéricos
-  de expressão/statement.
-- Rode tree-sitter generate e tree-sitter test, criando um corpus de
-  testes baseado nos arquivos reais da amostra.
-
-FASE 5 - FORMATAÇÃO COM TOPIARY
-
-- Escreva as queries .scm de formatação para: indentação por bloco,
-  quebra de linha, e inserção/normalização de ponto e vírgula.
-- Rode o Topiary contra a amostra em modo de comparação (diff), sem
-  sobrescrever arquivos ainda.
-- Reporte casos em que a formatação ficou incorreta ou arriscada.
-
-FASE 6 - INTEGRAÇÃO COM EDITORES
-
-- Monte a estrutura mínima de extensão para VSCode (highlighting +
-  registro do formatter) e para Zed (extension.toml + gramática +
-  formatter externo apontando para o binário/queries do Topiary).
-
-FASE 7 - DOCUMENTAÇÃO FINAL
-
-- Gere um README curto explicando como instalar as extensões, como
-  rodar o formatter em lote sobre os arquivos .pnuts existentes, e como
-  rodar em modo "apenas diff" antes de aplicar em produção.
-
-REGRAS DE SEGURANÇA
-
-- Nunca sobrescreva arquivos .pnuts reais do projeto sem antes gerar um
-  diff e eu aprovar.
-- Trabalhe sempre dentro de uma branch Git dedicada.
-- Se encontrar uma construção sintática ambígua que não consiga resolver
-  nem pela documentação nem pelo parser original, PARE e me pergunte,
-  trazendo o trecho de código exato em questão, em vez de assumir um
-  comportamento.
-- Se perceber que está prestes a consumir uma quantidade grande de
-  chamadas/contexto do free tier em uma única tarefa (ex: ler todos os
-  6.944 arquivos de uma vez), me avise antes e sugira uma abordagem em
-  lotes menores.•
-
-Comece pela FASE 0 e me reporte o resultado antes de avançar.
+1. Nunca quebrar funcionalidades existentes de formatação e highlighting.
+2. Cada nova capacidade do LSP deve vir acompanhada de testes unitários ou de integração.
+3. Manter sempre `LSP_ROADMAP.md` e `CONTEXT.md` atualizados a cada avanço relevante.
+4. Trabalhar incrementalmente com foco exclusivo na fase ativa da roadmap.
