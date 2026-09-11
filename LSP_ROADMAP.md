@@ -46,11 +46,11 @@ Este documento define o objetivo técnico, a arquitetura e as fases de execuçã
 
 ### Fase 2: Core do LSP Server em Rust (`pnuts-lsp`)
 > **Meta:** Criar o esqueleto do servidor LSP comunicando via JSON-RPC / stdio.
-- [ ] Criar crate `pnuts-lsp` no repositório com `tower-lsp` e `tree-sitter`.
-- [ ] Implementar ciclo de vida básico do LSP:
+- [x] Criar crate `pnuts-lsp` no repositório com `tower-lsp` e `tree-sitter`.
+- [x] Implementar ciclo de vida básico do LSP:
   - `initialize` e `initialized`.
   - `shutdown` e `exit`.
-- [ ] Gerenciamento de estado de documentos em memória (`textDocument/didOpen`, `textDocument/didChange`, `textDocument/didClose`), permitindo funcionamento perfeito em buffers **não salvos** (`untitled`).
+- [x] Gerenciamento de estado de documentos em memória (`textDocument/didOpen`, `textDocument/didChange`, `textDocument/didClose`), permitindo funcionamento perfeito em buffers **não salvos** (`untitled`).
 
 ### Fase 3: Provedor de Formatação Nativo no LSP
 > **Meta:** Resolver de vez a formatação no Zed e VSCode sem tocar em `settings.json`.

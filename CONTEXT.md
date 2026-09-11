@@ -22,9 +22,12 @@ Este arquivo é a fonte da verdade sobre o estado atual do projeto, decisões t�
    - Gera parser em C compilado para shared libraries (`.so`, `.dll`, `.dylib`) e `.wasm` (usado nativamente pelo Zed e VSCode).
 2. **Motor de Formatação Atual:** Topiary CLI + queries em Scheme (`pnuts.scm`).
    - Binários empacotados em `resources/bin/` e executáveis em `bin/`.
-3. **Evolução Planejada (LSP):**
-   - Transição para um servidor LSP nativo (`pnuts-lsp`), unificando formatação, autocomplete e diagnósticos.
-   - Elimina dependências externas e configurações manuais nos editores.
+3. **Language Server Protocol (`pnuts-lsp` - Fase 2 Concluída):**
+   - Implementado em Rust com `tower-lsp` e `tokio` (comunicação stdio / JSON-RPC).
+   - Workspace Cargo raiz contendo `pnuts-lsp` e `tree-sitter-pnuts`.
+   - Gerenciamento de documentos em memória (`DocumentStore`) tolerante a esquemas `file://` e buffers não salvos `untitled:`.
+   - Re-parsing incremental via AST Tree-sitter em `didOpen`, `didChange`, `didSave` e remoção em `didClose`.
+   - Logs de tracing roteados exclusivamente para `stderr`, preservando o canal `stdout` para mensagens JSON-RPC.
 
 ---
 
@@ -65,3 +68,19 @@ Ao modificar `grammar.js`, NUNCA reintroduzir os seguintes erros:
 1. **Manter o Foco:** Trabalhar estritamente nas fases definidas no `LSP_ROADMAP.md`.
 2. **Verificação de Regressão:** Antes de concluir qualquer alteração no parser ou formatador, rodar os testes de validação contra a pasta `pnuts-samples/` e contra a base de testes.
 3. **Atualização Contínua:** Sempre que uma funcionalidade for concluída ou um bug crítico for corrigido, documentar neste arquivo (`CONTEXT.md`).
+
+---
+
+## 6. Estado Atual e Ponto de Retomada Imediato
+
+- **Fase Atual Concluída:** **Fase 2 (Core do LSP Server em Rust `pnuts-lsp`)**.
+  - Crate `pnuts-lsp` e `tree-sitter-pnuts` configurados no workspace Cargo raiz.
+  - Ciclo de vida LSP (`initialize`, `initialized`, `shutdown`, `exit`) e gerenciamento de buffers em memória (`DocumentStore`) 100% operacionais, cobrindo `file://` e buffers não salvos `untitled:`.
+  - 8/8 testes unitários e integração de ponta a ponta passando.
+  - Binário de release `target/release/pnuts-lsp` gerado e verificado.
+
+- **Próxima Ação Imediata ao Retomar:** **Fase 3: Provedor de Formatação Nativo no LSP (`textDocument/formatting`)**.
+  1. Integrar motor de formatação (formatação via AST/Topiary em Rust) no `pnuts-lsp`.
+  2. Implementar `textDocument/formatting` no [`backend.rs`](file:///home/chsilva/personal/projects/pnuts-tooling/pnuts-lsp/src/backend.rs) retornando `Option<Vec<TextEdit>>`.
+  3. Declarar `document_formatting_provider: Some(OneOf::Left(true))` nas capacidades em `initialize`.
+  4. Conectar o `pnuts-lsp` no `extension.toml` do Zed e no `extension.js` do VSCode para formatar nativamente sem comandos manuais no `settings.json`.

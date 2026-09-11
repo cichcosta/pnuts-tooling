@@ -1,0 +1,26 @@
+[package]
+name = "pnuts-lsp"
+version = "0.1.0"
+edition = "2021"
+authors = ["Pnuts Tooling Team"]
+description = "Language Server Protocol (LSP) for Pnuts and Groovy"
+
+[[bin]]
+name = "pnuts-lsp"
+path = "src/main.rs"
+
+[lib]
+name = "pnuts_lsp"
+path = "src/lib.rs"
+
+[dependencies]
+tokio = { version = "1.43", features = ["full"] }
+tower-lsp = "0.20.0"
+tree-sitter = "0.27.0"
+tree-sitter-pnuts = { path = "../tree-sitter-pnuts" }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+url = "2.5"
+
+[dev-dependencies]
+tokio = { version = "1.43", features = ["full", "test-util"] }
