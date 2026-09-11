@@ -2,7 +2,7 @@
   "name": "vscode-pnuts",
   "displayName": "Pnuts Language Support",
   "description": "Syntax highlighting and zero-dependency standalone Topiary-based code formatting for the Pnuts language",
-  "version": "0.2.5",
+  "version": "0.3.0",
   "publisher": "pnuts-tooling",
   "repository": {
     "type": "git",
