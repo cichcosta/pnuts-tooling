@@ -73,23 +73,23 @@ Ao modificar `grammar.js`, NUNCA reintroduzir os seguintes erros:
 
 ## 6. Estado Atual e Ponto de Retomada Imediato
 
-- **Fase Atual Concluída:** **Fase 3: Provedor de Formatação Nativo no LSP (`textDocument/formatting`)**.
-  - Módulo nativo [`formatter.rs`](file:///home/chsilva/personal/projects/pnuts-tooling/pnuts-lsp/src/formatter.rs) implementado em Rust com:
-    - Pré-processamento de comentários (`preprocess_comments`): mover comentários no final da sentença para a linha anterior com indentação preservada; espaçar `//`; preservar divisores `//***`, `//===`.
-    - Execução do formatador sobre o buffer em memória via JSON-RPC stdio.
-    - Normalização de `flush()` (`normalize_flush`): fundir `flush();` na mesma linha da instrução anterior.
-    - Normalização de chaves e espaçamento (`normalize_block_spacing`): linha em branco após `{` em blocos multilinhas; remoção total de linhas em branco antes de `}`.
-  - Implementado `textDocument/formatting` em [`backend.rs`](file:///home/chsilva/personal/projects/pnuts-tooling/pnuts-lsp/src/backend.rs) retornando `Option<Vec<TextEdit>>` com substituição de range integral.
-  - Suporte a idempotência e tolerância a erros comprovados em testes.
-  - Extensão do Zed ([`extension.toml`](file:///home/chsilva/personal/projects/pnuts-tooling/zed-pnuts/extension.toml)) atualizada para v0.3.0 registrando `pnuts-lsp` como servidor nativo.
-  - Binário release gerado e instalado em `~/.local/bin/pnuts-lsp` e `zed-pnuts/bin/pnuts-lsp`.
-  - 17/17 testes automatizados (unitários e de integração e2e) passando com sucesso.
+- **Fase Atual Concluída:** **Fase 4: Autocomplete e Sugestões de Código Inteligentes (`textDocument/completion`)**.
+  - Módulo nativo [`completion.rs`](file:///home/chsilva/personal/projects/pnuts-tooling/pnuts-lsp/src/completion.rs) implementado em Rust com:
+    - **Inspeção de Escopo via AST Tree-sitter:**
+      - Extração automática de variáveis locais (`variable_declaration`, `assignment_expression`, `for_statement`, `foreach_statement`, `catch_clause`) declaradas antes da posição do cursor.
+      - Extração de parâmetros da função atual quando o cursor estiver dentro do seu corpo.
+      - Extração de funções declaradas no arquivo com detalhe de assinatura `function nome(param1, param2)`.
+    - **Snippets LSP com Tabstops:** `foreach (in)`, `foreach`, `for (i)`, `if`, `if-else`, `while`, `function`, `try-catch`, `try-catch-finally`, `switch`, `println`, `println-flush`, `char(34)`.
+    - **Built-in Functions:** `println`, `print`, `flush`, `char`, `open`, `load`, `eval`, `error`, `getContext`, `isArray`, `isFunction`.
+    - **Classes Comuns Java:** `List`, `ArrayList`, `Map`, `HashMap`, `Set`, `HashSet`, `String`, `StringBuilder`, `Integer`, `Double`, `Boolean`, `Date`, `Calendar`, `SimpleDateFormat`, `Exception`, `RuntimeException`.
+    - **Palavras-chave:** `function`, `class`, `if`, `else`, `for`, `foreach`, `while`, `do`, `try`, `catch`, `finally`, `throw`, `return`, `break`, `continue`, `switch`, `case`, `default`, `import`, `package`, `null`, `true`, `false`, `new`, `var`, `def`.
+    - Ordenação refinada com `sort_text` priorizando símbolos de escopo > snippets > built-ins > classes > palavras-chave.
+  - Handler `completion` implementado em [`backend.rs`](file:///home/chsilva/personal/projects/pnuts-tooling/pnuts-lsp/src/backend.rs) e declarado nas capacidades (`completion_provider`).
+  - 22/22 testes automatizados passando (unitários e integração e2e via JSON-RPC).
+  - Binário release gerado e instalado em `~/.local/bin/pnuts-lsp` e empacotado em `zed-pnuts/` e `vscode-pnuts/`.
 
-- **Próxima Ação Imediata ao Retomar:** **Fase 4: Autocomplete e Sugestões de Código Inteligentes (`textDocument/completion`)**.
-  1. Adicionar `completion_provider` nas capacidades do servidor em [`backend.rs`](file:///home/chsilva/personal/projects/pnuts-tooling/pnuts-lsp/src/backend.rs).
-  2. Implementar módulo `completion.rs` para extração de contexto via AST Tree-sitter:
-     - Palavras-chave da linguagem (`function`, `if`, `else`, `while`, `for`, `foreach`, `try`, `catch`, `finally`, `return`, `package`, `import`).
-     - Snippets estruturados de controle de fluxo e funções.
-     - Símbolos locais (variáveis e funções declaradas no arquivo antes do cursor).
-     - Classes e métodos da biblioteca padrão (ex: `println`, `print`, `flush`, coleções Java).
-  3. Adicionar testes unitários e testes e2e de autocompletion no LSP.
+- **Próxima Ação Imediata ao Retomar:** **Fase 5: Diagnósticos em Tempo Real (Error Highlighting via `textDocument/publishDiagnostics`)**.
+  1. Implementar varredura da árvore Tree-sitter buscando nós de erro (`ERROR` e `MISSING`) no documento.
+  2. Gerar lista de `Diagnostic` do LSP com range preciso (linha, coluna de início e fim) e severidade `DiagnosticSeverity::ERROR`.
+  3. Publicar diagnósticos automaticamente para o editor (`client.publish_diagnostics(uri, diagnostics, version)`) nos eventos `did_open`, `did_change` e `did_save`.
+  4. Adicionar testes unitários de detecção de erro e testes de integração e2e.

@@ -63,15 +63,16 @@ Este documento define o objetivo técnico, a arquitetura e as fases de execuçã
 
 ### Fase 4: Autocomplete e Sugestões de Código Inteligentes
 > **Meta:** Acelerar a escrita de código com sugestões contextuais.
-- [ ] **Snippets & Palavras-chave:**
-  - `foreach`, `for`, `while`, `if`, `else`, `try/catch/finally`.
-  - Comandos específicos do framework interno (ex: `wrows.elements()`, manipuladores XML).
-- [ ] **Inspeção de Escopo via AST Tree-sitter:**
+- [x] **Snippets & Palavras-chave:**
+  - `foreach`, `for`, `while`, `if`, `else`, `try/catch/finally`, `function`, `switch/case`.
+  - Comandos rápidos (`println`, `println-flush`, `char(34)`).
+- [x] **Inspeção de Escopo via AST Tree-sitter:**
   - Sugerir variáveis locais declaradas antes da posição do cursor.
-  - Sugerir parâmetros da função atual.
-  - Sugerir funções e métodos declarados no documento.
-- [ ] **Sugestões de Bibliotecas Comuns:**
-  - Pacotes Java comuns na JVM (ex: `java.util.*`, `java.lang.*`, classes do ecossistema interno).
+  - Sugerir parâmetros da função atual quando o cursor estiver dentro do seu escopo.
+  - Sugerir funções e métodos declarados no documento com assinatura de parâmetros.
+- [x] **Sugestões de Bibliotecas Comuns:**
+  - Pacotes Java comuns na JVM (`List`, `ArrayList`, `Map`, `HashMap`, `Set`, `HashSet`, `StringBuilder`, `SimpleDateFormat`, etc.).
+  - Built-ins da linguagem Pnuts (`println`, `print`, `flush`, `char`, `load`, `eval`, `open`, etc.).
 
 ### Fase 5: Diagnósticos em Tempo Real (Error Highlighting)
 > **Meta:** Avisar o desenvolvedor de erros sintáticos antes de rodar o script.

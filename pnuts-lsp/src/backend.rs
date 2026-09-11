@@ -50,6 +50,13 @@ impl LanguageServer for Backend {
                     TextDocumentSyncKind::FULL,
                 )),
                 document_formatting_provider: Some(OneOf::Left(true)),
+                completion_provider: Some(CompletionOptions {
+                    resolve_provider: Some(false),
+                    trigger_characters: Some(vec![".".to_string(), ":".to_string()]),
+                    all_commit_characters: None,
+                    work_done_progress_options: Default::default(),
+                    completion_item: None,
+                }),
                 ..ServerCapabilities::default()
             },
             server_info: Some(ServerInfo {
@@ -143,6 +150,31 @@ impl LanguageServer for Backend {
                 Ok(None)
             }
         }
+    }
+
+    async fn completion(
+        &self,
+        params: CompletionParams,
+    ) -> Result<Option<CompletionResponse>> {
+        let uri = params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
+        debug!("textDocument/completion at {}: {:?}", uri, position);
+
+        let Some(text) = self.documents.get_text(&uri).await else {
+            return Ok(None);
+        };
+
+        let items = self
+            .documents
+            .with_tree(&uri, |tree| {
+                crate::completion::provide_completions(Some(tree), &text, position)
+            })
+            .await
+            .unwrap_or_else(|| {
+                crate::completion::provide_completions(None, &text, position)
+            });
+
+        Ok(Some(CompletionResponse::Array(items)))
     }
 }
 

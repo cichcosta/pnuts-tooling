@@ -224,3 +224,101 @@ async fn test_lsp_formatting_lifecycle_and_idempotence() {
         .await;
     backend.shutdown().await.unwrap();
 }
+
+#[tokio::test]
+async fn test_lsp_completion_lifecycle_and_scoped_suggestions() {
+    let (service, _socket) = LspService::new(Backend::new);
+    let backend = service.inner();
+
+    // 1. Initialize and verify completion provider capability
+    #[allow(deprecated)]
+    let init_params = InitializeParams {
+        process_id: Some(456),
+        root_path: None,
+        root_uri: Some(Url::parse("file:///workspace").unwrap()),
+        initialization_options: None,
+        capabilities: ClientCapabilities::default(),
+        trace: None,
+        workspace_folders: None,
+        client_info: Some(ClientInfo {
+            name: "Zed".to_string(),
+            version: Some("0.180.0".to_string()),
+        }),
+        locale: None,
+    };
+
+    let init_result = backend.initialize(init_params).await.expect("initialize failed");
+    assert!(init_result.capabilities.completion_provider.is_some());
+
+    backend.initialized(InitializedParams {}).await;
+
+    // 2. Open an untitled buffer with variables and a function
+    let uri = Url::parse("untitled:script.pnuts").unwrap();
+    let code = r#"
+        globalCompany = "Ibyte";
+
+        function calculateCommission(salesAmount, taxRate) {
+            netAmount = salesAmount * (1.0 - taxRate);
+            return netAmount;
+        }
+
+        total = 5000;
+    "#;
+
+    backend
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "pnuts".to_string(),
+                version: 1,
+                text: code.to_string(),
+            },
+        })
+        .await;
+
+    // 3. Request completions at cursor inside function (line 4)
+    let completion_params_inside = CompletionParams {
+        text_document_position: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            position: Position { line: 4, character: 12 },
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+        context: None,
+    };
+
+    let resp = backend
+        .completion(completion_params_inside)
+        .await
+        .expect("completion request failed")
+        .expect("expected completion response");
+
+    let items = match resp {
+        CompletionResponse::Array(list) => list,
+        CompletionResponse::List(cl) => cl.items,
+    };
+
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+
+    // Local function parameters
+    assert!(labels.contains(&"salesAmount"), "Expected salesAmount parameter");
+    assert!(labels.contains(&"taxRate"), "Expected taxRate parameter");
+
+    // Declared functions and outer variables
+    assert!(labels.contains(&"calculateCommission"), "Expected calculateCommission function");
+    assert!(labels.contains(&"globalCompany"), "Expected globalCompany variable");
+
+    // Built-in functions, keywords and snippets
+    assert!(labels.contains(&"println"), "Expected println builtin");
+    assert!(labels.contains(&"foreach (in)"), "Expected foreach snippet");
+    assert!(labels.contains(&"function"), "Expected function keyword");
+    assert!(labels.contains(&"List"), "Expected List java class");
+
+    // 4. Cleanup
+    backend
+        .did_close(DidCloseTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri },
+        })
+        .await;
+    backend.shutdown().await.unwrap();
+}
