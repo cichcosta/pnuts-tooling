@@ -1,11 +1,13 @@
 pub mod backend;
 pub mod completion;
+pub mod diagnostics;
 pub mod document;
 pub mod formatter;
 pub mod parser;
 
 pub use backend::Backend;
 pub use completion::provide_completions;
+pub use diagnostics::collect_diagnostics;
 pub use document::{Document, DocumentSnapshot, DocumentStore, SharedDocumentStore};
 pub use formatter::{format_code, FormatterError};
 pub use parser::{create_parser, has_errors, parse_pnuts};

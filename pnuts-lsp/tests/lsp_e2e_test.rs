@@ -322,3 +322,116 @@ async fn test_lsp_completion_lifecycle_and_scoped_suggestions() {
         .await;
     backend.shutdown().await.unwrap();
 }
+
+#[tokio::test]
+async fn test_lsp_realtime_diagnostics_lifecycle() {
+    let (service, _socket) = LspService::new(Backend::new);
+    let backend = service.inner();
+
+    #[allow(deprecated)]
+    let init_params = InitializeParams {
+        process_id: Some(789),
+        root_path: None,
+        root_uri: Some(Url::parse("file:///workspace").unwrap()),
+        initialization_options: None,
+        capabilities: ClientCapabilities::default(),
+        trace: None,
+        workspace_folders: None,
+        client_info: Some(ClientInfo {
+            name: "Zed".to_string(),
+            version: Some("0.180.0".to_string()),
+        }),
+        locale: None,
+    };
+
+    backend.initialize(init_params).await.unwrap();
+    backend.initialized(InitializedParams {}).await;
+
+    let uri = Url::parse("file:///workspace/syntax_check.pnuts").unwrap();
+
+    // 1. Open valid file - should have no error diagnostics
+    let valid_code = "x = 10;\nprintln(x);\n";
+    backend
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "pnuts".to_string(),
+                version: 1,
+                text: valid_code.to_string(),
+            },
+        })
+        .await;
+
+    let initial_has_errors = backend
+        .documents()
+        .get_snapshot(&uri)
+        .await
+        .unwrap()
+        .has_errors;
+    assert!(!initial_has_errors, "Initial valid code should not have errors");
+
+    // 2. Change file to contain broken syntax
+    let broken_code = "function ( broken syntax %%% ;";
+    backend
+        .did_change(DidChangeTextDocumentParams {
+            text_document: VersionedTextDocumentIdentifier {
+                uri: uri.clone(),
+                version: 2,
+            },
+            content_changes: vec![TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: broken_code.to_string(),
+            }],
+        })
+        .await;
+
+    let broken_snap = backend.documents().get_snapshot(&uri).await.unwrap();
+    assert!(broken_snap.has_errors, "Broken code must be flagged with has_errors");
+
+    let diags = backend
+        .documents()
+        .with_tree(&uri, |tree| pnuts_lsp::collect_diagnostics(tree, broken_code))
+        .await
+        .unwrap();
+
+    assert!(!diags.is_empty(), "Broken code must produce syntax diagnostics");
+    assert_eq!(diags[0].severity, Some(DiagnosticSeverity::ERROR));
+    assert_eq!(diags[0].source, Some("pnuts-lsp".to_string()));
+
+    // 3. Fix the syntax error (didChange to valid code again)
+    let fixed_code = "function fixed() { return 42; }";
+    backend
+        .did_change(DidChangeTextDocumentParams {
+            text_document: VersionedTextDocumentIdentifier {
+                uri: uri.clone(),
+                version: 3,
+            },
+            content_changes: vec![TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: fixed_code.to_string(),
+            }],
+        })
+        .await;
+
+    let fixed_snap = backend.documents().get_snapshot(&uri).await.unwrap();
+    assert!(!fixed_snap.has_errors, "Fixed code must not have errors");
+
+    let fixed_diags = backend
+        .documents()
+        .with_tree(&uri, |tree| pnuts_lsp::collect_diagnostics(tree, fixed_code))
+        .await
+        .unwrap();
+
+    assert!(fixed_diags.is_empty(), "Fixed code must have 0 diagnostics");
+
+    // 4. Close document
+    backend
+        .did_close(DidCloseTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri },
+        })
+        .await;
+
+    backend.shutdown().await.unwrap();
+}

@@ -30,6 +30,21 @@ impl Backend {
     pub fn documents(&self) -> &SharedDocumentStore {
         &self.documents
     }
+
+    /// Publishes syntax diagnostics for the given document URI.
+    pub async fn update_diagnostics(&self, uri: &Url, version: Option<i32>) {
+        if let Some(text) = self.documents.get_text(uri).await {
+            let diags = self
+                .documents
+                .with_tree(uri, |tree| crate::diagnostics::collect_diagnostics(tree, &text))
+                .await
+                .unwrap_or_default();
+
+            self.client
+                .publish_diagnostics(uri.clone(), diags, version)
+                .await;
+        }
+    }
 }
 
 #[tower_lsp::async_trait]
@@ -85,6 +100,7 @@ impl LanguageServer for Backend {
         self.documents
             .open(doc.uri.clone(), doc.language_id, doc.version, doc.text)
             .await;
+        self.update_diagnostics(&doc.uri, Some(doc.version)).await;
     }
 
     async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
@@ -95,6 +111,7 @@ impl LanguageServer for Backend {
             self.documents
                 .update(&doc.uri, doc.version, change.text)
                 .await;
+            self.update_diagnostics(&doc.uri, Some(doc.version)).await;
         }
     }
 
@@ -105,6 +122,10 @@ impl LanguageServer for Backend {
         if let Some(text) = params.text {
             let version = self.documents.get_version(&uri).await.unwrap_or(0);
             self.documents.update(&uri, version, text).await;
+            self.update_diagnostics(&uri, Some(version)).await;
+        } else {
+            let version = self.documents.get_version(&uri).await;
+            self.update_diagnostics(&uri, version).await;
         }
     }
 
@@ -113,6 +134,7 @@ impl LanguageServer for Backend {
         info!("didClose: {}", uri);
 
         self.documents.close(&uri).await;
+        self.client.publish_diagnostics(uri, vec![], None).await;
     }
 
     async fn formatting(

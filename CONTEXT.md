@@ -73,23 +73,19 @@ Ao modificar `grammar.js`, NUNCA reintroduzir os seguintes erros:
 
 ## 6. Estado Atual e Ponto de Retomada Imediato
 
-- **Fase Atual Concluída:** **Fase 4: Autocomplete e Sugestões de Código Inteligentes (`textDocument/completion`)**.
-  - Módulo nativo [`completion.rs`](file:///home/chsilva/personal/projects/pnuts-tooling/pnuts-lsp/src/completion.rs) implementado em Rust com:
-    - **Inspeção de Escopo via AST Tree-sitter:**
-      - Extração automática de variáveis locais (`variable_declaration`, `assignment_expression`, `for_statement`, `foreach_statement`, `catch_clause`) declaradas antes da posição do cursor.
-      - Extração de parâmetros da função atual quando o cursor estiver dentro do seu corpo.
-      - Extração de funções declaradas no arquivo com detalhe de assinatura `function nome(param1, param2)`.
-    - **Snippets LSP com Tabstops:** `foreach (in)`, `foreach`, `for (i)`, `if`, `if-else`, `while`, `function`, `try-catch`, `try-catch-finally`, `switch`, `println`, `println-flush`, `char(34)`.
-    - **Built-in Functions:** `println`, `print`, `flush`, `char`, `open`, `load`, `eval`, `error`, `getContext`, `isArray`, `isFunction`.
-    - **Classes Comuns Java:** `List`, `ArrayList`, `Map`, `HashMap`, `Set`, `HashSet`, `String`, `StringBuilder`, `Integer`, `Double`, `Boolean`, `Date`, `Calendar`, `SimpleDateFormat`, `Exception`, `RuntimeException`.
-    - **Palavras-chave:** `function`, `class`, `if`, `else`, `for`, `foreach`, `while`, `do`, `try`, `catch`, `finally`, `throw`, `return`, `break`, `continue`, `switch`, `case`, `default`, `import`, `package`, `null`, `true`, `false`, `new`, `var`, `def`.
-    - Ordenação refinada com `sort_text` priorizando símbolos de escopo > snippets > built-ins > classes > palavras-chave.
-  - Handler `completion` implementado em [`backend.rs`](file:///home/chsilva/personal/projects/pnuts-tooling/pnuts-lsp/src/backend.rs) e declarado nas capacidades (`completion_provider`).
-  - 22/22 testes automatizados passando (unitários e integração e2e via JSON-RPC).
-  - Binário release gerado e instalado em `~/.local/bin/pnuts-lsp` e empacotado em `zed-pnuts/` e `vscode-pnuts/`.
+- **Fase Atual Concluída:** **Fase 5: Diagnósticos em Tempo Real (Error Highlighting via `textDocument/publishDiagnostics`)**.
+  - Módulo nativo [`diagnostics.rs`](file:///home/chsilva/personal/projects/pnuts-tooling/pnuts-lsp/src/diagnostics.rs) implementado em Rust:
+    - Varredura recursiva de nós `ERROR` e `MISSING` na AST Tree-sitter do documento.
+    - Conversão precisa de colunas byte-offset para offsets UTF-16 conforme especificação LSP.
+    - Ranges ajustados para garantir visibilidade do sublinhado vermelho mesmo em nós sem largura (ex: tokens esperados ausentes).
+    - Mensagens amigáveis contextualizadas com o token inesperado ou token ausente.
+    - Publicação em tempo real via `self.client.publish_diagnostics` nos eventos `did_open`, `did_change` e `did_save`.
+    - Limpeza imediata de diagnósticos residuais no evento `did_close`.
+    - Fix em `Document::update`: reparsing determinístico em modo full sync.
+  - 23/23 testes automatizados passando (unitários de diagnóstico, parser, formatador, completions e integração e2e).
+  - Binário release gerado e atualizado em `~/.local/bin/pnuts-lsp`, `zed-pnuts/` e `vscode-pnuts/`.
 
-- **Próxima Ação Imediata ao Retomar:** **Fase 5: Diagnósticos em Tempo Real (Error Highlighting via `textDocument/publishDiagnostics`)**.
-  1. Implementar varredura da árvore Tree-sitter buscando nós de erro (`ERROR` e `MISSING`) no documento.
-  2. Gerar lista de `Diagnostic` do LSP com range preciso (linha, coluna de início e fim) e severidade `DiagnosticSeverity::ERROR`.
-  3. Publicar diagnósticos automaticamente para o editor (`client.publish_diagnostics(uri, diagnostics, version)`) nos eventos `did_open`, `did_change` e `did_save`.
-  4. Adicionar testes unitários de detecção de erro e testes de integração e2e.
+- **Próximas Melhorias do LSP (Capacidades de Navegação):**
+  1. **Hover / Documentação (`textDocument/hover`):** Exibir documentação de funções e tipos ao passar o mouse.
+  2. **Ir para Definição (`textDocument/definition`):** Navegar diretamente para a declaração de variáveis locais ou funções no documento.
+  3. **Símbolos do Documento (`textDocument/documentSymbol`):** Outline estruturado de funções, métodos e variáveis do arquivo para a paleta de símbolos do Zed e VSCode.

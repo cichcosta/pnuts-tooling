@@ -76,8 +76,9 @@ Este documento define o objetivo técnico, a arquitetura e as fases de execuçã
 
 ### Fase 5: Diagnósticos em Tempo Real (Error Highlighting)
 > **Meta:** Avisar o desenvolvedor de erros sintáticos antes de rodar o script.
-- [ ] Varrer a árvore Tree-sitter buscando nós `ERROR` ou nós `MISSING`.
-- [ ] Publicar diagnósticos (`textDocument/publishDiagnostics`) com sublinhado vermelho e mensagem clara.
+- [x] Varrer a árvore Tree-sitter buscando nós `ERROR` ou nós `MISSING`.
+- [x] Publicar diagnósticos (`textDocument/publishDiagnostics`) com sublinhado vermelho e mensagem clara.
+- [x] Integração automática e em tempo real nos eventos `did_open`, `did_change`, `did_save` e limpeza em `did_close`.
 
 ---
 

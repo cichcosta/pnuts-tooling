@@ -29,10 +29,10 @@ impl Document {
         }
     }
 
-    /// Updates the document text and re-parses its AST incrementally.
+    /// Updates the document text and re-parses its AST.
     pub fn update(&mut self, version: i32, text: String) {
         self.version = version;
-        self.tree = parse_pnuts(&text, self.tree.as_ref());
+        self.tree = parse_pnuts(&text, None);
         self.text = text;
     }
 
