@@ -54,11 +54,12 @@ Este documento define o objetivo técnico, a arquitetura e as fases de execuçã
 
 ### Fase 3: Provedor de Formatação Nativo no LSP
 > **Meta:** Resolver de vez a formatação no Zed e VSCode sem tocar em `settings.json`.
-- [ ] Implementar `textDocument/formatting` dentro do `pnuts-lsp`.
-- [ ] O LSP recebe o buffer via memória/protocolo, aplica as transformações e retorna `TextEdit[]`.
-- [ ] Atualizar extensões:
-  - **Zed (`zed-pnuts`):** Registrar o `pnuts-lsp` no `extension.toml`. O Zed passa a formatar imediatamente ao salvar ou no atalho.
-  - **VSCode (`vscode-pnuts`):** Conectar ao `pnuts-lsp` como cliente de linguagem padrão.
+- [x] Implementar `textDocument/formatting` dentro do `pnuts-lsp`.
+- [x] O LSP recebe o buffer via memória/protocolo, aplica as transformações e retorna `TextEdit[]`.
+- [x] Pré-processamento de comentários (mover comentário no fim da linha para cima) e pós-processamento de chaves/flush integrados nativamente em Rust.
+- [x] Atualizar extensões:
+  - **Zed (`zed-pnuts`):** Registrar o `pnuts-lsp` no `extension.toml`. O Zed passa a formatar nativamente via LSP ao salvar ou no atalho.
+  - **VSCode (`vscode-pnuts`):** Conectar e suportar `pnuts-lsp` e binários empacotados.
 
 ### Fase 4: Autocomplete e Sugestões de Código Inteligentes
 > **Meta:** Acelerar a escrita de código com sugestões contextuais.

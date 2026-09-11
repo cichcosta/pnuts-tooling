@@ -1,12 +1,16 @@
 id = "pnuts"
 name = "Pnuts"
-version = "0.2.2"
+version = "0.3.0"
 schema_version = 1
 authors = ["Pnuts Tooling Team"]
-description = "Pnuts language support for Zed, including syntax highlighting, code navigation, brackets, indents, and standalone Topiary formatter integration."
+description = "Pnuts language support for Zed, including syntax highlighting, code navigation, brackets, indents, and native Language Server Protocol (LSP) formatter."
 repository = "https://github.com/pnuts-tooling/zed-pnuts"
 
 [grammars.pnuts]
 repository = "file:///C:/Users/chsilva/AppData/Local/Zed/extensions/pnuts-tooling"
 rev = "main"
 path = "tree-sitter-pnuts"
+
+[language_servers.pnuts-lsp]
+name = "Pnuts Language Server"
+languages = ["Pnuts"]

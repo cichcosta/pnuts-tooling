@@ -73,14 +73,23 @@ Ao modificar `grammar.js`, NUNCA reintroduzir os seguintes erros:
 
 ## 6. Estado Atual e Ponto de Retomada Imediato
 
-- **Fase Atual Concluída:** **Fase 2 (Core do LSP Server em Rust `pnuts-lsp`)**.
-  - Crate `pnuts-lsp` e `tree-sitter-pnuts` configurados no workspace Cargo raiz.
-  - Ciclo de vida LSP (`initialize`, `initialized`, `shutdown`, `exit`) e gerenciamento de buffers em memória (`DocumentStore`) 100% operacionais, cobrindo `file://` e buffers não salvos `untitled:`.
-  - 8/8 testes unitários e integração de ponta a ponta passando.
-  - Binário de release `target/release/pnuts-lsp` gerado e verificado.
+- **Fase Atual Concluída:** **Fase 3: Provedor de Formatação Nativo no LSP (`textDocument/formatting`)**.
+  - Módulo nativo [`formatter.rs`](file:///home/chsilva/personal/projects/pnuts-tooling/pnuts-lsp/src/formatter.rs) implementado em Rust com:
+    - Pré-processamento de comentários (`preprocess_comments`): mover comentários no final da sentença para a linha anterior com indentação preservada; espaçar `//`; preservar divisores `//***`, `//===`.
+    - Execução do formatador sobre o buffer em memória via JSON-RPC stdio.
+    - Normalização de `flush()` (`normalize_flush`): fundir `flush();` na mesma linha da instrução anterior.
+    - Normalização de chaves e espaçamento (`normalize_block_spacing`): linha em branco após `{` em blocos multilinhas; remoção total de linhas em branco antes de `}`.
+  - Implementado `textDocument/formatting` em [`backend.rs`](file:///home/chsilva/personal/projects/pnuts-tooling/pnuts-lsp/src/backend.rs) retornando `Option<Vec<TextEdit>>` com substituição de range integral.
+  - Suporte a idempotência e tolerância a erros comprovados em testes.
+  - Extensão do Zed ([`extension.toml`](file:///home/chsilva/personal/projects/pnuts-tooling/zed-pnuts/extension.toml)) atualizada para v0.3.0 registrando `pnuts-lsp` como servidor nativo.
+  - Binário release gerado e instalado em `~/.local/bin/pnuts-lsp` e `zed-pnuts/bin/pnuts-lsp`.
+  - 17/17 testes automatizados (unitários e de integração e2e) passando com sucesso.
 
-- **Próxima Ação Imediata ao Retomar:** **Fase 3: Provedor de Formatação Nativo no LSP (`textDocument/formatting`)**.
-  1. Integrar motor de formatação (formatação via AST/Topiary em Rust) no `pnuts-lsp`.
-  2. Implementar `textDocument/formatting` no [`backend.rs`](file:///home/chsilva/personal/projects/pnuts-tooling/pnuts-lsp/src/backend.rs) retornando `Option<Vec<TextEdit>>`.
-  3. Declarar `document_formatting_provider: Some(OneOf::Left(true))` nas capacidades em `initialize`.
-  4. Conectar o `pnuts-lsp` no `extension.toml` do Zed e no `extension.js` do VSCode para formatar nativamente sem comandos manuais no `settings.json`.
+- **Próxima Ação Imediata ao Retomar:** **Fase 4: Autocomplete e Sugestões de Código Inteligentes (`textDocument/completion`)**.
+  1. Adicionar `completion_provider` nas capacidades do servidor em [`backend.rs`](file:///home/chsilva/personal/projects/pnuts-tooling/pnuts-lsp/src/backend.rs).
+  2. Implementar módulo `completion.rs` para extração de contexto via AST Tree-sitter:
+     - Palavras-chave da linguagem (`function`, `if`, `else`, `while`, `for`, `foreach`, `try`, `catch`, `finally`, `return`, `package`, `import`).
+     - Snippets estruturados de controle de fluxo e funções.
+     - Símbolos locais (variáveis e funções declaradas no arquivo antes do cursor).
+     - Classes e métodos da biblioteca padrão (ex: `println`, `print`, `flush`, coleções Java).
+  3. Adicionar testes unitários e testes e2e de autocompletion no LSP.

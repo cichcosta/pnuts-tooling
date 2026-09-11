@@ -2,7 +2,7 @@ use std::sync::Arc;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::document::{DocumentStore, SharedDocumentStore};
 
@@ -49,6 +49,7 @@ impl LanguageServer for Backend {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
                     TextDocumentSyncKind::FULL,
                 )),
+                document_formatting_provider: Some(OneOf::Left(true)),
                 ..ServerCapabilities::default()
             },
             server_info: Some(ServerInfo {
@@ -105,5 +106,67 @@ impl LanguageServer for Backend {
         info!("didClose: {}", uri);
 
         self.documents.close(&uri).await;
+    }
+
+    async fn formatting(
+        &self,
+        params: DocumentFormattingParams,
+    ) -> Result<Option<Vec<TextEdit>>> {
+        let uri = params.text_document.uri;
+        info!("textDocument/formatting: {}", uri);
+
+        let Some(text) = self.documents.get_text(&uri).await else {
+            warn!("Document not found for formatting: {}", uri);
+            return Ok(None);
+        };
+
+        if text.trim().is_empty() {
+            return Ok(Some(vec![]));
+        }
+
+        match crate::formatter::format_code(&text).await {
+            Ok(formatted) => {
+                if formatted == text {
+                    debug!("Document is already formatted: {}", uri);
+                    return Ok(Some(vec![]));
+                }
+
+                let full_range = compute_full_document_range(&text);
+                Ok(Some(vec![TextEdit {
+                    range: full_range,
+                    new_text: formatted,
+                }]))
+            }
+            Err(e) => {
+                warn!("Formatting failed for {}: {}", uri, e);
+                // Return Ok(None) to prevent editor from overwriting or losing code
+                Ok(None)
+            }
+        }
+    }
+}
+
+/// Computes the 0-indexed LSP Range covering the entire document.
+pub fn compute_full_document_range(text: &str) -> Range {
+    let mut line_count = 0;
+    let mut last_line_len = 0;
+
+    for line in text.split('\n') {
+        line_count += 1;
+        let clean = line.strip_suffix('\r').unwrap_or(line);
+        last_line_len = clean.encode_utf16().count();
+    }
+
+    let end_line = if line_count > 0 { line_count - 1 } else { 0 };
+
+    Range {
+        start: Position {
+            line: 0,
+            character: 0,
+        },
+        end: Position {
+            line: end_line as u32,
+            character: last_line_len as u32,
+        },
     }
 }
