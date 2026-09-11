@@ -76,6 +76,10 @@
         "named": true
       },
       {
+        "type": "primitive_type",
+        "named": true
+      },
+      {
         "type": "static_member_expression",
         "named": true
       },
@@ -351,6 +355,10 @@
         {
           "type": "block",
           "named": true
+        },
+        {
+          "type": "type",
+          "named": true
         }
       ]
     }
@@ -515,6 +523,10 @@
         {
           "type": "_statement",
           "named": true
+        },
+        {
+          "type": "type",
+          "named": true
         }
       ]
     }
@@ -560,6 +572,10 @@
         },
         {
           "type": "parameter_list",
+          "named": true
+        },
+        {
+          "type": "type",
           "named": true
         }
       ]
@@ -648,7 +664,7 @@
     "fields": {},
     "children": {
       "multiple": true,
-      "required": true,
+      "required": false,
       "types": [
         {
           "type": "map_entry",
@@ -725,10 +741,6 @@
         },
         {
           "type": "package_path",
-          "named": true
-        },
-        {
-          "type": "primitive_type",
           "named": true
         }
       ]
@@ -1237,6 +1249,10 @@
     "named": false
   },
   {
+    "type": "*.",
+    "named": false
+  },
+  {
     "type": "*=",
     "named": false
   },
@@ -1361,6 +1377,10 @@
     "named": false
   },
   {
+    "type": "?.",
+    "named": false
+  },
+  {
     "type": "[",
     "named": false
   },
@@ -1430,6 +1450,10 @@
     "named": false
   },
   {
+    "type": "def",
+    "named": false
+  },
+  {
     "type": "default",
     "named": false
   },
@@ -1483,6 +1507,10 @@
   },
   {
     "type": "import",
+    "named": false
+  },
+  {
+    "type": "in",
     "named": false
   },
   {

@@ -179,6 +179,7 @@
   "->"
   "?"
   ":"
+  "in"
 ] @prepend_space @append_space
 
 ;; Unary operators (no space after)
@@ -210,7 +211,11 @@
 
 ;; Member access and static scope (obj.field, Class::method)
 (member_expression
-  "." @prepend_antispace @append_antispace
+  [
+    "."
+    "?."
+    "*."
+  ] @prepend_antispace @append_antispace
 )
 
 (static_member_expression
@@ -239,6 +244,18 @@
 
 (parameter
   (type) @append_space
+)
+
+(function_definition
+  (type) @append_space
+)
+
+(function_definition
+  "(" @prepend_antispace
+)
+
+(method_definition
+  "(" @prepend_antispace
 )
 
 (method_definition

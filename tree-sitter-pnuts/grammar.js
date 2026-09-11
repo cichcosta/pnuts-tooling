@@ -21,7 +21,9 @@ module.exports = grammar({
     [$._expression, $.tuple_expression],
     [$.tuple_expression, $.closure_expression],
     [$.for_statement, $.tuple_expression],
+    [$.for_statement, $._expression],
     [$.new_expression],
+    [$.type, $.new_expression],
     [$.wildcard_import, $.package_path],
     [$.package_path, $._expression],
     [$.identifier, $.property_identifier],
@@ -97,18 +99,22 @@ module.exports = grammar({
       'for',
       '(',
       choice(
-        // C-style for loop: for (i = 0; i < 10; i++)
+        // C-style for loop: for (i = 0; i < 10; i++) or for (int i = 0; i < 10; i++)
         seq(
-          optional($._expression),
+          optional(choice(
+            seq($.type, $.identifier, optional(seq('=', $._expression))),
+            $._expression
+          )),
           ';',
           optional($._expression),
           ';',
           optional($._expression)
         ),
-        // Iterator for loop: for (i : list) or for (i : 0..10) or for (k, v : map)
+        // Iterator for loop: for (i : list) or for (i in list) or for (i : 0..10) or for (k, v : map)
         seq(
+          optional($.type),
           commaSep1(choice($.identifier, $.global_identifier)),
-          ':',
+          choice(':', 'in'),
           $._expression,
           optional(seq('..', $._expression))
         )
@@ -153,14 +159,16 @@ module.exports = grammar({
       repeat($._statement)
     ),
 
-    function_definition: $ => seq(
-      'function',
-      optional($.identifier),
+    function_definition: $ => prec(2, seq(
+      choice(
+        seq('function', optional($.identifier)),
+        seq($.type, $.identifier)
+      ),
       '(',
       optional($.parameter_list),
       ')',
       $.block
-    ),
+    )),
 
     class_definition: $ => prec(17, seq(
       'class',
@@ -205,7 +213,10 @@ module.exports = grammar({
     catch_clause: $ => prec.right(seq(
       'catch',
       '(',
-      commaSep1($._expression),
+      choice(
+        seq($.type, choice($.identifier, $.global_identifier)),
+        commaSep1($._expression)
+      ),
       ')',
       optional($.block)
     )),
@@ -249,6 +260,7 @@ module.exports = grammar({
     )),
 
     primitive_type: $ => choice(
+      'def',
       'var',
       'boolean',
       'byte',
@@ -326,7 +338,8 @@ module.exports = grammar({
       $.boolean_literal,
       $.null_literal,
       $.identifier,
-      $.global_identifier
+      $.global_identifier,
+      $.primitive_type
     ),
 
     assignment_expression: $ => prec.right(1, seq(
@@ -380,6 +393,7 @@ module.exports = grammar({
         ['>', 9],
         ['>=', 9],
         ['instanceof', 9],
+        ['in', 9],
         ['<<', 10],
         ['>>', 10],
         ['>>>', 10],
@@ -424,7 +438,7 @@ module.exports = grammar({
 
     member_expression: $ => prec(15, seq(
       $._expression,
-      '.',
+      choice('.', '?.', '*.'),
       choice($.property_identifier, 'class')
     )),
 
@@ -478,13 +492,14 @@ module.exports = grammar({
     ),
 
     map_literal: $ => choice(
+      seq('[', ':', ']'),
       seq('[', commaSep1($.map_entry), ']'),
       seq('{', commaSep1($.map_entry), '}')
     ),
 
     map_entry: $ => seq(
       $._expression,
-      '=>',
+      choice('=>', ':'),
       $._expression
     ),
 
@@ -511,6 +526,8 @@ module.exports = grammar({
     template_content: $ => token.immediate(/[^`\\$]+|\$|\\/),
 
     string_literal: $ => token(choice(
+      seq('"""', repeat(choice(/[^"\\]+/, /"[^"\\]+/, /""[^"\\]+/, seq('\\', /[\s\S]/))), '"""'),
+      seq("'''", repeat(choice(/[^'\\]+/, /'[^'\\]+/, /''[^'\\]+/, seq('\\', /[\s\S]/))), "'''"),
       seq('"', repeat(choice(/[^"\\\r\n]+/, seq('\\', /[\s\S]/))), '"'),
       seq("'", repeat(choice(/[^'\\\r\n]+/, seq('\\', /[\s\S]/))), "'")
     )),

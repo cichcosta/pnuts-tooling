@@ -352,13 +352,24 @@ function formatWithTopiary(text, context) {
             }
         }
 
+        let validCwd = os.tmpdir();
+        if (workspaceRoot) {
+            try {
+                if (fs.existsSync(workspaceRoot) && fs.statSync(workspaceRoot).isDirectory()) {
+                    validCwd = workspaceRoot;
+                }
+            } catch (e) {
+                validCwd = os.tmpdir();
+            }
+        }
+
         const spawnOptions = {
             env,
-            cwd: workspaceRoot || os.tmpdir(),
+            cwd: validCwd,
             windowsHide: true
         };
 
-        log(`Spawning Topiary: "${binaryPath}" ${args.join(' ')}`);
+        log(`Spawning Topiary: "${binaryPath}" ${args.join(' ')} (cwd: ${validCwd})`);
 
         const child = spawn(binaryPath, args, spawnOptions);
 
@@ -378,13 +389,17 @@ function formatWithTopiary(text, context) {
             if (err.code === 'ENOENT') {
                 const remote = vscode.env && vscode.env.remoteName;
                 let hint = '';
-                if (remote === 'wsl') {
-                    const distro = process.env.WSL_DISTRO_NAME ? ` (${process.env.WSL_DISTRO_NAME})` : '';
-                    hint = `VS Code is running in WSL${distro}. The Topiary binary was not found. Please ensure execution permissions or set 'pnuts.topiary.path' in VS Code Settings (WSL tab).`;
-                } else if (remote === 'ssh-remote') {
-                    hint = `VS Code is connected via Remote - SSH. Topiary was not found on the remote machine.`;
+                if (!fs.existsSync(binaryPath)) {
+                    if (remote === 'wsl') {
+                        const distro = process.env.WSL_DISTRO_NAME ? ` (${process.env.WSL_DISTRO_NAME})` : '';
+                        hint = `VS Code is running in WSL${distro}. The Topiary binary was not found ('${binaryPath}'). Please ensure execution permissions or set 'pnuts.topiary.path' in VS Code Settings (WSL tab).`;
+                    } else if (remote === 'ssh-remote') {
+                        hint = `VS Code is connected via Remote - SSH. Topiary was not found on the remote machine ('${binaryPath}').`;
+                    } else {
+                        hint = `Binary not found ('${binaryPath}'). If you configured a custom path in 'pnuts.topiary.path', verify it exists, or clear the setting to use the bundled binary.`;
+                    }
                 } else {
-                    hint = `Binary not found ('${binaryPath}'). If you configured a custom path in 'pnuts.topiary.path', verify it exists, or clear the setting to use the bundled binary.`;
+                    hint = `Process spawn failed (ENOENT) running '${binaryPath}' in directory '${validCwd}': ${err.message}`;
                 }
                 reject(new Error(`Topiary binary error: ${hint}`));
             } else {

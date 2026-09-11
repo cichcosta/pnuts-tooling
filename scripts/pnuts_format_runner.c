@@ -20,6 +20,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 #define PATH_SEP '/'
 #define PATH_SEP_STR "/"
 #define EXE_EXT ""
@@ -40,6 +41,48 @@
 #define GRAMMAR_NAME "libtree-sitter-pnuts.so"
 #endif
 #endif
+
+typedef struct {
+    char *data;
+    size_t len;
+    size_t cap;
+} Buffer;
+
+static void buf_init(Buffer *b) {
+    b->cap = 1024;
+    b->len = 0;
+    b->data = (char *)malloc(b->cap);
+    if (b->data) b->data[0] = '\0';
+}
+
+static void buf_append(Buffer *b, const char *s, size_t n) {
+    if (!s || n == 0) return;
+    if (b->len + n + 1 > b->cap) {
+        while (b->len + n + 1 > b->cap) b->cap *= 2;
+        b->data = (char *)realloc(b->data, b->cap);
+    }
+    memcpy(b->data + b->len, s, n);
+    b->len += n;
+    b->data[b->len] = '\0';
+}
+
+static void buf_free(Buffer *b) {
+    if (b->data) free(b->data);
+    b->data = NULL;
+    b->len = b->cap = 0;
+}
+
+static char *read_all(FILE *f, size_t *out_len) {
+    Buffer b;
+    buf_init(&b);
+    char chunk[4096];
+    size_t n;
+    while ((n = fread(chunk, 1, sizeof(chunk), f)) > 0) {
+        buf_append(&b, chunk, n);
+    }
+    if (out_len) *out_len = b.len;
+    return b.data;
+}
 
 static void get_self_dir(char *buffer, size_t max_len) {
 #ifdef _WIN32
@@ -78,77 +121,155 @@ static void normalize_slashes(char *path) {
     }
 }
 
-static void format_line_comments(const char *src, char *dst, size_t dst_size) {
-    size_t i = 0, j = 0;
+static int find_comment_start(const char *line) {
     char in_str = 0;
     int escaped = 0;
-    size_t len = strlen(src);
-
-    while (i < len && j + 2 < dst_size) {
-        char c = src[i];
-
+    size_t len = strlen(line);
+    for (size_t i = 0; i < len; i++) {
+        char c = line[i];
         if (escaped) {
             escaped = 0;
-            dst[j++] = c;
-            i++;
             continue;
         }
-
         if (c == '\\' && in_str) {
             escaped = 1;
-            dst[j++] = c;
-            i++;
             continue;
         }
-
         if (in_str) {
-            if (c == in_str) {
-                in_str = 0;
-            }
-            dst[j++] = c;
-            i++;
+            if (c == in_str) in_str = 0;
             continue;
         }
-
         if (c == '"' || c == '\'' || c == '`') {
             in_str = c;
-            dst[j++] = c;
-            i++;
+            continue;
+        }
+        if (c == '/' && i + 1 < len) {
+            if (line[i + 1] == '/') {
+                return (int)i;
+            }
+            if (line[i + 1] == '*') {
+                const char *close_ptr = strstr(line + i + 2, "*/");
+                if (close_ptr) {
+                    const char *p = close_ptr + 2;
+                    while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') p++;
+                    if (*p == '\0') {
+                        return (int)i;
+                    }
+                }
+            }
+        }
+    }
+    return -1;
+}
+
+static void format_comment(const char *comment, char *out, size_t out_cap) {
+    if (strncmp(comment, "/*", 2) == 0 || strncmp(comment, "//", 2) != 0) {
+        snprintf(out, out_cap, "%s", comment);
+        return;
+    }
+    const char *rest = comment + 2;
+    if (*rest == '\0' || *rest == ' ' || *rest == '\t') {
+        snprintf(out, out_cap, "%s", comment);
+        return;
+    }
+    size_t rlen = strlen(rest);
+    if (rlen >= 3 && strchr("*=-/#~.", rest[0]) != NULL) {
+        if (rest[1] == rest[0] && rest[2] == rest[0]) {
+            snprintf(out, out_cap, "%s", comment);
+            return;
+        }
+    }
+    snprintf(out, out_cap, "// %s", rest);
+}
+
+static int is_line_blank(const char *line) {
+    if (!line) return 1;
+    while (*line) {
+        if (*line != ' ' && *line != '\t' && *line != '\r' && *line != '\n') return 0;
+        line++;
+    }
+    return 1;
+}
+
+static char *preprocess_comments(const char *text) {
+    Buffer out;
+    buf_init(&out);
+
+    const char *p = text;
+    while (*p) {
+        const char *line_start = p;
+        while (*p && *p != '\n') p++;
+        const char *line_end = p;
+        if (*p == '\n') p++;
+
+        const char *eol = "\n";
+        size_t raw_len = line_end - line_start;
+        if (raw_len > 0 && line_start[raw_len - 1] == '\r') {
+            raw_len--;
+            eol = "\r\n";
+        }
+
+        char *line = (char *)malloc(raw_len + 1);
+        memcpy(line, line_start, raw_len);
+        line[raw_len] = '\0';
+
+        int idx = find_comment_start(line);
+        if (idx == -1) {
+            buf_append(&out, line, raw_len);
+            buf_append(&out, eol, strlen(eol));
+            free(line);
             continue;
         }
 
-        // Check for line comment //
-        if (c == '/' && i + 1 < len && src[i + 1] == '/') {
-            dst[j++] = '/';
-            dst[j++] = '/';
-            i += 2;
+        char *code_part = (char *)malloc(idx + 1);
+        memcpy(code_part, line, idx);
+        code_part[idx] = '\0';
 
-            if (i < len) {
-                char next_c = src[i];
-                int is_space = (next_c == ' ' || next_c == '\t' || next_c == '\r' || next_c == '\n');
-                int is_divider = 0;
-                if (next_c == '/' || next_c == '-' || next_c == '=' || next_c == '*' || next_c == '#') {
-                    if (i + 2 < len && src[i + 1] == next_c && src[i + 2] == next_c) {
-                        is_divider = 1;
-                    }
-                }
+        const char *comment_part = line + idx;
+        char formatted_comment[8192];
+        format_comment(comment_part, formatted_comment, sizeof(formatted_comment));
 
-                if (!is_space && !is_divider && j + 1 < dst_size) {
-                    dst[j++] = ' ';
-                }
+        char *code_l = code_part;
+        while (*code_l == ' ' || *code_l == '\t') code_l++;
+        size_t indent_len = code_l - code_part;
+
+        char *code_r = code_part + idx;
+        while (code_r > code_l && (code_r[-1] == ' ' || code_r[-1] == '\t')) code_r--;
+        *code_r = '\0';
+
+        if (*code_l == '\0') {
+            buf_append(&out, code_part, indent_len);
+            buf_append(&out, formatted_comment, strlen(formatted_comment));
+            buf_append(&out, eol, strlen(eol));
+        } else {
+            int keep_same_line = 0;
+            if (code_l[0] == '}' ||
+                strncmp(code_l, "else", 4) == 0 ||
+                strncmp(code_l, "catch", 5) == 0 ||
+                strncmp(code_l, "finally", 7) == 0) {
+                keep_same_line = 1;
             }
 
-            while (i < len && j + 1 < dst_size) {
-                dst[j++] = src[i++];
+            if (keep_same_line) {
+                buf_append(&out, code_part, code_r - code_part);
+                buf_append(&out, " ", 1);
+                buf_append(&out, formatted_comment, strlen(formatted_comment));
+                buf_append(&out, eol, strlen(eol));
+            } else {
+                buf_append(&out, code_part, indent_len);
+                buf_append(&out, formatted_comment, strlen(formatted_comment));
+                buf_append(&out, eol, strlen(eol));
+
+                buf_append(&out, code_part, code_r - code_part);
+                buf_append(&out, eol, strlen(eol));
             }
-            break;
         }
 
-        dst[j++] = c;
-        i++;
+        free(code_part);
+        free(line);
     }
 
-    dst[j] = '\0';
+    return out.data;
 }
 
 typedef struct {
@@ -180,15 +301,108 @@ static void ll_free(LineList *ll) {
     ll->count = ll->cap = 0;
 }
 
-static int is_line_blank(const char *line) {
-    while (*line) {
-        if (*line != ' ' && *line != '\t' && *line != '\r' && *line != '\n') return 0;
-        line++;
+static void split_lines(const char *text, LineList *ll, int *has_crlf) {
+    *has_crlf = 0;
+    const char *p = text;
+    while (*p) {
+        const char *line_start = p;
+        while (*p && *p != '\n') p++;
+        const char *line_end = p;
+        if (*p == '\n') p++;
+
+        size_t raw_len = line_end - line_start;
+        if (raw_len > 0 && line_start[raw_len - 1] == '\r') {
+            raw_len--;
+            *has_crlf = 1;
+        }
+
+        char *line = (char *)malloc(raw_len + 1);
+        memcpy(line, line_start, raw_len);
+        line[raw_len] = '\0';
+        ll_push(ll, line);
+        free(line);
     }
-    return 1;
 }
 
-static void normalize_block_spacing_and_print(LineList *ll, FILE *out) {
+static char *normalize_flush(const LineList *in_ll, int has_crlf) {
+    Buffer out;
+    buf_init(&out);
+    LineList out_ll;
+    ll_init(&out_ll);
+
+    for (size_t i = 0; i < in_ll->count; i++) {
+        const char *line = in_ll->lines[i];
+
+        const char *p = line;
+        while (*p == ' ' || *p == '\t') p++;
+        int is_flush = 0;
+        if (strncmp(p, "flush", 5) == 0) {
+            const char *q = p + 5;
+            while (*q == ' ' || *q == '\t') q++;
+            if (*q == '(') {
+                const char *r = strchr(q, ')');
+                if (r) {
+                    r++;
+                    while (*r == ' ' || *r == '\t') r++;
+                    if (*r == ';') r++;
+                    while (*r == ' ' || *r == '\t') r++;
+                    if (*r == '\0') is_flush = 1;
+                }
+            }
+        }
+
+        if (is_flush && out_ll.count > 0) {
+            int64_t prev_idx = (int64_t)out_ll.count - 1;
+            while (prev_idx >= 0 && is_line_blank(out_ll.lines[prev_idx])) {
+                prev_idx--;
+            }
+
+            if (prev_idx >= 0) {
+                const char *prev = out_ll.lines[prev_idx];
+                const char *prev_p = prev;
+                while (*prev_p == ' ' || *prev_p == '\t') prev_p++;
+                size_t prev_len = strlen(prev);
+                char prev_last = (prev_len > 0) ? prev[prev_len - 1] : '\0';
+
+                int is_comment = (strncmp(prev_p, "//", 2) == 0 || strncmp(prev_p, "/*", 2) == 0 ||
+                                  (prev_len >= 2 && prev[prev_len - 2] == '*' && prev[prev_len - 1] == '/'));
+                int is_boundary = (prev_last == '{' || prev_last == '}' || prev_last == ':');
+
+                if (!is_comment && !is_boundary && *prev_p != '\0') {
+                    char merged[8192];
+                    snprintf(merged, sizeof(merged), "%s%s %s%s",
+                             prev,
+                             (prev_last != ';') ? ";" : "",
+                             p,
+                             (p[strlen(p) - 1] != ';') ? ";" : "");
+                    free(out_ll.lines[prev_idx]);
+                    out_ll.lines[prev_idx] = strdup(merged);
+                    continue;
+                }
+            }
+        }
+
+        ll_push(&out_ll, line);
+    }
+
+    const char *eol = has_crlf ? "\r\n" : "\n";
+    for (size_t i = 0; i < out_ll.count; i++) {
+        buf_append(&out, out_ll.lines[i], strlen(out_ll.lines[i]));
+        buf_append(&out, eol, strlen(eol));
+    }
+
+    ll_free(&out_ll);
+    return out.data;
+}
+
+static char *normalize_block_spacing(const char *text) {
+    if (!text || *text == '\0') return strdup("");
+
+    int has_crlf = 0;
+    LineList ll;
+    ll_init(&ll);
+    split_lines(text, &ll, &has_crlf);
+
     size_t stack_cap = 256;
     size_t stack_len = 0;
     size_t *stack = (size_t *)malloc(sizeof(size_t) * stack_cap);
@@ -205,8 +419,8 @@ static void normalize_block_spacing_and_print(LineList *ll, FILE *out) {
     char in_str = 0;
     int escaped = 0;
 
-    for (size_t line_idx = 0; line_idx < ll->count; line_idx++) {
-        const char *line = ll->lines[line_idx];
+    for (size_t line_idx = 0; line_idx < ll.count; line_idx++) {
+        const char *line = ll.lines[line_idx];
         size_t n = strlen(line);
         size_t i = 0;
 
@@ -287,48 +501,46 @@ static void normalize_block_spacing_and_print(LineList *ll, FILE *out) {
         }
     }
 
-    char *lines_to_remove = (char *)calloc(ll->count, sizeof(char));
-    char *need_blank = (char *)calloc(ll->count, sizeof(char));
+    char *lines_to_remove = (char *)calloc(ll.count, sizeof(char));
+    char *need_blank = (char *)calloc(ll.count, sizeof(char));
 
     for (size_t b = 0; b < blocks_len; b++) {
         size_t open_line = blocks[b].open_line;
         size_t close_line = blocks[b].close_line;
 
-        // Remove any blank lines immediately before closing brace }
-        size_t k = close_line;
-        while (k > open_line + 1) {
+        int64_t k = (int64_t)close_line - 1;
+        while (k > (int64_t)open_line && is_line_blank(ll.lines[k])) {
+            lines_to_remove[k] = 1;
             k--;
-            if (is_line_blank(ll->lines[k])) {
-                lines_to_remove[k] = 1;
-            } else {
-                break;
-            }
         }
 
-        // Check content lines
         if (close_line > open_line + 1) {
             size_t non_blank = 0;
             for (size_t idx = open_line + 1; idx < close_line; idx++) {
-                if (!lines_to_remove[idx] && !is_line_blank(ll->lines[idx])) {
+                if (!lines_to_remove[idx] && !is_line_blank(ll.lines[idx])) {
                     non_blank++;
                 }
             }
             if (non_blank > 1) {
-                if (!is_line_blank(ll->lines[open_line + 1])) {
+                if (!is_line_blank(ll.lines[open_line + 1])) {
                     need_blank[open_line] = 1;
                 }
             }
         }
     }
 
-    for (size_t line_idx = 0; line_idx < ll->count; line_idx++) {
+    Buffer out;
+    buf_init(&out);
+    const char *eol = has_crlf ? "\r\n" : "\n";
+
+    for (size_t line_idx = 0; line_idx < ll.count; line_idx++) {
         if (lines_to_remove[line_idx]) {
             continue;
         }
-        fputs(ll->lines[line_idx], out);
-        fputc('\n', out);
+        buf_append(&out, ll.lines[line_idx], strlen(ll.lines[line_idx]));
+        buf_append(&out, eol, strlen(eol));
         if (need_blank[line_idx]) {
-            fputc('\n', out);
+            buf_append(&out, eol, strlen(eol));
         }
     }
 
@@ -336,87 +548,158 @@ static void normalize_block_spacing_and_print(LineList *ll, FILE *out) {
     free(need_blank);
     free(stack);
     free(blocks);
-}
-
-static void normalize_and_print(FILE *in, FILE *out) {
-    char line[8192];
-    char prev_line[8192] = {0};
-    int has_prev = 0;
-
-    LineList ll;
-    ll_init(&ll);
-
-    while (fgets(line, sizeof(line), in)) {
-        size_t len = strlen(line);
-        if (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) {
-            while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) {
-                line[--len] = '\0';
-            }
-        }
-
-        char formatted_line[8192];
-        format_line_comments(line, formatted_line, sizeof(formatted_line));
-        strncpy(line, formatted_line, sizeof(line) - 1);
-        line[sizeof(line) - 1] = '\0';
-
-        const char *p = line;
-        while (*p == ' ' || *p == '\t') p++;
-        int is_flush = 0;
-        if (strncmp(p, "flush", 5) == 0) {
-            const char *q = p + 5;
-            while (*q == ' ' || *q == '\t') q++;
-            if (*q == '(') {
-                const char *r = strchr(q, ')');
-                if (r) {
-                    r++;
-                    while (*r == ' ' || *r == '\t') r++;
-                    if (*r == ';') r++;
-                    while (*r == ' ' || *r == '\t') r++;
-                    if (*r == '\0') is_flush = 1;
-                }
-            }
-        }
-
-        if (is_flush && has_prev) {
-            const char *prev_p = prev_line;
-            while (*prev_p == ' ' || *prev_p == '\t') prev_p++;
-            int prev_len = (int)strlen(prev_line);
-            char prev_last = (prev_len > 0) ? prev_line[prev_len - 1] : '\0';
-            int is_comment = (strncmp(prev_p, "//", 2) == 0 || strncmp(prev_p, "/*", 2) == 0 ||
-                              (prev_len >= 2 && prev_line[prev_len - 2] == '*' && prev_line[prev_len - 1] == '/'));
-            int is_boundary = (prev_last == '{' || prev_last == '}' || prev_last == ':');
-
-            if (!is_comment && !is_boundary && *prev_p != '\0') {
-                if (prev_last != ';') {
-                    strncat(prev_line, ";", sizeof(prev_line) - strlen(prev_line) - 1);
-                }
-                strncat(prev_line, " ", sizeof(prev_line) - strlen(prev_line) - 1);
-                char flush_cmd[512];
-                snprintf(flush_cmd, sizeof(flush_cmd), "%s", p);
-                size_t flen = strlen(flush_cmd);
-                if (flen > 0 && flush_cmd[flen - 1] != ';') {
-                    strncat(flush_cmd, ";", sizeof(flush_cmd) - strlen(flush_cmd) - 1);
-                }
-                strncat(prev_line, flush_cmd, sizeof(prev_line) - strlen(prev_line) - 1);
-                continue;
-            }
-        }
-
-        if (has_prev) {
-            ll_push(&ll, prev_line);
-        }
-        strncpy(prev_line, line, sizeof(prev_line) - 1);
-        prev_line[sizeof(prev_line) - 1] = '\0';
-        has_prev = 1;
-    }
-
-    if (has_prev) {
-        ll_push(&ll, prev_line);
-    }
-
-    normalize_block_spacing_and_print(&ll, out);
     ll_free(&ll);
+
+    return out.data;
 }
+
+#ifdef _WIN32
+static char *run_topiary(const char *topiary_bin, const char *ncl_path, const char *query_file, const char *query_dir, const char *input_text, int *exit_code) {
+    char temp_dir[MAX_PATH];
+    char temp_file[MAX_PATH];
+    if (GetTempPathA(sizeof(temp_dir), temp_dir) == 0) {
+        strncpy(temp_dir, ".", sizeof(temp_dir) - 1);
+    }
+    if (GetTempFileNameA(temp_dir, "pnt", 0, temp_file) == 0) {
+        *exit_code = 1;
+        return NULL;
+    }
+
+    FILE *tf = fopen(temp_file, "wb");
+    if (!tf) {
+        *exit_code = 1;
+        return NULL;
+    }
+    fwrite(input_text, 1, strlen(input_text), tf);
+    fclose(tf);
+
+    SetEnvironmentVariableA("TOPIARY_LANGUAGE_DIR", query_dir);
+
+    SECURITY_ATTRIBUTES saAttr;
+    saAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
+    saAttr.bInheritHandle = TRUE;
+    saAttr.lpSecurityDescriptor = NULL;
+
+    HANDLE hInFile = CreateFileA(temp_file, GENERIC_READ, FILE_SHARE_READ, &saAttr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hInFile == INVALID_HANDLE_VALUE) {
+        DeleteFileA(temp_file);
+        *exit_code = 1;
+        return NULL;
+    }
+
+    HANDLE hChildStd_OUT_Rd = NULL;
+    HANDLE hChildStd_OUT_Wr = NULL;
+    if (!CreatePipe(&hChildStd_OUT_Rd, &hChildStd_OUT_Wr, &saAttr, 0)) {
+        CloseHandle(hInFile);
+        DeleteFileA(temp_file);
+        *exit_code = 1;
+        return NULL;
+    }
+    SetHandleInformation(hChildStd_OUT_Rd, HANDLE_FLAG_INHERIT, 0);
+
+    STARTUPINFOA si;
+    ZeroMemory(&si, sizeof(si));
+    si.cb = sizeof(si);
+    si.hStdInput = hInFile;
+    si.hStdOutput = hChildStd_OUT_Wr;
+    si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+    si.dwFlags |= STARTF_USESTDHANDLES;
+
+    PROCESS_INFORMATION pi;
+    ZeroMemory(&pi, sizeof(pi));
+
+    char cmd[4096];
+    snprintf(cmd, sizeof(cmd), "\"%s\" format -C \"%s\" -q \"%s\" -l pnuts", topiary_bin, ncl_path, query_file);
+
+    if (!CreateProcessA(NULL, cmd, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
+        CloseHandle(hInFile);
+        CloseHandle(hChildStd_OUT_Wr);
+        CloseHandle(hChildStd_OUT_Rd);
+        DeleteFileA(temp_file);
+        *exit_code = 1;
+        return NULL;
+    }
+
+    CloseHandle(hChildStd_OUT_Wr);
+    CloseHandle(hInFile);
+
+    Buffer out_buf;
+    buf_init(&out_buf);
+    char buf[4096];
+    DWORD bytes_read = 0;
+    while (ReadFile(hChildStd_OUT_Rd, buf, sizeof(buf), &bytes_read, NULL) && bytes_read > 0) {
+        buf_append(&out_buf, buf, bytes_read);
+    }
+    CloseHandle(hChildStd_OUT_Rd);
+
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD code = 0;
+    GetExitCodeProcess(pi.hProcess, &code);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    DeleteFileA(temp_file);
+
+    *exit_code = (int)code;
+    return out_buf.data;
+}
+#else
+static char *run_topiary(const char *topiary_bin, const char *ncl_path, const char *query_file, const char *query_dir, const char *input_text, int *exit_code) {
+    char temp_file[512];
+    const char *tmp = getenv("TMPDIR");
+    if (!tmp) tmp = "/tmp";
+    snprintf(temp_file, sizeof(temp_file), "%s/pnt_XXXXXX", tmp);
+    int fd = mkstemp(temp_file);
+    if (fd == -1) {
+        *exit_code = 1;
+        return NULL;
+    }
+    write(fd, input_text, strlen(input_text));
+    close(fd);
+
+    setenv("TOPIARY_LANGUAGE_DIR", query_dir, 1);
+    chmod(topiary_bin, 0755);
+
+    int out_pipe[2];
+    if (pipe(out_pipe) != 0) {
+        unlink(temp_file);
+        *exit_code = 1;
+        return NULL;
+    }
+
+    pid_t pid = fork();
+    if (pid == 0) {
+        int in_fd = open(temp_file, O_RDONLY);
+        if (in_fd != -1) {
+            dup2(in_fd, STDIN_FILENO);
+            close(in_fd);
+        }
+        dup2(out_pipe[1], STDOUT_FILENO);
+        close(out_pipe[0]);
+        close(out_pipe[1]);
+
+        execl(topiary_bin, topiary_bin, "format", "-C", ncl_path, "-q", query_file, "-l", "pnuts", (char *)NULL);
+        _exit(127);
+    }
+
+    close(out_pipe[1]);
+
+    Buffer out_buf;
+    buf_init(&out_buf);
+    char buf[4096];
+    ssize_t n;
+    while ((n = read(out_pipe[0], buf, sizeof(buf))) > 0) {
+        buf_append(&out_buf, buf, (size_t)n);
+    }
+    close(out_pipe[0]);
+
+    int status = 0;
+    waitpid(pid, &status, 0);
+    unlink(temp_file);
+
+    *exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : 1;
+    return out_buf.data;
+}
+#endif
 
 int main(int argc, char **argv) {
 #ifdef _WIN32
@@ -424,35 +707,28 @@ int main(int argc, char **argv) {
     _setmode(_fileno(stdout), _O_BINARY);
 #endif
 
+    const char *target_file = NULL;
+    int force_stdin = 0;
+    int write_in_place = 0;
+
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--stdin") == 0 || strcmp(argv[i], "-s") == 0) {
+            force_stdin = 1;
+        } else if (strcmp(argv[i], "-w") == 0 || strcmp(argv[i], "--write") == 0) {
+            write_in_place = 1;
+        } else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
+            fprintf(stdout, "Usage: pnuts-format [--stdin] [-w|--write] [file.pnuts]\n");
+            return 0;
+        } else if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--version") == 0) {
+            fprintf(stdout, "pnuts-format 0.2.4\n");
+            return 0;
+        } else if (argv[i][0] != '-') {
+            target_file = argv[i];
+        }
+    }
+
     char self_dir[1024] = {0};
     get_self_dir(self_dir, sizeof(self_dir));
-
-    // Priority 1: Delegate to format_pnuts.py if python3/python is available
-    char py_script[1024] = {0};
-    char cand1[1024] = {0}, cand2[1024] = {0}, cand3[1024] = {0};
-    snprintf(cand1, sizeof(cand1), "%s" PATH_SEP_STR "format_pnuts.py", self_dir);
-    snprintf(cand2, sizeof(cand2), "%s" PATH_SEP_STR ".." PATH_SEP_STR "scripts" PATH_SEP_STR "format_pnuts.py", self_dir);
-    snprintf(cand3, sizeof(cand3), "%s" PATH_SEP_STR ".." PATH_SEP_STR "bin" PATH_SEP_STR "format_pnuts.py", self_dir);
-
-    if (file_exists(cand1)) strncpy(py_script, cand1, sizeof(py_script) - 1);
-    else if (file_exists(cand2)) strncpy(py_script, cand2, sizeof(py_script) - 1);
-    else if (file_exists(cand3)) strncpy(py_script, cand3, sizeof(py_script) - 1);
-
-    if (py_script[0] != '\0') {
-#ifndef _WIN32
-        if (system("python3 --version >/dev/null 2>&1") == 0) {
-            char **py_argv = (char **)malloc((argc + 3) * sizeof(char *));
-            py_argv[0] = "python3";
-            py_argv[1] = py_script;
-            for (int i = 1; i < argc; i++) {
-                py_argv[i + 1] = argv[i];
-            }
-            py_argv[argc + 1] = NULL;
-            execvp("python3", py_argv);
-            free(py_argv);
-        }
-#endif
-    }
 
     char topiary_bin[1024] = {0};
     char grammar_dll[1024] = {0};
@@ -479,6 +755,32 @@ int main(int argc, char **argv) {
         snprintf(grammar_dll, sizeof(grammar_dll), "%s" PATH_SEP_STR ".." PATH_SEP_STR "zed-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "grammars" PATH_SEP_STR PLATFORM_DIR PATH_SEP_STR GRAMMAR_NAME, self_dir);
         snprintf(query_file, sizeof(query_file), "%s" PATH_SEP_STR ".." PATH_SEP_STR "zed-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "queries" PATH_SEP_STR "pnuts.scm", self_dir);
         snprintf(query_dir, sizeof(query_dir), "%s" PATH_SEP_STR ".." PATH_SEP_STR "zed-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "queries", self_dir);
+    }
+
+    // Candidate 4: self is in repo root
+    if (!file_exists(topiary_bin)) {
+        snprintf(topiary_bin, sizeof(topiary_bin), "%s" PATH_SEP_STR "zed-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "bin" PATH_SEP_STR PLATFORM_DIR PATH_SEP_STR TOPIARY_NAME, self_dir);
+        snprintf(grammar_dll, sizeof(grammar_dll), "%s" PATH_SEP_STR "zed-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "grammars" PATH_SEP_STR PLATFORM_DIR PATH_SEP_STR GRAMMAR_NAME, self_dir);
+        snprintf(query_file, sizeof(query_file), "%s" PATH_SEP_STR "zed-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "queries" PATH_SEP_STR "pnuts.scm", self_dir);
+        snprintf(query_dir, sizeof(query_dir), "%s" PATH_SEP_STR "zed-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "queries", self_dir);
+    }
+
+    // Candidate 6: environment variable PNUTS_TOOLING_DIR
+    const char *env_tooling = getenv("PNUTS_TOOLING_DIR");
+    if (!file_exists(topiary_bin) && env_tooling && *env_tooling) {
+        snprintf(topiary_bin, sizeof(topiary_bin), "%s" PATH_SEP_STR "zed-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "bin" PATH_SEP_STR PLATFORM_DIR PATH_SEP_STR TOPIARY_NAME, env_tooling);
+        snprintf(grammar_dll, sizeof(grammar_dll), "%s" PATH_SEP_STR "zed-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "grammars" PATH_SEP_STR PLATFORM_DIR PATH_SEP_STR GRAMMAR_NAME, env_tooling);
+        snprintf(query_file, sizeof(query_file), "%s" PATH_SEP_STR "zed-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "queries" PATH_SEP_STR "pnuts.scm", env_tooling);
+        snprintf(query_dir, sizeof(query_dir), "%s" PATH_SEP_STR "zed-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "queries", env_tooling);
+    }
+
+    // Candidate 7: standard user personal project fallback
+    if (!file_exists(topiary_bin)) {
+        const char *known_root = "/home/chsilva/personal/projects/pnuts-tooling/zed-pnuts";
+        snprintf(topiary_bin, sizeof(topiary_bin), "%s" PATH_SEP_STR "resources" PATH_SEP_STR "bin" PATH_SEP_STR PLATFORM_DIR PATH_SEP_STR TOPIARY_NAME, known_root);
+        snprintf(grammar_dll, sizeof(grammar_dll), "%s" PATH_SEP_STR "resources" PATH_SEP_STR "grammars" PATH_SEP_STR PLATFORM_DIR PATH_SEP_STR GRAMMAR_NAME, known_root);
+        snprintf(query_file, sizeof(query_file), "%s" PATH_SEP_STR "resources" PATH_SEP_STR "queries" PATH_SEP_STR "pnuts.scm", known_root);
+        snprintf(query_dir, sizeof(query_dir), "%s" PATH_SEP_STR "resources" PATH_SEP_STR "queries", known_root);
     }
 
     if (!file_exists(topiary_bin)) {
@@ -521,91 +823,67 @@ int main(int argc, char **argv) {
         fclose(ncl_file);
     }
 
-    int has_file_arg = 0;
-    for (int i = 1; i < argc; i++) {
-        if (argv[i][0] != '-') {
-            has_file_arg = 1;
-            break;
-        }
-    }
+    size_t raw_len = 0;
+    char *raw_input = NULL;
 
-    char cmdline[4096] = {0};
-    if (has_file_arg) {
-        snprintf(cmdline, sizeof(cmdline), "\"%s\" format -C \"%s\"", topiary_bin, ncl_path);
+    if (target_file && !force_stdin) {
+        FILE *tf = fopen(target_file, "rb");
+        if (!tf) {
+            fprintf(stderr, "pnuts-format: Cannot open file '%s'\n", target_file);
+            return 1;
+        }
+        raw_input = read_all(tf, &raw_len);
+        fclose(tf);
     } else {
-        snprintf(cmdline, sizeof(cmdline), "\"%s\" format -C \"%s\" -q \"%s\" -l pnuts", topiary_bin, ncl_path, query_file);
+        raw_input = read_all(stdin, &raw_len);
     }
 
-    for (int i = 1; i < argc; i++) {
-        strncat(cmdline, " \"", sizeof(cmdline) - strlen(cmdline) - 1);
-        strncat(cmdline, argv[i], sizeof(cmdline) - strlen(cmdline) - 1);
-        strncat(cmdline, "\"", sizeof(cmdline) - strlen(cmdline) - 1);
+    if (!raw_input || raw_len == 0) {
+        if (raw_input) free(raw_input);
+        return 0;
     }
 
-#ifdef _WIN32
-    SetEnvironmentVariableA("TOPIARY_LANGUAGE_DIR", query_dir);
+    char *pre = preprocess_comments(raw_input);
+    free(raw_input);
 
-    HANDLE hChildStd_OUT_Rd = NULL;
-    HANDLE hChildStd_OUT_Wr = NULL;
-    SECURITY_ATTRIBUTES saAttr;
-    saAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
-    saAttr.bInheritHandle = TRUE;
-    saAttr.lpSecurityDescriptor = NULL;
+    int exit_code = 0;
+    char *topiary_out = run_topiary(topiary_bin, ncl_path, query_file, query_dir, pre, &exit_code);
+    free(pre);
 
-    if (!CreatePipe(&hChildStd_OUT_Rd, &hChildStd_OUT_Wr, &saAttr, 0)) {
-        fprintf(stderr, "pnuts-format: CreatePipe failed\n");
-        return 1;
-    }
-    SetHandleInformation(hChildStd_OUT_Rd, HANDLE_FLAG_INHERIT, 0);
-
-    STARTUPINFOA si;
-    ZeroMemory(&si, sizeof(si));
-    si.cb = sizeof(si);
-    si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
-    si.hStdOutput = hChildStd_OUT_Wr;
-    si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
-    si.dwFlags |= STARTF_USESTDHANDLES;
-
-    PROCESS_INFORMATION pi;
-    ZeroMemory(&pi, sizeof(pi));
-
-    if (!CreateProcessA(NULL, cmdline, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
-        DWORD err = GetLastError();
-        fprintf(stderr, "pnuts-format: CreateProcess failed (error %lu)\n", (unsigned long)err);
-        CloseHandle(hChildStd_OUT_Wr);
-        CloseHandle(hChildStd_OUT_Rd);
-        return 1;
-    }
-
-    CloseHandle(hChildStd_OUT_Wr);
-
-    int fd = _open_osfhandle((intptr_t)hChildStd_OUT_Rd, _O_RDONLY | _O_BINARY);
-    if (fd != -1) {
-        FILE *pipe = _fdopen(fd, "rb");
-        if (pipe) {
-            normalize_and_print(pipe, stdout);
-            fclose(pipe);
-        } else {
-            _close(fd);
+    if (exit_code != 0 || !topiary_out) {
+        if (topiary_out) {
+            fputs(topiary_out, stderr);
+            free(topiary_out);
         }
+        return exit_code ? exit_code : 1;
     }
 
-    WaitForSingleObject(pi.hProcess, INFINITE);
-    DWORD exit_code = 0;
-    GetExitCodeProcess(pi.hProcess, &exit_code);
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
-    return (int)exit_code;
-#else
-    setenv("TOPIARY_LANGUAGE_DIR", query_dir, 1);
-    chmod(topiary_bin, 0755);
-    FILE *pipe = popen(cmdline, "r");
-    if (!pipe) {
-        perror("pnuts-format: popen failed");
-        return 1;
+    int has_crlf = 0;
+    LineList ll;
+    ll_init(&ll);
+    split_lines(topiary_out, &ll, &has_crlf);
+    free(topiary_out);
+
+    char *flushed = normalize_flush(&ll, has_crlf);
+    ll_free(&ll);
+
+    char *final_result = normalize_block_spacing(flushed);
+    free(flushed);
+
+    if (target_file && write_in_place && !force_stdin) {
+        FILE *wf = fopen(target_file, "wb");
+        if (!wf) {
+            fprintf(stderr, "pnuts-format: Failed to write to '%s'\n", target_file);
+            free(final_result);
+            return 1;
+        }
+        fwrite(final_result, 1, strlen(final_result), wf);
+        fclose(wf);
+    } else {
+        fputs(final_result, stdout);
+        fflush(stdout);
     }
-    normalize_and_print(pipe, stdout);
-    int status = pclose(pipe);
-    return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
-#endif
+
+    free(final_result);
+    return 0;
 }

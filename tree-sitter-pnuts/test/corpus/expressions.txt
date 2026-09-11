@@ -148,3 +148,29 @@ simpleClosure = { println("executed") }
             (identifier)
             (argument_list
               (string_literal))))))))
+
+==================
+Primitive Type Function Calls
+==================
+
+val = char(34)
+num = int("123")
+
+---
+
+(source_file
+  (expression_statement
+    (assignment_expression
+      (identifier)
+      (call_expression
+        (primitive_type)
+        (argument_list
+          (number_literal)))))
+  (expression_statement
+    (assignment_expression
+      (identifier)
+      (call_expression
+        (primitive_type)
+        (argument_list
+          (string_literal))))))
+

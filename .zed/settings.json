@@ -1,14 +1,73 @@
 {
+  "file_types": {
+    "Pnuts": ["pnuts", "pnut"],
+    "Groovy": ["groovy", "pnuts", "pnut"]
+  },
   "languages": {
     "Pnuts": {
       "formatter": {
         "external": {
-          "command": "python3",
-          "arguments": ["scripts/format_pnuts.py", "--stdin"]
+          "command": "/home/chsilva/.local/bin/pnuts-format",
+          "arguments": ["--stdin"]
         }
       },
       "format_on_save": "on",
       "tab_size": 2
+    },
+    "Groovy": {
+      "formatter": {
+        "external": {
+          "command": "/home/chsilva/.local/bin/pnuts-format",
+          "arguments": ["--stdin"]
+        }
+      },
+      "format_on_save": "on",
+      "tab_size": 2
+    },
+    "JavaScript": {
+      "formatter": {
+        "external": {
+          "command": "/home/chsilva/.local/bin/prettier",
+          "arguments": ["--parser", "babel"]
+        }
+      },
+      "format_on_save": "on"
+    },
+    "TypeScript": {
+      "formatter": {
+        "external": {
+          "command": "/home/chsilva/.local/bin/prettier",
+          "arguments": ["--parser", "typescript"]
+        }
+      },
+      "format_on_save": "on"
+    },
+    "JSON": {
+      "formatter": {
+        "external": {
+          "command": "/home/chsilva/.local/bin/prettier",
+          "arguments": ["--parser", "json"]
+        }
+      },
+      "format_on_save": "on"
+    },
+    "JSONC": {
+      "formatter": {
+        "external": {
+          "command": "/home/chsilva/.local/bin/prettier",
+          "arguments": ["--parser", "json"]
+        }
+      },
+      "format_on_save": "on"
+    },
+    "Markdown": {
+      "formatter": {
+        "external": {
+          "command": "/home/chsilva/.local/bin/prettier",
+          "arguments": ["--parser", "markdown"]
+        }
+      },
+      "format_on_save": "on"
     }
   }
 }

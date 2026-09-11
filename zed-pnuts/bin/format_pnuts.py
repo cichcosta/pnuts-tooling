@@ -28,7 +28,12 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-REPO_ROOT = SCRIPT_DIR.parent
+if (SCRIPT_DIR.parent / "extension.toml").is_file():
+    EXTENSION_ROOT = SCRIPT_DIR.parent
+    REPO_ROOT = EXTENSION_ROOT.parent if (EXTENSION_ROOT.parent / ".topiary").is_dir() else EXTENSION_ROOT
+else:
+    REPO_ROOT = SCRIPT_DIR.parent
+    EXTENSION_ROOT = REPO_ROOT / "zed-pnuts"
 
 
 def get_platform_keys() -> Tuple[str, str, str]:
@@ -71,6 +76,7 @@ def resolve_binary(custom_path: Optional[str] = None) -> Optional[str]:
 
     # 2. Bundled binary candidates
     bundled_roots = [
+        EXTENSION_ROOT / "resources" / "bin",
         REPO_ROOT / "zed-pnuts" / "resources" / "bin",
         REPO_ROOT / "vscode-pnuts" / "resources" / "bin",
         SCRIPT_DIR.parent / "resources" / "bin",
@@ -144,6 +150,7 @@ def resolve_grammar(custom_path: Optional[str] = None) -> Optional[str]:
 
     # 3. Bundled grammars
     grammar_roots = [
+        EXTENSION_ROOT / "resources" / "grammars",
         REPO_ROOT / "zed-pnuts" / "resources" / "grammars",
         REPO_ROOT / "vscode-pnuts" / "resources" / "grammars",
         SCRIPT_DIR.parent / "resources" / "grammars",
@@ -175,6 +182,7 @@ def resolve_query(custom_path: Optional[str] = None) -> Optional[str]:
 
     candidates = [
         REPO_ROOT / ".topiary" / "queries" / "pnuts.scm",
+        EXTENSION_ROOT / "resources" / "queries" / "pnuts.scm",
         REPO_ROOT / "zed-pnuts" / "resources" / "queries" / "pnuts.scm",
         REPO_ROOT / "vscode-pnuts" / "resources" / "queries" / "pnuts.scm",
         SCRIPT_DIR.parent / "resources" / "queries" / "pnuts.scm",
@@ -189,11 +197,7 @@ def resolve_query(custom_path: Optional[str] = None) -> Optional[str]:
 
 
 def get_or_create_config(grammar_path: Optional[str]) -> Optional[str]:
-    """Resolves or dynamically generates languages.ncl configuration."""
-    ws_config = REPO_ROOT / ".topiary" / "languages.ncl"
-    if ws_config.is_file():
-        return str(ws_config)
-
+    """Resolves or dynamically generates languages.ncl configuration with absolute grammar path."""
     if not grammar_path:
         return None
 
