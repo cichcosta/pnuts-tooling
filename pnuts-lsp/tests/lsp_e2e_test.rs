@@ -226,6 +226,134 @@ async fn test_lsp_formatting_lifecycle_and_idempotence() {
 }
 
 #[tokio::test]
+async fn test_lsp_formatting_continue_statement_separation() {
+    let (service, _socket) = LspService::new(Backend::new);
+    let backend = service.inner();
+
+    #[allow(deprecated)]
+    let init_params = InitializeParams {
+        process_id: Some(124),
+        root_path: None,
+        root_uri: Some(Url::parse("file:///workspace").unwrap()),
+        initialization_options: None,
+        capabilities: ClientCapabilities::default(),
+        trace: None,
+        workspace_folders: None,
+        client_info: None,
+        locale: None,
+    };
+    backend.initialize(init_params).await.unwrap();
+    backend.initialized(InitializedParams {}).await;
+
+    let uri = Url::parse("file:///workspace/continue_test.pnuts").unwrap();
+    let unformatted = "while (true) {\n  continue\n  println(\"wddolst INICIO 2 >>> \" + wddolst.toString()); flush();\n}\n";
+
+    backend
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "pnuts".to_string(),
+                version: 1,
+                text: unformatted.to_string(),
+            },
+        })
+        .await;
+
+    let format_params = DocumentFormattingParams {
+        text_document: TextDocumentIdentifier { uri: uri.clone() },
+        options: FormattingOptions {
+            tab_size: 2,
+            insert_spaces: true,
+            ..Default::default()
+        },
+        work_done_progress_params: Default::default(),
+    };
+
+    let edits = backend.formatting(format_params).await.unwrap();
+    if let Some(edits) = edits {
+        if !edits.is_empty() {
+            let formatted = &edits[0].new_text;
+            assert!(!formatted.contains("continueprintln"));
+            assert!(formatted.contains("continue\n"));
+            assert!(formatted.contains("println(\"wddolst INICIO 2 >>> \" + wddolst.toString()); flush();"));
+        }
+    }
+
+    backend
+        .did_close(DidCloseTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri },
+        })
+        .await;
+    backend.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_lsp_formatting_switch_case_statements() {
+    let (service, _socket) = LspService::new(Backend::new);
+    let backend = service.inner();
+
+    #[allow(deprecated)]
+    let init_params = InitializeParams {
+        process_id: Some(125),
+        root_path: None,
+        root_uri: Some(Url::parse("file:///workspace").unwrap()),
+        initialization_options: None,
+        capabilities: ClientCapabilities::default(),
+        trace: None,
+        workspace_folders: None,
+        client_info: None,
+        locale: None,
+    };
+    backend.initialize(init_params).await.unwrap();
+    backend.initialized(InitializedParams {}).await;
+
+    let uri = Url::parse("file:///workspace/switch_test.pnuts").unwrap();
+    let unformatted = "switch (wdataref) {\n  case \"2017\":\nwpICMSInterPart = 60.00;\nbreak;\n  case \"2018\":\nwpICMSInterPart = 80.00;\nbreak;\n  default:\nbreak;\n}\n";
+
+    backend
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "pnuts".to_string(),
+                version: 1,
+                text: unformatted.to_string(),
+            },
+        })
+        .await;
+
+    let format_params = DocumentFormattingParams {
+        text_document: TextDocumentIdentifier { uri: uri.clone() },
+        options: FormattingOptions {
+            tab_size: 2,
+            insert_spaces: true,
+            ..Default::default()
+        },
+        work_done_progress_params: Default::default(),
+    };
+
+    let edits = backend.formatting(format_params).await.unwrap();
+    if let Some(edits) = edits {
+        if !edits.is_empty() {
+            let formatted = &edits[0].new_text;
+            assert!(formatted.contains("case \"2017\":"));
+            assert!(formatted.contains("case \"2018\":"));
+            assert!(formatted.contains("default:"));
+            assert!(!formatted.contains("case \"2017\"\n"));
+            assert!(!formatted.contains("case \"2017\" :"));
+            assert!(!formatted.contains("case \"2017\"\r\n:"));
+        }
+    }
+
+    backend
+        .did_close(DidCloseTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri },
+        })
+        .await;
+    backend.shutdown().await.unwrap();
+}
+
+
+#[tokio::test]
 async fn test_lsp_completion_lifecycle_and_scoped_suggestions() {
     let (service, _socket) = LspService::new(Backend::new);
     let backend = service.inner();
@@ -310,9 +438,15 @@ async fn test_lsp_completion_lifecycle_and_scoped_suggestions() {
 
     // Built-in functions, keywords and snippets
     assert!(labels.contains(&"println"), "Expected println builtin");
+    assert!(labels.contains(&"getRows"), "Expected getRows domain builtin");
+    assert!(labels.contains(&"getMRows"), "Expected getMRows domain builtin");
+    assert!(labels.contains(&"getSQVNumber"), "Expected getSQVNumber domain builtin");
+    assert!(labels.contains(&"showMessage"), "Expected showMessage domain builtin");
+    assert!(labels.contains(&"formatNumber"), "Expected formatNumber domain builtin");
     assert!(labels.contains(&"foreach (in)"), "Expected foreach snippet");
     assert!(labels.contains(&"function"), "Expected function keyword");
     assert!(labels.contains(&"List"), "Expected List java class");
+    assert!(labels.contains(&"BigDecimal"), "Expected BigDecimal java class");
 
     // 4. Cleanup
     backend
@@ -435,3 +569,198 @@ async fn test_lsp_realtime_diagnostics_lifecycle() {
 
     backend.shutdown().await.unwrap();
 }
+
+#[tokio::test]
+async fn test_lsp_formatting_import_and_package_statements() {
+    let (service, _socket) = LspService::new(Backend::new);
+    let backend = service.inner();
+
+    let init_params = InitializeParams {
+        process_id: Some(1),
+        #[allow(deprecated)]
+        root_path: None,
+        root_uri: Some(Url::parse("file:///workspace").unwrap()),
+        initialization_options: None,
+        capabilities: ClientCapabilities::default(),
+        trace: None,
+        workspace_folders: Some(vec![WorkspaceFolder {
+            uri: Url::parse("file:///workspace").unwrap(),
+            name: "workspace".to_string(),
+        }]),
+        client_info: Some(ClientInfo {
+            name: "test-client".to_string(),
+            version: Some("1.0.0".to_string()),
+        }),
+        locale: None,
+    };
+
+    backend.initialize(init_params).await.expect("initialize failed");
+    backend.initialized(InitializedParams {}).await;
+
+    let uri = Url::parse("file:///workspace/imports.pnuts").unwrap();
+    let unformatted = "import (\"java.io.*\");\npackage (\"com.ibyte.erp\");\nimport java.util.List;\n";
+
+    backend
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "pnuts".to_string(),
+                version: 1,
+                text: unformatted.to_string(),
+            },
+        })
+        .await;
+
+    let format_params = DocumentFormattingParams {
+        text_document: TextDocumentIdentifier { uri: uri.clone() },
+        options: FormattingOptions {
+            tab_size: 2,
+            insert_spaces: true,
+            ..Default::default()
+        },
+        work_done_progress_params: Default::default(),
+    };
+
+    let edits = backend
+        .formatting(format_params)
+        .await
+        .expect("formatting request failed");
+
+    if let Some(edits) = edits {
+        if !edits.is_empty() {
+            let formatted = &edits[0].new_text;
+            assert!(
+                formatted.contains("import(\"java.io.*\");"),
+                "import(...) must not have space after keyword: got {}",
+                formatted
+            );
+            assert!(
+                formatted.contains("package(\"com.ibyte.erp\");"),
+                "package(...) must not have space after keyword: got {}",
+                formatted
+            );
+            assert!(
+                formatted.contains("import java.util.List;"),
+                "import java.util.List must retain space: got {}",
+                formatted
+            );
+        }
+    }
+
+    backend
+        .did_close(DidCloseTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri },
+        })
+        .await;
+
+    backend.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_lsp_navigation_lifecycle() {
+    let (service, _socket) = LspService::new(Backend::new);
+    let backend = service.inner();
+
+    #[allow(deprecated)]
+    let init_params = InitializeParams {
+        process_id: Some(999),
+        root_path: None,
+        root_uri: Some(Url::parse("file:///workspace").unwrap()),
+        initialization_options: None,
+        capabilities: ClientCapabilities::default(),
+        trace: None,
+        workspace_folders: None,
+        client_info: Some(ClientInfo {
+            name: "test-editor".to_string(),
+            version: Some("1.0.0".to_string()),
+        }),
+        locale: None,
+    };
+
+    let init_res = backend.initialize(init_params).await.unwrap();
+    assert_eq!(init_res.capabilities.definition_provider, Some(OneOf::Left(true)));
+    assert_eq!(init_res.capabilities.hover_provider, Some(HoverProviderCapability::Simple(true)));
+    assert_eq!(init_res.capabilities.document_symbol_provider, Some(OneOf::Left(true)));
+
+    backend.initialized(InitializedParams {}).await;
+
+    let uri = Url::parse("file:///workspace/app.pnuts").unwrap();
+    let text = "function calcular(a, b) {\n  return a * b;\n}\n\nres = calcular(5, 10);\nlinhas = getRows(\"TAB\", \"select 1\");";
+
+    backend
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "pnuts".to_string(),
+                version: 1,
+                text: text.to_string(),
+            },
+        })
+        .await;
+
+    // 1. Test Goto Definition: on 'calcular' at line 4, col 8
+    #[allow(deprecated)]
+    let def_params = GotoDefinitionParams {
+        text_document_position_params: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            position: Position { line: 4, character: 8 },
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+    };
+
+    let def_res = backend.goto_definition(def_params).await.unwrap();
+    assert!(def_res.is_some(), "Goto definition must return location");
+    if let Some(GotoDefinitionResponse::Scalar(loc)) = def_res {
+        assert_eq!(loc.range.start.line, 0);
+    } else {
+        panic!("Expected scalar goto definition response");
+    }
+
+    // 2. Test Hover: on 'getRows' at line 5, col 12
+    #[allow(deprecated)]
+    let hover_params = HoverParams {
+        text_document_position_params: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            position: Position { line: 5, character: 12 },
+        },
+        work_done_progress_params: Default::default(),
+    };
+
+    let hover_res = backend.hover(hover_params).await.unwrap();
+    assert!(hover_res.is_some(), "Hover must return documentation for getRows");
+    if let Some(h) = hover_res {
+        if let HoverContents::Markup(m) = h.contents {
+            assert!(m.value.contains("getRows"));
+        } else {
+            panic!("Expected markup hover content");
+        }
+    }
+
+    // 3. Test Document Symbols
+    #[allow(deprecated)]
+    let sym_params = DocumentSymbolParams {
+        text_document: TextDocumentIdentifier { uri: uri.clone() },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+    };
+
+    let sym_res = backend.document_symbol(sym_params).await.unwrap();
+    assert!(sym_res.is_some(), "Document symbols must be returned");
+    if let Some(DocumentSymbolResponse::Nested(syms)) = sym_res {
+        assert!(syms.iter().any(|s| s.name == "calcular" && s.kind == SymbolKind::FUNCTION));
+    } else {
+        panic!("Expected nested document symbol response");
+    }
+
+    backend
+        .did_close(DidCloseTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri },
+        })
+        .await;
+
+    backend.shutdown().await.unwrap();
+}
+
+
+

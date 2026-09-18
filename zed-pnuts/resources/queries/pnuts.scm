@@ -27,12 +27,14 @@
 )
 
 (switch_case
-  ":" @append_indent_start @append_hardline
+  ":" @prepend_antispace @append_indent_start @append_hardline
 )
+(switch_case) @append_indent_end @allow_blank_line_before
 
 (switch_default
-  ":" @append_indent_start @append_hardline
+  ":" @prepend_antispace @append_indent_start @append_hardline
 )
+(switch_default) @append_indent_end @allow_blank_line_before
 
 ;; --------------------------------------------------------------------
 ;; 2. Statement Terminations & Line Breaks
@@ -51,10 +53,12 @@
 )
 
 (switch_case
+  ":"
   (_) @append_hardline @allow_blank_line_before
 )
 
 (switch_default
+  ":"
   (_) @append_hardline @allow_blank_line_before
 )
 
@@ -84,6 +88,8 @@
   "return"
   "throw"
   "yield"
+  "break"
+  "continue"
   "new"
   "import"
   "package"
@@ -255,6 +261,14 @@
 )
 
 (method_definition
+  "(" @prepend_antispace
+)
+
+(import_statement
+  "(" @prepend_antispace
+)
+
+(package_statement
   "(" @prepend_antispace
 )
 

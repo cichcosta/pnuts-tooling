@@ -79,5 +79,27 @@ mod tests {
         let code_catch = "try { work(); } catch (Exception e) { handleError(e); }";
         let tree_catch = parse_pnuts(code_catch, None).unwrap();
         assert!(!has_errors(&tree_catch));
+
+        // 5. continue and break followed by next statement on newline without semicolon
+        let code_jump = "continue\nprintln(\"hello\"); flush();\nbreak\nprintln(\"world\");";
+        let tree_jump = parse_pnuts(code_jump, None).unwrap();
+        assert!(!has_errors(&tree_jump));
+        let root = tree_jump.root_node();
+        let mut cursor = root.walk();
+        let kinds: Vec<&str> = root.children(&mut cursor).map(|n| n.kind()).collect();
+        assert_eq!(kinds[0], "continue_statement");
+        assert_eq!(kinds[1], "expression_statement");
+        assert_eq!(kinds[2], "expression_statement"); // flush()
+        assert_eq!(kinds[3], "break_statement");
+        assert_eq!(kinds[4], "expression_statement");
+    }
+
+    #[test]
+    fn test_parse_member_expression_tree() {
+        let code = "wufopint.tparms.trim()";
+        let tree = parse_pnuts(code, None).unwrap();
+        eprintln!("AST S-EXP: {}", tree.root_node().to_sexp());
+        assert!(!has_errors(&tree));
     }
 }
+

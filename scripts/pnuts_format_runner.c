@@ -367,8 +367,12 @@ static char *normalize_flush(const LineList *in_ll, int has_crlf) {
                 int is_comment = (strncmp(prev_p, "//", 2) == 0 || strncmp(prev_p, "/*", 2) == 0 ||
                                   (prev_len >= 2 && prev[prev_len - 2] == '*' && prev[prev_len - 1] == '/'));
                 int is_boundary = (prev_last == '{' || prev_last == '}' || prev_last == ':');
+                int is_jump = (strncmp(prev_p, "continue", 8) == 0 ||
+                               strncmp(prev_p, "break", 5) == 0 ||
+                               strncmp(prev_p, "return", 6) == 0 ||
+                               strncmp(prev_p, "throw", 5) == 0);
 
-                if (!is_comment && !is_boundary && *prev_p != '\0') {
+                if (!is_comment && !is_boundary && !is_jump && *prev_p != '\0') {
                     char merged[8192];
                     snprintf(merged, sizeof(merged), "%s%s %s%s",
                              prev,

@@ -149,17 +149,23 @@
           }
         },
         {
-          "match": "::([a-zA-Z_$][a-zA-Z0-9_$]*)\\s*\\(",
+          "match": "(::)([a-zA-Z_$][a-zA-Z0-9_$]*)\\s*\\(",
           "captures": {
             "1": {
-              "name": "entity.name.function.method.static.pnuts"
+              "name": "keyword.operator.static.pnuts punctuation.accessor.pnuts"
+            },
+            "2": {
+              "name": "entity.name.function.method.static.pnuts entity.name.function.method.pnuts"
             }
           }
         },
         {
-          "match": "\\.([a-zA-Z_$][a-zA-Z0-9_$]*)\\s*\\(",
+          "match": "(\\.)([a-zA-Z_$][a-zA-Z0-9_$]*)\\s*\\(",
           "captures": {
             "1": {
+              "name": "punctuation.accessor.pnuts"
+            },
+            "2": {
               "name": "entity.name.function.method.pnuts"
             }
           }
@@ -229,12 +235,26 @@
     "identifiers": {
       "patterns": [
         {
-          "name": "variable.other.global.pnuts",
-          "match": "::[a-zA-Z_$][a-zA-Z0-9_$]*"
+          "match": "(::)([a-zA-Z_$][a-zA-Z0-9_$]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.operator.static.pnuts punctuation.accessor.pnuts"
+            },
+            "2": {
+              "name": "support.type.property-name.pnuts"
+            }
+          }
         },
         {
-          "name": "variable.other.property.pnuts",
-          "match": "\\.[a-zA-Z_$][a-zA-Z0-9_$]*"
+          "match": "(\\.)([a-zA-Z_$][a-zA-Z0-9_$]*)",
+          "captures": {
+            "1": {
+              "name": "punctuation.accessor.pnuts"
+            },
+            "2": {
+              "name": "support.type.property-name.pnuts"
+            }
+          }
         },
         {
           "name": "variable.other.pnuts",

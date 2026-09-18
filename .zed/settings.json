@@ -1,16 +1,28 @@
 {
   "file_types": {
     "Pnuts": ["pnuts", "pnut"],
-    "Groovy": ["groovy", "pnuts", "pnut"]
+    "Groovy": ["groovy"]
   },
   "languages": {
     "Pnuts": {
       "language_servers": ["pnuts-lsp", "..."],
+      "formatter": {
+        "external": {
+          "command": "/home/chsilva/.local/bin/pnuts-lsp",
+          "arguments": ["--stdin"]
+        }
+      },
       "format_on_save": "on",
       "tab_size": 2
     },
     "Groovy": {
       "language_servers": ["pnuts-lsp", "..."],
+      "formatter": {
+        "external": {
+          "command": "/home/chsilva/.local/bin/pnuts-lsp",
+          "arguments": ["--stdin"]
+        }
+      },
       "format_on_save": "on",
       "tab_size": 2
     },
@@ -59,12 +71,6 @@
       },
       "format_on_save": "on"
     }
-  },
-  "lsp": {
-    "pnuts-lsp": {
-      "binary": {
-        "path": "pnuts-lsp"
-      }
-    }
   }
 }
+

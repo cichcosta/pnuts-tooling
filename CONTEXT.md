@@ -48,44 +48,56 @@ Ao modificar `grammar.js`, NUNCA reintroduzir os seguintes erros:
    - Regra de formatação: comentários no final de comandos são movidos para a linha anterior com indentação preservada para evitar quebras de bloco.
 6. **Espaçamento de Blocos Multilinhas:**
    - Blocos com mais de uma linha de conteúdo recebem uma linha em branco após a abertura `{` e nenhuma linha em branco antes do fechamento `}`.
+7. **Formatação de Cláusulas `switch` (`case` e `default`):**
+   - A sintaxe do compilador/runtime Pnuts (`Pnuts.jjt` / JavaCC) não aceita quebras de linha (`<EOL>`) entre a expressão do case e os dois pontos (`"case" Expression(env) ":"`). Uma quebra de linha antes de `:` gerava o erro em runtime: `MError getAuxMessage(): Encountered "\n" at column ...`.
+   - No Topiary (`pnuts.scm`), a query anterior continha `(switch_case (_) @append_hardline)` que inseria uma quebra de linha imediatamente após o valor do case (ex: `"2017"`), empurrando o `:` para a próxima linha (`case "2017"\n:`). Além disso, `":" @append_indent_start` sem `@append_indent_end` correspondente causava indentação cumulativa em escadinha para cada `case` subsequente.
+   - **Correção consolidada**:
+     - Statements do case formatados com `(switch_case ":" (_) @append_hardline @allow_blank_line_before)`.
+     - Dois pontos colados ao valor/keyword com `":" @prepend_antispace`.
+     - Delimitação de escopo de indentação com `(switch_case) @append_indent_end @allow_blank_line_before` e `(switch_default) @append_indent_end @allow_blank_line_before`.
+
+8. **Ausência de Escapes Unicode (`\uXXXX`) em Strings com Aspas Duplas:**
+   - O lexer JavaCC do runtime Pnuts (`STRING_CONTENT` em `Pnuts.jjt`) aceita apenas escapes básicos (`\\`, `\"`, `\n`, `\t`, `\b`, `\r`, `\f`). O uso de `"\uFEFF"` dentro de aspas duplas gera erro léxico/sintático em tempo de execução: `MError getAuxMessage(): Encountered "\"" at column ...`.
+   - **Solução consolidada**: Validar caracteres especiais pelo seu código inteiro nativo com `int(str.charAt(0)) == 65279` ou criar o caractere com `char(65279)`.
+9. **Escopo Local de Imports dentro de Functions:**
+   - No runtime Pnuts/Minimal, funções (`function nome(...) { ... }`) executam em um contexto (`pnuts.lang.Context`) próprio e isolado. `import(...)` declarados no topo/escopo global do arquivo **não são herdados** dentro das funções.
+   - A tentativa de instanciar classes como `ArrayList()`, `HashMap()`, etc. dentro de uma função sem import local gera o erro: `MError getAuxMessage(): <Classe> is not defined-1`.
+   - **Solução consolidada**: Declarar sempre os `import(...)` necessários localmente no início do corpo de cada função.
 
 ---
+
 
 ## 4. Editores Suportados
 
 - **VSCode (`vscode-pnuts`):**
   - Empacotado como extensão `.vsix`.
   - Atualmente autossuficiente (executa no host local ou remoto).
+  - Ponto de atenção: `textDocument/definition` (Go to Definition) precisa de ajuste; autocomplete duplicado por redundância do provider JS.
 - **Zed (`zed-pnuts`):**
   - Instalado como Dev Extension (`zed: install dev extension`).
   - Utiliza gramática WASI compilada pelo próprio Zed.
-  - Com o LSP (Fase 3), passará a formatar nativamente sem necessitar de bloco `external` no `settings.json`.
+  - **Decisão Arquitetural Consolidada:** O formatador externo (`external` chamando `pnuts-lsp --stdin`) é mantido intencionalmente no `.zed/settings.json` para garantir formatação instantânea em buffers não salvos (`untitled:`), contornando limitações do Zed via LSP em rascunhos.
+  - `Ctrl + Click` (Go to Definition) e Completion já funcionam de forma limpa.
 
 ---
 
 ## 5. Diretrizes para Agentes de IA
 
-1. **Manter o Foco:** Trabalhar estritamente nas fases definidas no `LSP_ROADMAP.md`.
+1. **Manter o Foco:** Trabalhar estritamente nas fases definidas no `LSP_ROADMAP.md` e na matriz em `docs/ROADMAP_PARIDADE_VSCODE_ZED.md`.
 2. **Verificação de Regressão:** Antes de concluir qualquer alteração no parser ou formatador, rodar os testes de validação contra a pasta `pnuts-samples/` e contra a base de testes.
-3. **Atualização Contínua:** Sempre que uma funcionalidade for concluída ou um bug crítico for corrigido, documentar neste arquivo (`CONTEXT.md`).
+3. **Atualização Contínua:** Sempre que uma funcionalidade for concluída ou um bug crítico for corrigido, documentar neste arquivo (`CONTEXT.md`) e atualizar o checklist em `docs/ROADMAP_PARIDADE_VSCODE_ZED.md`.
 
 ---
 
 ## 6. Estado Atual e Ponto de Retomada Imediato
 
-- **Fase Atual Concluída:** **Fase 5: Diagnósticos em Tempo Real (Error Highlighting via `textDocument/publishDiagnostics`)**.
-  - Módulo nativo [`diagnostics.rs`](file:///home/chsilva/personal/projects/pnuts-tooling/pnuts-lsp/src/diagnostics.rs) implementado em Rust:
-    - Varredura recursiva de nós `ERROR` e `MISSING` na AST Tree-sitter do documento.
-    - Conversão precisa de colunas byte-offset para offsets UTF-16 conforme especificação LSP.
-    - Ranges ajustados para garantir visibilidade do sublinhado vermelho mesmo em nós sem largura (ex: tokens esperados ausentes).
-    - Mensagens amigáveis contextualizadas com o token inesperado ou token ausente.
-    - Publicação em tempo real via `self.client.publish_diagnostics` nos eventos `did_open`, `did_change` e `did_save`.
-    - Limpeza imediata de diagnósticos residuais no evento `did_close`.
-    - Fix em `Document::update`: reparsing determinístico em modo full sync.
-  - 23/23 testes automatizados passando (unitários de diagnóstico, parser, formatador, completions e integração e2e).
-  - Binário release gerado e atualizado em `~/.local/bin/pnuts-lsp`, `zed-pnuts/` e `vscode-pnuts/`.
+- **Documento Operacional Central:** `docs/ROADMAP_PARIDADE_VSCODE_ZED.md`.
+- **Fase Atual (Passo 1):** **Alinhamento, Eliminação de Ruídos e Correção de Definição (IMEDIATO)**.
+  1. **Remoção de duplicidade no VS Code (Concluído):** Provedor JS agora atua apenas como fallback condicional (`!client`) e catálogo de snippets mantido estritamente para blocos estruturais de controle de fluxo, eliminando duplicidade com as funções nativas do LSP.
+  2. **Correção de Go to Definition e Autocomplete no VS Code (Concluído):** Corrigido o `documentSelector` que filtrava documentos por `scheme: 'file'`, o que excluía buffers remotos via Remote-SSH (`vscode-remote://`). `activate` tornado assíncrono com `await client.start()`, adicionado suporte a `--stdio` no `main.rs`, trigger `$`, e resiliência de borda em `navigation.rs`. VSIX `0.3.9` gerado e instalado.
+  3. **Portabilidade e Buffers Não Salvos no Zed (Ajustado):** Mantido o caminho local Windows (`file:///C:/Users/chsilva/...`) em `zed-pnuts/extension.toml` para evitar 404 no build da gramática no Zed, e removido `language_servers` de `config.toml` para não sobrepor o formatador externo em buffers não salvos (`untitled:`).
+  4. **Empacotamento (Próximo):** Validar e empacotar novo VSIX atualizado.
+- **Próximas Fases:**
+  - **Passo 2:** Oficializar suporte a Groovy (`.groovy`) no VS Code e Zed.
+  - **Passo 3:** Implementar Rename Symbol, Find References e Range Formatting no `pnuts-lsp`.
 
-- **Próximas Melhorias do LSP (Capacidades de Navegação):**
-  1. **Hover / Documentação (`textDocument/hover`):** Exibir documentação de funções e tipos ao passar o mouse.
-  2. **Ir para Definição (`textDocument/definition`):** Navegar diretamente para a declaração de variáveis locais ou funções no documento.
-  3. **Símbolos do Documento (`textDocument/documentSymbol`):** Outline estruturado de funções, métodos e variáveis do arquivo para a paleta de símbolos do Zed e VSCode.

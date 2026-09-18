@@ -67,11 +67,18 @@ impl LanguageServer for Backend {
                 document_formatting_provider: Some(OneOf::Left(true)),
                 completion_provider: Some(CompletionOptions {
                     resolve_provider: Some(false),
-                    trigger_characters: Some(vec![".".to_string(), ":".to_string()]),
+                    trigger_characters: Some(vec![
+                        ".".to_string(),
+                        ":".to_string(),
+                        "$".to_string(),
+                    ]),
                     all_commit_characters: None,
                     work_done_progress_options: Default::default(),
                     completion_item: None,
                 }),
+                definition_provider: Some(OneOf::Left(true)),
+                hover_provider: Some(HoverProviderCapability::Simple(true)),
+                document_symbol_provider: Some(OneOf::Left(true)),
                 ..ServerCapabilities::default()
             },
             server_info: Some(ServerInfo {
@@ -197,6 +204,71 @@ impl LanguageServer for Backend {
             });
 
         Ok(Some(CompletionResponse::Array(items)))
+    }
+
+    async fn goto_definition(
+        &self,
+        params: GotoDefinitionParams,
+    ) -> Result<Option<GotoDefinitionResponse>> {
+        let uri = params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+        debug!("textDocument/definition at {}: {:?}", uri, position);
+
+        let Some(text) = self.documents.get_text(&uri).await else {
+            return Ok(None);
+        };
+
+        let result = self
+            .documents
+            .with_tree(&uri, |tree| {
+                crate::navigation::find_definition(tree, &text, position, &uri)
+            })
+            .await
+            .flatten();
+
+        Ok(result)
+    }
+
+    async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
+        let uri = params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+        debug!("textDocument/hover at {}: {:?}", uri, position);
+
+        let Some(text) = self.documents.get_text(&uri).await else {
+            return Ok(None);
+        };
+
+        let result = self
+            .documents
+            .with_tree(&uri, |tree| {
+                crate::navigation::find_hover(tree, &text, position)
+            })
+            .await
+            .flatten();
+
+        Ok(result)
+    }
+
+    async fn document_symbol(
+        &self,
+        params: DocumentSymbolParams,
+    ) -> Result<Option<DocumentSymbolResponse>> {
+        let uri = params.text_document.uri;
+        debug!("textDocument/documentSymbol for {}", uri);
+
+        let Some(text) = self.documents.get_text(&uri).await else {
+            return Ok(None);
+        };
+
+        let symbols = self
+            .documents
+            .with_tree(&uri, |tree| {
+                crate::navigation::find_document_symbols(tree, &text)
+            })
+            .await
+            .unwrap_or_default();
+
+        Ok(Some(DocumentSymbolResponse::Nested(symbols)))
     }
 }
 

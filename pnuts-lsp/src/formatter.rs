@@ -225,8 +225,14 @@ pub fn normalize_flush(text: &str) -> String {
                 let is_block_boundary = prev_trimmed.ends_with('{')
                     || prev_trimmed.ends_with('}')
                     || prev_trimmed.ends_with(':');
+                let is_jump = prev_trimmed == "continue"
+                    || prev_trimmed == "continue;"
+                    || prev_trimmed == "break"
+                    || prev_trimmed == "break;"
+                    || prev_trimmed.starts_with("return")
+                    || prev_trimmed.starts_with("throw");
 
-                if !is_comment && !is_block_boundary && !prev_trimmed.is_empty() {
+                if !is_comment && !is_block_boundary && !is_jump && !prev_trimmed.is_empty() {
                     let mut prev_line = out[p_idx].clone();
                     if !prev_line.trim_end().ends_with(';') {
                         prev_line.push(';');
@@ -386,6 +392,15 @@ pub fn normalize_block_spacing(text: &str) -> String {
     result
 }
 
+fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
+    if let Some(s) = path.to_str() {
+        if let Some(stripped) = s.strip_prefix(r"\\?\") {
+            return PathBuf::from(stripped);
+        }
+    }
+    path
+}
+
 /// Locates the `pnuts-format` executable binary or Topiary executable.
 pub fn resolve_formatter_binary() -> Option<PathBuf> {
     let exe_name = if cfg!(windows) { "pnuts-format.exe" } else { "pnuts-format" };
@@ -394,7 +409,7 @@ pub fn resolve_formatter_binary() -> Option<PathBuf> {
     if let Ok(env_path) = std::env::var("PNUTS_FORMAT_BIN") {
         let p = PathBuf::from(env_path);
         if p.is_file() {
-            return Some(p);
+            return Some(strip_verbatim_prefix(p));
         }
     }
 
@@ -407,7 +422,7 @@ pub fn resolve_formatter_binary() -> Option<PathBuf> {
         ];
         for c in candidates {
             if c.is_file() {
-                return Some(c);
+                return Some(strip_verbatim_prefix(c));
             }
         }
     }
@@ -423,9 +438,12 @@ pub fn resolve_formatter_binary() -> Option<PathBuf> {
                 exe_dir.join("../bin").join(exe_name),
             ];
             for c in candidates {
+                if c.is_file() {
+                    return Some(strip_verbatim_prefix(c));
+                }
                 if let Ok(canonical) = c.canonicalize() {
                     if canonical.is_file() {
-                        return Some(canonical);
+                        return Some(strip_verbatim_prefix(canonical));
                     }
                 }
             }
@@ -439,20 +457,40 @@ pub fn resolve_formatter_binary() -> Option<PathBuf> {
         PathBuf::from(exe_name),
     ];
     for c in cwd_candidates {
+        if c.is_file() {
+            return Some(strip_verbatim_prefix(c));
+        }
         if let Ok(canonical) = c.canonicalize() {
             if canonical.is_file() {
-                return Some(canonical);
+                return Some(strip_verbatim_prefix(canonical));
             }
         }
     }
 
-    // 5. Check user home directories
+    // 5. Check user home directories and AppData
+    if let Ok(localappdata) = std::env::var("LOCALAPPDATA") {
+        let lad = PathBuf::from(localappdata);
+        let lad_candidates = [
+            lad.join("Zed/extensions/pnuts-tooling/zed-pnuts/bin").join(exe_name),
+            lad.join("Zed/extensions/work/pnuts/bin").join(exe_name),
+            lad.join("Zed/extensions/installed/pnuts/bin").join(exe_name),
+        ];
+        for c in lad_candidates {
+            if c.is_file() {
+                return Some(c);
+            }
+        }
+    }
+
     if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
         let home_dir = PathBuf::from(home);
         let home_candidates = [
             home_dir.join(".cargo/bin").join(exe_name),
             home_dir.join(".local/bin").join(exe_name),
             home_dir.join("personal/projects/pnuts-tooling/zed-pnuts/bin").join(exe_name),
+            home_dir.join("AppData/Local/Zed/extensions/pnuts-tooling/zed-pnuts/bin").join(exe_name),
+            home_dir.join("AppData/Local/Zed/extensions/work/pnuts/bin").join(exe_name),
+            home_dir.join("AppData/Local/Zed/extensions/installed/pnuts/bin").join(exe_name),
         ];
         for c in home_candidates {
             if c.is_file() {
@@ -553,6 +591,21 @@ mod tests {
     }
 
     #[test]
+    fn test_normalize_flush_does_not_attach_to_jump_statements() {
+        let input_continue = "continue\nflush();\n";
+        assert_eq!(normalize_flush(input_continue), "continue\nflush();\n");
+
+        let input_break = "break;\nflush();\n";
+        assert_eq!(normalize_flush(input_break), "break;\nflush();\n");
+
+        let input_return = "return\nflush();\n";
+        assert_eq!(normalize_flush(input_return), "return\nflush();\n");
+
+        let input_throw = "throw err\nflush();\n";
+        assert_eq!(normalize_flush(input_throw), "throw err\nflush();\n");
+    }
+
+    #[test]
     fn test_normalize_block_spacing_multiline() {
         // Multiline block gets blank line after {
         let input = "if (a > b) {\n  showMessage(\"linha 1\");\n  showMessage(\"linha 2\");\n}\n";
@@ -597,4 +650,30 @@ mod tests {
             println!("Skipping binary execution test: binary not found");
         }
     }
+
+    #[tokio::test]
+    async fn test_continue_and_println_formatting_regression() {
+        let input = "      continue\n      println(\"wddolst INICIO 2 >>> \" + wddolst.toString()); flush();\n";
+        let result = format_code(input).await;
+        if let Ok(formatted) = result {
+            assert!(formatted.contains("continue\n"));
+            assert!(formatted.contains("println(\"wddolst INICIO 2 >>> \" + wddolst.toString()); flush();"));
+            assert!(!formatted.contains("continueprintln"));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_switch_case_formatting_regression() {
+        let input = "switch (wdataref) {\ncase \"2017\": wpICMSInterPart = 60.00; break;\ncase \"2018\": wpICMSInterPart = 80.00; break;\ndefault: break;\n}\n";
+        let result = format_code(input).await;
+        if let Ok(formatted) = result {
+            assert!(formatted.contains("case \"2017\":"));
+            assert!(formatted.contains("case \"2018\":"));
+            assert!(formatted.contains("default:"));
+            assert!(!formatted.contains("case \"2017\"\n"));
+            assert!(!formatted.contains("case \"2017\" :"));
+            assert!(!formatted.contains("case \"2017\"\r\n:"));
+        }
+    }
 }
+

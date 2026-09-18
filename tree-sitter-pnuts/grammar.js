@@ -287,7 +287,6 @@ module.exports = grammar({
 
     break_statement: $ => prec.right(seq(
       'break',
-      optional($._expression),
       optional(';')
     )),
 
@@ -299,7 +298,6 @@ module.exports = grammar({
 
     continue_statement: $ => prec.right(seq(
       'continue',
-      optional($._expression),
       optional(';')
     )),
 

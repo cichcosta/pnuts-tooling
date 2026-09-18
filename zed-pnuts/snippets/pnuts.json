@@ -1,0 +1,276 @@
+{
+  "If Statement": {
+    "prefix": "if",
+    "body": [
+      "if (${1:condition}) {",
+      "\t$0",
+      "}"
+    ],
+    "description": "if condition block"
+  },
+  "If Else Statement": {
+    "prefix": "ifelse",
+    "body": [
+      "if (${1:condition}) {",
+      "\t$2",
+      "} else {",
+      "\t$0",
+      "}"
+    ],
+    "description": "if-else condition block"
+  },
+  "While Loop": {
+    "prefix": "while",
+    "body": [
+      "while (${1:condition}) {",
+      "\t$0",
+      "}"
+    ],
+    "description": "while loop block"
+  },
+  "Do While Loop": {
+    "prefix": "dowhile",
+    "body": [
+      "do {",
+      "\t$0",
+      "} while (${1:condition});"
+    ],
+    "description": "do-while loop block"
+  },
+  "For Loop": {
+    "prefix": "for",
+    "body": [
+      "for (${1:i} = 0; ${1:i} < ${2:max}; ${1:i}++) {",
+      "\t$0",
+      "}"
+    ],
+    "description": "Indexed for loop"
+  },
+  "For In Loop": {
+    "prefix": "forin",
+    "body": [
+      "for (${1:item} in ${2:collection}) {",
+      "\t$0",
+      "}"
+    ],
+    "description": "for (item in collection) loop"
+  },
+  "Foreach Loop": {
+    "prefix": "foreach",
+    "body": [
+      "foreach ${1:item} (${2:collection}) {",
+      "\t$0",
+      "}"
+    ],
+    "description": "foreach item (collection) loop"
+  },
+  "Function Declaration": {
+    "prefix": "function",
+    "body": [
+      "function ${1:name}(${2:params}) {",
+      "\t$0",
+      "}"
+    ],
+    "description": "Function definition"
+  },
+  "Function Expression": {
+    "prefix": "fn",
+    "body": [
+      "${1:name} = function(${2:params}) {",
+      "\t$0",
+      "};"
+    ],
+    "description": "Function assigned to variable"
+  },
+  "Try Catch Block": {
+    "prefix": "trycatch",
+    "body": [
+      "try {",
+      "\t$1",
+      "} catch (${2:e}) {",
+      "\t$0",
+      "}"
+    ],
+    "description": "try-catch exception handling block"
+  },
+  "Try Catch Finally Block": {
+    "prefix": "trycatchfinally",
+    "body": [
+      "try {",
+      "\t$1",
+      "} catch (${2:e}) {",
+      "\t$3",
+      "} finally {",
+      "\t$0",
+      "}"
+    ],
+    "description": "try-catch-finally block"
+  },
+  "Switch Case Statement": {
+    "prefix": "switch",
+    "body": [
+      "switch (${1:expr}) {",
+      "\tcase ${2:value}:",
+      "\t\t$3",
+      "\t\tbreak;",
+      "\tdefault:",
+      "\t\t$0",
+      "}"
+    ],
+    "description": "switch-case block"
+  },
+  "Print Line": {
+    "prefix": "println",
+    "body": [
+      "println(${1:message});"
+    ],
+    "description": "Print message followed by newline to stdout"
+  },
+  "Print Line and Flush": {
+    "prefix": "printlnflush",
+    "body": [
+      "println(\"${1:DEBUG}: \" + ${2:variable}.toString()); flush();"
+    ],
+    "description": "Print message and immediately flush stdout buffer"
+  },
+  "Show Message Dialog": {
+    "prefix": "showMessage",
+    "body": [
+      "showMessage(\"${1:DEBUG}: \" + ${2:variable}.toString());"
+    ],
+    "description": "Show GUI message dialog"
+  },
+  "In List Check": {
+    "prefix": "inList",
+    "body": [
+      "inList(${1:item}, [${2:values}])"
+    ],
+    "description": "Checks if item is in array or list"
+  },
+  "Format Number": {
+    "prefix": "formatNumber",
+    "body": [
+      "formatNumber(${1:value}, \"${2:N0.00}\")"
+    ],
+    "description": "Formats number with format mask"
+  },
+  "Round Number": {
+    "prefix": "round",
+    "body": [
+      "round(${1:value}, ${2:2})"
+    ],
+    "description": "Rounds number to decimal places"
+  },
+  "Char ASCII": {
+    "prefix": "char",
+    "body": [
+      "char(${1:34})"
+    ],
+    "description": "Character from ASCII code"
+  },
+  "Class Definition": {
+    "prefix": "class",
+    "body": [
+      "class ${1:ClassName} {",
+      "\t${1:ClassName}(${2:params}) {",
+      "\t\t$0",
+      "\t}",
+      "}"
+    ],
+    "description": "Class definition"
+  },
+  "Import Statement": {
+    "prefix": "import",
+    "body": [
+      "import(\"${1:java.util.*}\");"
+    ],
+    "description": "Import package or class"
+  },
+  "Foreach Elements Loop": {
+    "prefix": "foreachelements",
+    "body": [
+      "foreach ${1:row} (${2:vrows}.elements()) {",
+      "\t$0",
+      "}"
+    ],
+    "description": "foreach row (vrows.elements()) loop"
+  },
+  "Database Transaction Block": {
+    "prefix": "database-transaction",
+    "body": [
+      "cursor = MConnection::getMCursor();",
+      "cursor.beginWork();",
+      "try {",
+      "\t$0",
+      "\tcursor.commitWork();",
+      "} catch (Exception e) {",
+      "\tcursor.rollbackWork();",
+      "\tthrowError(e.getMessage());",
+      "}"
+    ],
+    "description": "Database transaction block (beginWork / commitWork / rollbackWork)"
+  },
+  "Get Rows": {
+    "prefix": "getRows",
+    "body": [
+      "getRows(\"${1:TABLE}\", \"${2:select * from ...}\")"
+    ],
+    "description": "Executes SQL query and returns list/Vector of table records"
+  },
+  "Get MRows": {
+    "prefix": "getMRows",
+    "body": [
+      "getMRows(\"${1:TABLE}\", \"${2:select * from ...}\")"
+    ],
+    "description": "Executes SQL query and returns list/Vector of mapped rows (MRow)"
+  },
+  "Get Row": {
+    "prefix": "getRow",
+    "body": [
+      "getRow(\"${1:TABLE}\", \"${2:select * from ...}\")"
+    ],
+    "description": "Executes SQL query and returns a single table record"
+  },
+  "Get MRow": {
+    "prefix": "getMRow",
+    "body": [
+      "getMRow(\"${1:TABLE}\")"
+    ],
+    "description": "Instantiates or retrieves single mapped row for table"
+  },
+  "Get SQL Number": {
+    "prefix": "getSQLNumber",
+    "body": [
+      "getSQLNumber(\"${1:select count(1) from ...}\")"
+    ],
+    "description": "Executes SQL query and returns numeric scalar result"
+  },
+  "Get SQV Number": {
+    "prefix": "getSQVNumber",
+    "body": [
+      "getSQVNumber(\"${1:select count(1) from ...}\")"
+    ],
+    "description": "Executes SQL query and returns numeric scalar result (alias)"
+  },
+  "Get SQL Value": {
+    "prefix": "getSQLValue",
+    "body": [
+      "getSQLValue(\"${1:select col from ...}\")"
+    ],
+    "description": "Executes SQL query and returns string/scalar value"
+  },
+  "Execute SQL": {
+    "prefix": "executeSQL",
+    "body": [
+      "executeSQL(\"${1:update table set ...}\");"
+    ],
+    "description": "Executes DML/DDL SQL statement"
+  },
+  "Throw Error Dialog": {
+    "prefix": "throwError",
+    "body": [
+      "throwError(\"${1:Erro na execução}\");"
+    ],
+    "description": "Aborts execution and displays application error dialog"
+  }
+}

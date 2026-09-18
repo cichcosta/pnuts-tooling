@@ -2,7 +2,7 @@
   "name": "vscode-pnuts",
   "displayName": "Pnuts Language Support",
   "description": "Syntax highlighting and zero-dependency standalone Topiary-based code formatting for the Pnuts language",
-  "version": "0.3.0",
+  "version": "0.3.10",
   "publisher": "pnuts-tooling",
   "repository": {
     "type": "git",
@@ -22,7 +22,8 @@
   ],
   "main": "./extension.js",
   "activationEvents": [
-    "onLanguage:pnuts"
+    "onLanguage:pnuts",
+    "onLanguage:groovy"
   ],
   "contributes": {
     "iconThemes": [
@@ -57,9 +58,25 @@
         "path": "./syntaxes/pnuts.tmLanguage.json"
       }
     ],
+    "snippets": [
+      {
+        "language": "pnuts",
+        "path": "./snippets/pnuts.json"
+      }
+    ],
     "configuration": {
       "title": "Pnuts",
       "properties": {
+        "pnuts.lsp.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Pnuts Language Server (LSP) for completions, diagnostics, and formatting"
+        },
+        "pnuts.lsp.path": {
+          "type": "string",
+          "default": "",
+          "description": "Optional custom path to pnuts-lsp binary executable"
+        },
         "pnuts.topiary.path": {
           "type": "string",
           "default": "topiary",
@@ -77,5 +94,8 @@
         }
       }
     }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^10.1.1"
   }
 }

@@ -530,8 +530,16 @@ def normalize_flush(text: str) -> str:
                     or prev_stripped.endswith("}")
                     or prev_stripped.endswith(":")
                 )
+                is_jump = (
+                    prev_stripped == "continue"
+                    or prev_stripped == "continue;"
+                    or prev_stripped == "break"
+                    or prev_stripped == "break;"
+                    or prev_stripped.startswith("return")
+                    or prev_stripped.startswith("throw")
+                )
 
-                if not is_comment and not is_block_boundary and prev_stripped != "":
+                if not is_comment and not is_block_boundary and not is_jump and prev_stripped != "":
                     if not prev_stripped.endswith(";"):
                         prev_line += ";"
 

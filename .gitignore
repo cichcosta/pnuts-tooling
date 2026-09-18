@@ -1,4 +1,5 @@
 # Build and binary artifacts
+**/target/
 target/
 *.so
 *.dylib
