@@ -23,43 +23,31 @@ ENVIRONMENT:
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = env::args().collect();
-    if args.len() > 1 {
-        match args[1].as_str() {
-            "-V" | "--version" => {
-                println!("pnuts-lsp {}", VERSION);
+    if args.iter().any(|a| a == "-V" || a == "--version") {
+        println!("pnuts-lsp {}", VERSION);
+        return;
+    }
+    if args.iter().any(|a| a == "-h" || a == "--help") {
+        print!("{}", HELP_TEXT);
+        return;
+    }
+    if args.iter().any(|a| a == "-s" || a == "--stdin" || a == "--format") {
+        use std::io::Read;
+        let mut input = String::new();
+        if let Err(e) = io::stdin().read_to_string(&mut input) {
+            eprintln!("Error reading standard input: {}", e);
+            std::process::exit(1);
+        }
+        match pnuts_lsp::format_code(&input).await {
+            Ok(formatted) => {
+                print!("{}", formatted);
                 return;
             }
-            "-h" | "--help" => {
-                print!("{}", HELP_TEXT);
-                return;
-            }
-            "-s" | "--stdin" | "--format" => {
-                use std::io::Read;
-                let mut input = String::new();
-                if let Err(e) = io::stdin().read_to_string(&mut input) {
-                    eprintln!("Error reading standard input: {}", e);
-                    std::process::exit(1);
-                }
-                match pnuts_lsp::format_code(&input).await {
-                    Ok(formatted) => {
-                        print!("{}", formatted);
-                        return;
-                    }
-                    Err(e) => {
-                        eprintln!("Formatting failed: {}", e);
-                        // Output original input so editors do not wipe buffer content
-                        print!("{}", input);
-                        std::process::exit(0);
-                    }
-                }
-            }
-            "--stdio" => {
-                // Default mode: run LSP JSON-RPC over stdio
-            }
-            unknown => {
-                eprintln!("Unknown argument: {}\n", unknown);
-                eprint!("{}", HELP_TEXT);
-                std::process::exit(1);
+            Err(e) => {
+                eprintln!("Formatting failed: {}", e);
+                // Output original input so editors do not wipe buffer content
+                print!("{}", input);
+                std::process::exit(0);
             }
         }
     }

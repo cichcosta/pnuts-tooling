@@ -54,11 +54,13 @@
   - Correção: `documentSelector` atualizado para englobar `{ language: 'pnuts' }`, `{ language: 'groovy' }`, bem como os esquemas explícitos `vscode-remote`, `vscode-vfs`, `file` e `untitled`.
   - `activate` tornado assíncrono com `await client.start()`, flags `--stdio` tratadas no `main.rs` e resiliência de borda de token implementada em `navigation.rs` (`find_definition` e `find_hover`).
   - VSIX `0.3.9` gerado e instalado no VS Code Server.
-- [x] **1.3. Portabilidade da Gramática e Formatação em Buffers Não Salvos no Zed (`zed-pnuts`):**
-  - Mantido o caminho local Windows (`file:///C:/Users/chsilva/AppData/Local/Zed/extensions/pnuts-tooling`) no `[grammars.pnuts]` pois a URL remota GitHub ainda não existe/não foi publicada (evitando erro 404 no build da gramática no Zed).
-  - Removido `language_servers = ["pnuts-lsp"]` do `languages/pnuts/config.toml` para que o Zed não tente forçar o LSP como formatador padrão em buffers não salvos (`untitled:`).
-  - Preservado o comando externo de formatação (`external`) para garantir que buffers não salvos continuem sendo formatados normalmente.
-  - Sincronizado `extension.wasm` e binários nativos de fallback.
+- [x] **1.3. Portabilidade da Gramática, Formatação em Buffers Não Salvos e Instaladores Unificados no Zed (`zed-pnuts`):**
+  - Identificada a causa raiz da falha em buffers não salvos: no Zed, buffers `untitled` rodam estritamente no cliente local (Windows), enquanto buffers com caminho no disco rodam no servidor remoto (Linux via SSH). O comando `pnuts-lsp` falhava no Windows por ausência no `PATH` do usuário.
+  - Implementado parser flexível e agnóstico de ordem de argumentos CLI no `pnuts-lsp/src/main.rs`.
+  - Recompilados binários otimizados de release para Linux e Windows.
+  - Criado script de instalação e higienização automática para Linux/macOS: [`scripts/install-zed.sh`](file:///home/chsilva/personal/projects/pnuts-tooling/scripts/install-zed.sh).
+  - Criado script de instalação e higienização automática para Windows: [`scripts/install-zed.ps1`](file:///home/chsilva/personal/projects/pnuts-tooling/scripts/install-zed.ps1) (adiciona ao PATH automaticamente e higieniza o `settings.json` do Zed sem exigir configuração manual).
+  - Removidos caminhos fixos de usuário de `zed-pnuts/src/lib.rs` para suportar qualquer usuário.
 - [ ] **1.4. Validar e Empacotar VSIX atualizado:**
   - Gerar e validar o novo pacote `vscode-pnuts`.
 
@@ -86,4 +88,4 @@
 | 2026-09-17 | Levantamento inicial de disparidades e documentação | ✅ Concluído | Identificada duplicação de autocomplete e falha de Go to Definition no VS Code. Mantido formatador externo no Zed para buffers `untitled`. |
 | 2026-09-18 | 1.1 Eliminar duplicação de autocomplete no VS Code | ✅ Concluído | Provedor JS tornado fallback condicional (`!client`), snippets limpos para conter apenas blocos de controle, VSIX 0.3.8 gerado. |
 | 2026-09-18 | 1.2 Corrigir Go to Definition e Autocomplete no VS Code | ✅ Concluído | Identificada restrição de scheme (`vscode-remote`), documentSelector corrigido para todas as origens, `client.start()` tornado assíncrono, VSIX 0.3.9 instalado e testado 100%. |
-| 2026-09-18 | 1.3 Zed Extension & Buffers Não Salvos | ⏸️ Pausado | Arquivos salvos (.pnuts) funcionam 100% no Zed (LSP, Definition, Autocomplete). Corrigido prefixo verbatim `\\?\` no `formatter.rs` para Windows. Criado `~/.zshenv` para PATH SSH. Pendente ajuste fino de disparo do external formatter no client Zed. |
+| 2026-09-18 | 1.3 Zed Extension & Buffers Não Salvos | ✅ Concluído | Identificado que buffers `untitled` rodam no cliente local Windows e arquivos salvos no SSH Linux. Criados scripts de instalação e higienização automática (`install-zed.sh` e `install-zed.ps1`), tornando PATH e `settings.json` automáticos e transparentes. |

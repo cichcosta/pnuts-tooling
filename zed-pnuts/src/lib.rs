@@ -33,8 +33,6 @@ impl Extension for PnutsExtension {
 
                     if let Some(lad) = localappdata {
                         let base = lad.trim_end_matches(['/', '\\']);
-                        format!("{base}/Zed/extensions/pnuts-tooling/zed-pnuts/bin/pnuts-lsp.exe")
-                    } else {
                         let root = worktree.root_path();
                         let trimmed_root = root.trim_end_matches(['/', '\\']);
                         if trimmed_root.ends_with("zed-pnuts") {
@@ -42,8 +40,11 @@ impl Extension for PnutsExtension {
                         } else if trimmed_root.contains("pnuts-tooling") {
                             format!("{trimmed_root}/zed-pnuts/bin/pnuts-lsp.exe")
                         } else {
-                            "C:/Users/chsilva/AppData/Local/Zed/extensions/pnuts-tooling/zed-pnuts/bin/pnuts-lsp.exe".to_string()
+                            // Standard installed Zed extension location
+                            format!("{base}/Zed/extensions/installed/pnuts/bin/pnuts-lsp.exe")
                         }
+                    } else {
+                        "pnuts-lsp.exe".to_string()
                     }
                 })
         } else {
