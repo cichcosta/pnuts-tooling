@@ -1112,7 +1112,8 @@ async function activate(context) {
                         { scheme: 'vscode-vfs', language: 'pnuts' },
                         { scheme: 'file', language: 'groovy' },
                         { scheme: 'untitled', language: 'groovy' },
-                        { scheme: 'vscode-remote', language: 'groovy' }
+                        { scheme: 'vscode-remote', language: 'groovy' },
+                        { scheme: 'vscode-vfs', language: 'groovy' }
                     ],
                     outputChannel: lspChannel
                 };

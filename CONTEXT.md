@@ -96,8 +96,8 @@ Ao modificar `grammar.js`, NUNCA reintroduzir os seguintes erros:
   1. **Remoção de duplicidade no VS Code (Concluído):** Provedor JS agora atua apenas como fallback condicional (`!client`) e catálogo de snippets mantido estritamente para blocos estruturais de controle de fluxo, eliminando duplicidade com as funções nativas do LSP.
   2. **Correção de Go to Definition e Autocomplete no VS Code (Concluído):** Corrigido o `documentSelector` que filtrava documentos por `scheme: 'file'`, o que excluía buffers remotos via Remote-SSH (`vscode-remote://`). `activate` tornado assíncrono com `await client.start()`, adicionado suporte a `--stdio` no `main.rs`, trigger `$`, e resiliência de borda em `navigation.rs`. VSIX `0.3.9` gerado e instalado.
   3. **Portabilidade, Buffers Não Salvos e Instaladores Unificados no Zed (Concluído):** Identificada assimetria entre execução local (Windows) para buffers `untitled` e remota (Linux via SSH) para buffers de worktree. Criados instaladores automáticos (`scripts/install-zed.sh` e `scripts/install-zed.ps1`) que adicionam o executável ao PATH e higienizam o `settings.json` eliminando caminhos manuais. Resolução em `zed-pnuts/src/lib.rs` tornada genérica sem hardcoded username.
-  4. **Empacotamento (Próximo):** Validar e empacotar novo VSIX atualizado.
+  4. **Empacotamento e Suporte Groovy no VS Code (Concluído):** VSIX `0.3.11` empacotado e instalado no VS Code Server (`code-server`). Adicionada contribuição formal para linguagem `groovy`, snippets estruturais, seletor de scheme `vscode-vfs` e teste automatizado E2E de ciclo de vida e completions em `.groovy` adicionado com sucesso.
 - **Próximas Fases:**
-  - **Passo 2:** Oficializar suporte a Groovy (`.groovy`) no VS Code e Zed.
-  - **Passo 3:** Implementar Rename Symbol, Find References e Range Formatting no `pnuts-lsp`.
+  - **Passo 2.2:** Declarar suporte a Groovy no `extension.toml` do Zed (quando for retomar o Zed).
+  - **Passo 3:** Implementar novas capacidades core no `pnuts-lsp`: Rename Symbol (`textDocument/rename`), Find References (`textDocument/references`) e Range Formatting (`textDocument/rangeFormatting`).
 

@@ -762,5 +762,95 @@ async fn test_lsp_navigation_lifecycle() {
     backend.shutdown().await.unwrap();
 }
 
+#[tokio::test]
+async fn test_lsp_groovy_document_lifecycle_and_completions() {
+    let (service, _socket) = LspService::new(Backend::new);
+    let backend = service.inner();
 
+    let init_params = InitializeParams {
+        process_id: Some(42),
+        #[allow(deprecated)]
+        root_path: None,
+        root_uri: Some(Url::parse("file:///workspace").unwrap()),
+        initialization_options: None,
+        capabilities: ClientCapabilities::default(),
+        trace: None,
+        workspace_folders: None,
+        client_info: Some(ClientInfo {
+            name: "VSCode".to_string(),
+            version: Some("1.90.0".to_string()),
+        }),
+        locale: None,
+    };
 
+    backend.initialize(init_params).await.expect("initialize failed");
+    backend.initialized(InitializedParams {}).await;
+
+    let uri = Url::parse("file:///workspace/sample.groovy").unwrap();
+    let code = r#"
+        import java.util.ArrayList
+
+        function processOrders(orders) {
+            def totalAmount = 0
+            for (order in orders) {
+                totalAmount += order.value
+            }
+            return totalAmount
+        }
+    "#;
+
+    backend
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "groovy".to_string(),
+                version: 1,
+                text: code.to_string(),
+            },
+        })
+        .await;
+
+    // 1. Completion inside processOrders
+    let comp_params = CompletionParams {
+        text_document_position: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            position: Position { line: 6, character: 16 },
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+        context: None,
+    };
+
+    let comp_res = backend.completion(comp_params).await.unwrap();
+    assert!(comp_res.is_some(), "Completion for groovy document must return items");
+    if let Some(CompletionResponse::Array(items)) = comp_res {
+        let labels: Vec<String> = items.into_iter().map(|i| i.label).collect();
+        assert!(labels.contains(&"totalAmount".to_string()), "Scope completion must suggest totalAmount");
+        assert!(labels.contains(&"orders".to_string()), "Parameter completion must suggest orders");
+        assert!(labels.contains(&"processOrders".to_string()), "Function completion must suggest processOrders");
+    } else {
+        panic!("Expected CompletionResponse::Array");
+    }
+
+    // 2. Document symbols
+    #[allow(deprecated)]
+    let sym_params = DocumentSymbolParams {
+        text_document: TextDocumentIdentifier { uri: uri.clone() },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+    };
+
+    let sym_res = backend.document_symbol(sym_params).await.unwrap();
+    assert!(sym_res.is_some());
+    if let Some(DocumentSymbolResponse::Nested(syms)) = sym_res {
+        assert!(syms.iter().any(|s| s.name == "processOrders"));
+    }
+
+    backend
+        .did_close(DidCloseTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri },
+        })
+        .await;
+
+    backend.shutdown().await.unwrap();
+}

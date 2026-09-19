@@ -61,13 +61,13 @@
   - Criado script de instalação e higienização automática para Linux/macOS: [`scripts/install-zed.sh`](file:///home/chsilva/personal/projects/pnuts-tooling/scripts/install-zed.sh).
   - Criado script de instalação e higienização automática para Windows: [`scripts/install-zed.ps1`](file:///home/chsilva/personal/projects/pnuts-tooling/scripts/install-zed.ps1) (adiciona ao PATH automaticamente e higieniza o `settings.json` do Zed sem exigir configuração manual).
   - Removidos caminhos fixos de usuário de `zed-pnuts/src/lib.rs` para suportar qualquer usuário.
-- [ ] **1.4. Validar e Empacotar VSIX atualizado:**
-  - Gerar e validar o novo pacote `vscode-pnuts`.
+- [x] **1.4. Validar e Empacotar VSIX atualizado:**
+  - Gerado pacote `vscode-pnuts-0.3.11.vsix` contendo os binários atualizados com tratamento de flags flexíveis (`--stdio`), dynamic binary resolution e esquemas de buffer remotos. Instalado com sucesso no VS Code Server.
 
 ### 🎯 Passo 2: Oficializar o Suporte a Groovy (`.groovy`)
-- [ ] **2.1. VS Code:** Adicionar suporte a `.groovy` no `package.json` (`activationEvents`, `languages`, `documentSelector`).
+- [x] **2.1. VS Code:** Adicionar suporte a `.groovy` no `package.json` (`activationEvents`, `languages`, `documentSelector`, `snippets`).
 - [ ] **2.2. Zed:** Declarar suporte a Groovy no `extension.toml`.
-- [ ] **2.3. Testes:** Validar formatação e completion em scripts `.groovy` de exemplo.
+- [x] **2.3. Testes:** Validar formatação e completion em scripts `.groovy` de exemplo (implementado teste E2E `test_lsp_groovy_document_lifecycle_and_completions`).
 
 ### 🎯 Passo 3: Implementação de Novas Capacidades Core no `pnuts-lsp`
 - [ ] **3.1. Rename Symbol (`textDocument/rename`):**
@@ -89,3 +89,5 @@
 | 2026-09-18 | 1.1 Eliminar duplicação de autocomplete no VS Code | ✅ Concluído | Provedor JS tornado fallback condicional (`!client`), snippets limpos para conter apenas blocos de controle, VSIX 0.3.8 gerado. |
 | 2026-09-18 | 1.2 Corrigir Go to Definition e Autocomplete no VS Code | ✅ Concluído | Identificada restrição de scheme (`vscode-remote`), documentSelector corrigido para todas as origens, `client.start()` tornado assíncrono, VSIX 0.3.9 instalado e testado 100%. |
 | 2026-09-18 | 1.3 Zed Extension & Buffers Não Salvos | ✅ Concluído | Identificado que buffers `untitled` rodam no cliente local Windows e arquivos salvos no SSH Linux. Criados scripts de instalação e higienização automática (`install-zed.sh` e `install-zed.ps1`), tornando PATH e `settings.json` automáticos e transparentes. |
+| 2026-09-18 | 1.4 Validar e Empacotar VSIX atualizado | ✅ Concluído | Pacote `vscode-pnuts-0.3.11.vsix` gerado com os binários de release e instalado com sucesso no VS Code Server (`code-server`). |
+| 2026-09-18 | 2.1 & 2.3 Suporte Oficial a Groovy no VS Code e Testes E2E | ✅ Concluído | Declarada linguagem `groovy`, snippets e seletor `vscode-vfs` no VS Code. Implementado teste E2E automatizado de ciclo de vida e completions para documentos Groovy. |

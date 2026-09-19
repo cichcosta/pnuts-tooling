@@ -2,7 +2,7 @@
   "name": "vscode-pnuts",
   "displayName": "Pnuts Language Support",
   "description": "Syntax highlighting and zero-dependency standalone Topiary-based code formatting for the Pnuts language",
-  "version": "0.3.10",
+  "version": "0.3.11",
   "publisher": "pnuts-tooling",
   "repository": {
     "type": "git",
@@ -49,6 +49,17 @@
           "light": "./icons/pnuts.svg",
           "dark": "./icons/pnuts.svg"
         }
+      },
+      {
+        "id": "groovy",
+        "aliases": [
+          "Groovy",
+          "groovy"
+        ],
+        "extensions": [
+          ".groovy"
+        ],
+        "configuration": "./language-configuration.json"
       }
     ],
     "grammars": [
@@ -61,6 +72,10 @@
     "snippets": [
       {
         "language": "pnuts",
+        "path": "./snippets/pnuts.json"
+      },
+      {
+        "language": "groovy",
         "path": "./snippets/pnuts.json"
       }
     ],
