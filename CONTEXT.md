@@ -67,39 +67,45 @@ Ao modificar `grammar.js`, NUNCA reintroduzir os seguintes erros:
 ---
 
 
-## 4. Editores Suportados
+## 4. Editores Suportados (REGRA ESTRITA: APENAS VS CODE)
 
-- **VSCode (`vscode-pnuts`):**
-  - Empacotado como extensão `.vsix`.
-  - Atualmente autossuficiente (executa no host local ou remoto).
-  - Ponto de atenção: `textDocument/definition` (Go to Definition) precisa de ajuste; autocomplete duplicado por redundância do provider JS.
-- **Zed (`zed-pnuts`):**
-  - Instalado como Dev Extension (`zed: install dev extension`).
-  - Utiliza gramática WASI compilada pelo próprio Zed.
-  - **Decisão Arquitetural Consolidada:** O formatador externo (`external` chamando `pnuts-lsp --stdin`) é mantido intencionalmente no `.zed/settings.json` para garantir formatação instantânea em buffers não salvos (`untitled:`), contornando limitações do Zed via LSP em rascunhos.
-  - `Ctrl + Click` (Go to Definition) e Completion já funcionam de forma limpa.
+- **VS Code (`vscode-pnuts`) - EDITOR ÚNICO E EXCLUSIVO DO PROJETO:**
+  - Empacotado como extensão `.vsix` (`vscode-pnuts-0.3.13.vsix`).
+  - Executa no host local ou no VS Code Server (`code-server` / Remote-SSH).
+  - Suporta `.pnuts`, `.pnut` e `.groovy`.
+  - **REGRA PERMANENTE:** O Zed foi COMPLETAMENTE ABANDONADO e descontinuado. NUNCA mencione, olhe, sugira ou altere qualquer arquivo relacionado ao Zed (`zed-pnuts`). Todo o foco do projeto é 100% exclusivo no VS Code.
 
 ---
 
 ## 5. Diretrizes para Agentes de IA
 
-1. **Manter o Foco:** Trabalhar estritamente nas fases definidas no `LSP_ROADMAP.md` e na matriz em `docs/ROADMAP_PARIDADE_VSCODE_ZED.md`.
-2. **Verificação de Regressão:** Antes de concluir qualquer alteração no parser ou formatador, rodar os testes de validação contra a pasta `pnuts-samples/` e contra a base de testes.
-3. **Atualização Contínua:** Sempre que uma funcionalidade for concluída ou um bug crítico for corrigido, documentar neste arquivo (`CONTEXT.md`) e atualizar o checklist em `docs/ROADMAP_PARIDADE_VSCODE_ZED.md`.
+1. **Foco Exclusivo no VS Code:** Trabalhar apenas nas ferramentas do VS Code e no core do `pnuts-lsp`.
+2. **NUNCA Olhar para o Zed:** Não gastar tokens nem tempo com Zed.
+3. **Passo a Passo Interativo:** Fazer uma única coisa por vez e validar com o usuário antes de avançar.
+4. **Verificação de Regressão:** Antes de concluir qualquer alteração no parser ou formatador, rodar os testes (`cargo test`).
 
 ---
 
-## 6. Estado Atual e Ponto de Retomada Imediato
+## 6. Estado Atual e Roteiro Imediato para Retomada ("vamos continuar")
 
-- **Documento Operacional Central:** `docs/ROADMAP_PARIDADE_VSCODE_ZED.md`.
-- **Fase Atual (Passo 1):** **Alinhamento, Eliminação de Ruídos e Correção de Definição (IMEDIATO)**.
-  1. **Remoção de duplicidade no VS Code (Concluído):** Provedor JS agora atua apenas como fallback condicional (`!client`) e catálogo de snippets mantido estritamente para blocos estruturais de controle de fluxo, eliminando duplicidade com as funções nativas do LSP.
-  2. **Correção de Go to Definition e Autocomplete no VS Code (Concluído):** Corrigido o `documentSelector` que filtrava documentos por `scheme: 'file'`, o que excluía buffers remotos via Remote-SSH (`vscode-remote://`). `activate` tornado assíncrono com `await client.start()`, adicionado suporte a `--stdio` no `main.rs`, trigger `$`, e resiliência de borda em `navigation.rs`. VSIX `0.3.9` gerado e instalado.
-  3. **Portabilidade, Buffers Não Salvos e Instaladores Unificados no Zed (Concluído):** Identificada assimetria entre execução local (Windows) para buffers `untitled` e remota (Linux via SSH) para buffers de worktree. Criados instaladores automáticos (`scripts/install-zed.sh` e `scripts/install-zed.ps1`) que adicionam o executável ao PATH e higienizam o `settings.json` eliminando caminhos manuais. Resolução em `zed-pnuts/src/lib.rs` tornada genérica sem hardcoded username.
-  4. **Empacotamento e Suporte Groovy no VS Code (Concluído):** VSIX `0.3.11` empacotado e instalado no VS Code Server (`code-server`). Adicionada contribuição formal para linguagem `groovy`, snippets estruturais, seletor de scheme `vscode-vfs` e teste automatizado E2E de ciclo de vida e completions em `.groovy` adicionado com sucesso.
-  5. **Rename Symbol e prepareRename (Concluído - Passo 3.1):** Implementado módulo `rename.rs` com suporte completo a `textDocument/rename` e `textDocument/prepareRename` no `pnuts-lsp`. Validação de identificadores válidos, proteção estrita contra renomeação acidental de palavras-chave e built-ins (`println`, `getRows`, etc.), e isolamento seguro de escopo (parâmetros, variáveis locais e funções). VSIX `0.3.12` gerado e instalado no VS Code Server. Todos os 49 testes automatizados passando 100%.
-  6. **Realce de Sintaxe do Groovy no VS Code (Concluído - Passo 2.4):** Criada gramática TextMate dedicada em `syntaxes/groovy.tmLanguage.json` para `.groovy` no `vscode-pnuts`. Suporte a anotações (`@CompileStatic`), strings interpoladas (`${...}`, `$var`), multiline (`"""`, `'''`), regex slashy (`/.../`, `$/.../$`), operadores Groovy (Elvis `?:`, safe navigation `?.`, spread `*.`, spaceship `<=>`, method pointer `.&`), tipos primitivos e classes comuns. VSIX `0.3.13` gerado e instalado no VS Code Server.
-  7. **Find References (Concluído - Passo 3.2):** Implementado módulo `references.rs` com suporte nativo a `textDocument/references`. Resolução de escopo para funções, parâmetros e variáveis locais. Suporte estrito a `ReferenceContext { include_declaration }` para incluir ou excluir a declaração de acordo com o pedido do cliente LSP.
-  8. **Range Formatting (Concluído - Passo 3.3):** Implementado `format_range` em `formatter.rs` com preservação inteligente de indentação base, formatação isolada do snippet e re-injeção sem desestruturar o código externo. Capability `document_range_formatting_provider` exposta e testada via E2E.
-  9. **Suporte a Groovy no Zed (Concluído - Passo 2.2):** Criada configuração em `languages/groovy/config.toml` e queries (`brackets.scm`, `highlights.scm`, `indents.scm`, `outline.scm`). `extension.toml` atualizado para associar o `pnuts-lsp` às linguagens `["Pnuts", "Groovy"]` e URL do repositório da gramática tornada portátil sem caminhos locais fixos.
-- **Métricas de Qualidade:** 57 testes automatizados (45 testes unitários e 12 testes de integração E2E com Tower-LSP) passando com 100% de sucesso.
+Quando o usuário retornar e disser "vamos continuar", apresentar IMEDIATAMENTE os passos de teste abaixo:
+
+### ⚠️ AÇÃO OBRIGATÓRIA ANTES DE TESTAR:
+O VS Code Server precisa recarregar a janela para descarregar a versão antiga em memória (`0.3.12`) e inicializar a nova versão (`0.3.13`):
+- Pressione `Ctrl + Shift + P` -> execute **`Developer: Reload Window`** (Recarregar Janela).
+*(Sem o reload, a janela aberta continua rodando a versão anterior que não possuía `rangeFormattingProvider` registrado no LSP, fazendo o VS Code acionar o fallback de formatar o arquivo inteiro).*
+
+### O que o usuário deve testar na v0.3.13:
+1. **Format Selection (`Ctrl + K, Ctrl + F`):**
+   - Selecionar apenas 2 ou 3 linhas desformatadas dentro de uma função.
+   - Pressionar `Ctrl + K, Ctrl + F`.
+   - Confirmar que **apenas a seleção** é formatada, mantendo a indentação e o restante do arquivo intocados.
+2. **Colorização de Sintaxe do Groovy (`.groovy`):**
+   - Abrir qualquer script `.groovy`.
+   - Confirmar o realce vivo de cores: anotações (`@Override`, `@CompileStatic`), palavras-chave (`def`), strings interpoladas (`"${var}"`), strings multilinhas (`"""`) e operadores.
+3. **Find References (`Shift + F12`):**
+   - Posicionar o cursor em uma função ou variável e apertar `Shift + F12`.
+   - Confirmar se o painel do VS Code lista todas as referências no arquivo.
+4. **Rename Symbol (`F2`):**
+   - Posicionar o cursor em uma variável local ou parâmetro, apertar `F2`, digitar o novo nome e dar Enter.
+
