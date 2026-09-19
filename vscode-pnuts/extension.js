@@ -1110,10 +1110,16 @@ async function activate(context) {
                         { scheme: 'untitled', language: 'pnuts' },
                         { scheme: 'vscode-remote', language: 'pnuts' },
                         { scheme: 'vscode-vfs', language: 'pnuts' },
+                        { scheme: 'sftp', language: 'pnuts' },
+                        { scheme: 'sshfs', language: 'pnuts' },
                         { scheme: 'file', language: 'groovy' },
                         { scheme: 'untitled', language: 'groovy' },
                         { scheme: 'vscode-remote', language: 'groovy' },
-                        { scheme: 'vscode-vfs', language: 'groovy' }
+                        { scheme: 'vscode-vfs', language: 'groovy' },
+                        { scheme: 'sftp', language: 'groovy' },
+                        { scheme: 'sshfs', language: 'groovy' },
+                        'pnuts',
+                        'groovy'
                     ],
                     outputChannel: lspChannel
                 };
@@ -1134,10 +1140,12 @@ async function activate(context) {
                 log(`Started Pnuts Language Server (LSP) from: ${lspBinary}`);
             } catch (err) {
                 log(`Failed to start Pnuts Language Server: ${err.message}`);
+                vscode.window.showErrorMessage(`Pnuts LSP Error: ${err.message}`);
                 client = null;
             }
         } else {
             log('Pnuts LSP binary not found. Using native completion and formatting providers.');
+            vscode.window.showWarningMessage('Pnuts LSP executable binary not found. Using basic fallback mode.');
         }
     }
 
@@ -1177,6 +1185,16 @@ async function activate(context) {
             }
         });
         context.subscriptions.push(formatter);
+
+        // Fallback range formatter: prevents VS Code from formatting whole file when selection format is requested!
+        const rangeFormatter = vscode.languages.registerDocumentRangeFormattingEditProvider(['pnuts', 'groovy'], {
+            async provideDocumentRangeFormattingEdits(document, range) {
+                log('Selection formatting requested while LSP is inactive; avoiding whole-file fallback.');
+                return [];
+            }
+        });
+        context.subscriptions.push(rangeFormatter);
+
         log('Registered fallback Topiary DocumentFormattingEditProvider (LSP inactive).');
     } else {
         log('Using Pnuts Language Server native high-performance formatter.');
