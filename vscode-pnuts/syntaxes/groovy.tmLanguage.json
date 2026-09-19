@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
   "name": "Groovy",
-  "scopeName": "source.pnuts.groovy",
+  "scopeName": "source.groovy",
   "patterns": [
     {
       "include": "#comments"
@@ -364,7 +364,7 @@
         },
         {
           "name": "constant.numeric.decimal.groovy",
-          "match": "\\b\\d+(\\.\\d+)?([eE][+-]?\\d+)?[gGfFdDlL]?\\b|\\.\\d+([eE][+-]?\d+)?[gGfFdDlL]?\\b"
+          "match": "\\b\\d+(\\.\\d+)?([eE][+-]?\\d+)?[gGfFdDlL]?\\b|\\.\\d+([eE][+-]?\\d+)?[gGfFdDlL]?\\b"
         }
       ]
     },

@@ -739,11 +739,19 @@ int main(int argc, char **argv) {
     char query_file[1024] = {0};
     char query_dir[1024] = {0};
 
-    // Candidate 1: relative to self_dir (e.g. self is in zed-pnuts/bin/)
-    snprintf(topiary_bin, sizeof(topiary_bin), "%s" PATH_SEP_STR ".." PATH_SEP_STR "resources" PATH_SEP_STR "bin" PATH_SEP_STR PLATFORM_DIR PATH_SEP_STR TOPIARY_NAME, self_dir);
-    snprintf(grammar_dll, sizeof(grammar_dll), "%s" PATH_SEP_STR ".." PATH_SEP_STR "resources" PATH_SEP_STR "grammars" PATH_SEP_STR PLATFORM_DIR PATH_SEP_STR GRAMMAR_NAME, self_dir);
-    snprintf(query_file, sizeof(query_file), "%s" PATH_SEP_STR ".." PATH_SEP_STR "resources" PATH_SEP_STR "queries" PATH_SEP_STR "pnuts.scm", self_dir);
-    snprintf(query_dir, sizeof(query_dir), "%s" PATH_SEP_STR ".." PATH_SEP_STR "resources" PATH_SEP_STR "queries", self_dir);
+    // Candidate 0: self is in resources/bin/<platform>/ (e.g. inside vscode-pnuts extension bundle)
+    snprintf(topiary_bin, sizeof(topiary_bin), "%s" PATH_SEP_STR TOPIARY_NAME, self_dir);
+    snprintf(grammar_dll, sizeof(grammar_dll), "%s" PATH_SEP_STR ".." PATH_SEP_STR ".." PATH_SEP_STR "grammars" PATH_SEP_STR PLATFORM_DIR PATH_SEP_STR GRAMMAR_NAME, self_dir);
+    snprintf(query_file, sizeof(query_file), "%s" PATH_SEP_STR ".." PATH_SEP_STR ".." PATH_SEP_STR "queries" PATH_SEP_STR "pnuts.scm", self_dir);
+    snprintf(query_dir, sizeof(query_dir), "%s" PATH_SEP_STR ".." PATH_SEP_STR ".." PATH_SEP_STR "queries", self_dir);
+
+    // Candidate 1: relative to self_dir (e.g. self is in bin/ next to resources/)
+    if (!file_exists(topiary_bin) || !file_exists(grammar_dll)) {
+        snprintf(topiary_bin, sizeof(topiary_bin), "%s" PATH_SEP_STR ".." PATH_SEP_STR "resources" PATH_SEP_STR "bin" PATH_SEP_STR PLATFORM_DIR PATH_SEP_STR TOPIARY_NAME, self_dir);
+        snprintf(grammar_dll, sizeof(grammar_dll), "%s" PATH_SEP_STR ".." PATH_SEP_STR "resources" PATH_SEP_STR "grammars" PATH_SEP_STR PLATFORM_DIR PATH_SEP_STR GRAMMAR_NAME, self_dir);
+        snprintf(query_file, sizeof(query_file), "%s" PATH_SEP_STR ".." PATH_SEP_STR "resources" PATH_SEP_STR "queries" PATH_SEP_STR "pnuts.scm", self_dir);
+        snprintf(query_dir, sizeof(query_dir), "%s" PATH_SEP_STR ".." PATH_SEP_STR "resources" PATH_SEP_STR "queries", self_dir);
+    }
 
     // Candidate 2: self is in zed-pnuts/ (root of extension)
     if (!file_exists(topiary_bin)) {
