@@ -112,21 +112,14 @@ A ordem de trabalho acordada para as IDEs é rigorosamente sequencial:
 
 ---
 
-## 7. Diagnóstico Atual e Roteiro de Validação (v0.3.13)
+## 7. Diagnóstico e Correções Consolidadas (v0.3.15)
 
-### Contexto Técnico Importante:
-- A máquina hospedeira Linux (`fedevbox.local`) reiniciou às 16:17.
-- Para os recursos da extensão (`0.3.13`) e do `pnuts-lsp` responderem, a sessão do VS Code precisa estar conectada via **Remote-SSH** ao `fedevbox.local` (exibindo `SSH: fedevbox.local` no canto inferior esquerdo). Caso o VS Code esteja rodando puramente no Windows de forma desconectada ou via SFTP local, os binários e a extensão do Linux não são executados.
+### Causas Raízes Identificadas e Sanadas:
+1. **Groovy Colors:** O arquivo [`syntaxes/groovy.tmLanguage.json`](file:///home/chsilva/personal/projects/pnuts-tooling/vscode-pnuts/syntaxes/groovy.tmLanguage.json) possuía um erro de escape de JSON na linha 367 (`\d+` em vez de `\\d+`), o que fazia o parser interno do VS Code disparar um `SyntaxError` e abortar completamente o carregamento da gramática, deixando arquivos `.groovy` sem realce.
+2. **Format Selection:** O servidor `pnuts-lsp` busca o binário `pnuts-format` para executar a formatação e pós-processamento, porém esse executável só existia na pasta legada do Zed e nunca havia sido incluído no pacote da extensão do VS Code (`resources/bin/`). Compilamos e incluímos `pnuts-format` (Linux) e `pnuts-format.exe` (Windows) diretamente em `vscode-pnuts/resources/bin/`.
+3. **Paridade Windows/Linux:** Compilamos via `cargo-zigbuild` o `pnuts-lsp.exe` e `pnuts-format.exe` com 100% de paridade das novas funcionalidades de range formatting, references e rename.
 
-### O que validar na v0.3.13 com o VS Code conectado:
-1. **Colorização de Sintaxe do Groovy (`.groovy`):**
-   - Abrir um arquivo `.groovy` e confirmar o realce rico de cores (anotações `@Override`, keywords `def`, strings interpoladas `"${var}"`, multilinhas `"""`).
-2. **Format Selection (`Ctrl + K, Ctrl + F`):**
-   - Selecionar 2 ou 3 linhas desformatadas dentro de uma função em `.pnuts` ou `.groovy`.
-   - Pressionar `Ctrl + K, Ctrl + F` e confirmar que apenas a seleção é formatada sem tocar no resto do arquivo.
-3. **Find References (`Shift + F12`):**
-   - Cursor sobre função ou variável -> `Shift + F12` -> verificar referências listadas no painel.
-4. **Rename Symbol (`F2`):**
-   - Cursor sobre variável/parâmetro -> `F2` -> digitar novo nome -> Enter.
+### Arquivo Empacotado:
+- [`vscode-pnuts-0.3.15.vsix`](file:///home/chsilva/personal/projects/pnuts-tooling/vscode-pnuts/vscode-pnuts-0.3.15.vsix) (instalado no VS Code Server e disponível para instalação no Windows).
 
 
