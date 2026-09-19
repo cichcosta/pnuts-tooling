@@ -3,7 +3,7 @@ use tower_lsp::lsp_types::*;
 use tree_sitter::{Node, Tree};
 
 /// Keywords supported by Pnuts and Groovy scripting.
-const KEYWORDS: &[(&str, &str)] = &[
+pub(crate) const KEYWORDS: &[(&str, &str)] = &[
     ("function", "Defines a function: function name(args) { ... }"),
     ("class", "Defines a class: class Name { ... }"),
     ("if", "Conditional branching: if (condition) { ... }"),
@@ -115,7 +115,7 @@ pub(crate) const BUILTIN_FUNCTIONS: &[(&str, &str, &str, &str)] = &[
 ];
 
 /// Common Java standard library and framework classes frequently used in Pnuts scripts.
-const COMMON_JAVA_CLASSES: &[(&str, &str)] = &[
+pub(crate) const COMMON_JAVA_CLASSES: &[(&str, &str)] = &[
     ("List", "java.util.List interface"),
     ("ArrayList", "java.util.ArrayList resizable array implementation"),
     ("Map", "java.util.Map key-value collection interface"),

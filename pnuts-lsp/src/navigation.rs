@@ -242,7 +242,7 @@ pub fn find_document_symbols(tree: &Tree, source: &str) -> Vec<DocumentSymbol> {
     symbols
 }
 
-fn get_name_identifier<'a>(node: Node<'a>) -> Option<Node<'a>> {
+pub fn get_name_identifier<'a>(node: Node<'a>) -> Option<Node<'a>> {
     for i in 0..node.child_count() {
         if let Some(child) = node.child(i) {
             if child.kind() == "identifier" || child.kind() == "property_identifier" {
@@ -346,7 +346,7 @@ fn collect_symbols_recursive(
     }
 }
 
-fn find_function_or_method_def<'a>(
+pub fn find_function_or_method_def<'a>(
     node: Node<'a>,
     source: &str,
     target_name: &str,
@@ -371,7 +371,7 @@ fn find_function_or_method_def<'a>(
     None
 }
 
-fn find_parameter_in_func<'a>(
+pub fn find_parameter_in_func<'a>(
     func_node: Node<'a>,
     source: &str,
     target_name: &str,
@@ -402,7 +402,7 @@ fn find_parameter_in_func<'a>(
     None
 }
 
-fn find_assignment_def<'a>(
+pub fn find_assignment_def<'a>(
     root: Node<'a>,
     source: &str,
     target_name: &str,

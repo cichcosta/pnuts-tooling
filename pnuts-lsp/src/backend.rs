@@ -79,6 +79,10 @@ impl LanguageServer for Backend {
                 definition_provider: Some(OneOf::Left(true)),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
+                rename_provider: Some(OneOf::Right(RenameOptions {
+                    prepare_provider: Some(true),
+                    work_done_progress_options: Default::default(),
+                })),
                 ..ServerCapabilities::default()
             },
             server_info: Some(ServerInfo {
@@ -269,6 +273,50 @@ impl LanguageServer for Backend {
             .unwrap_or_default();
 
         Ok(Some(DocumentSymbolResponse::Nested(symbols)))
+    }
+
+    async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
+        let uri = params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
+        let new_name = params.new_name;
+        debug!("textDocument/rename at {}: {:?} to '{}'", uri, position, new_name);
+
+        let Some(text) = self.documents.get_text(&uri).await else {
+            return Ok(None);
+        };
+
+        let edit = self
+            .documents
+            .with_tree(&uri, |tree| {
+                crate::rename::rename_symbol(tree, &text, position, &new_name, &uri)
+            })
+            .await
+            .flatten();
+
+        Ok(edit)
+    }
+
+    async fn prepare_rename(
+        &self,
+        params: TextDocumentPositionParams,
+    ) -> Result<Option<PrepareRenameResponse>> {
+        let uri = params.text_document.uri;
+        let position = params.position;
+        debug!("textDocument/prepareRename at {}: {:?}", uri, position);
+
+        let Some(text) = self.documents.get_text(&uri).await else {
+            return Ok(None);
+        };
+
+        let response = self
+            .documents
+            .with_tree(&uri, |tree| {
+                crate::rename::prepare_rename(tree, &text, position)
+            })
+            .await
+            .flatten();
+
+        Ok(response)
     }
 }
 

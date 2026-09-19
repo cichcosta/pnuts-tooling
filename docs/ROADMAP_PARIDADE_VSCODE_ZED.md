@@ -29,15 +29,15 @@
 | :--- | :---: | :---: | :---: | :--- |
 | **Formatação de Documento** | ✅ Nativo Rust | ✅ Nativo via LSP (+ fallback JS) | ✅ Externo via `--stdin` (+ LSP) | **Estável** (Zed mantém `--stdin` por design para `untitled`). |
 | **Formatação em Range** (`rangeFormatting`) | ❌ Pendente | ❌ Indisponível | ❌ Indisponível | **Pendente** no `pnuts-lsp`. |
-| **Autocomplete / Sugestões** | ✅ Nativo Rust | ⚠️ Duplicado (LSP + JS Provider) | ✅ Limpo (LSP + Buffer Words) | **Ajustar VS Code** para remover duplicidade. |
+| **Autocomplete / Sugestões** | ✅ Nativo Rust | ✅ Limpo (LSP com fallback JS) | ✅ Limpo (LSP + Buffer Words) | **Paridade atingida**. |
 | **Snippets com Placeholders** | ✅ Nativo Rust | ✅ Suportado | ✅ Suportado | **Paridade atingida**. |
 | **Diagnósticos em Tempo Real** | ✅ Nativo Rust | ✅ Sublinhado e Problems tab | ✅ Sublinhado nativo | **Paridade atingida**. |
-| **Go to Definition** | ✅ Implementado | ❌ **NÃO FUNCIONA** | ✅ Funciona (Ctrl + Click) | **Corrigir no VS Code** (Prioritário). |
+| **Go to Definition** | ✅ Implementado | ✅ Funciona (F12 / Ctrl + Click) | ✅ Funciona (Ctrl + Click) | **Paridade atingida**. |
 | **Hover / Documentação** | ✅ Implementado | ✅ Suportado | ⚠️ Depende de atalho no Zed | Paridade no protocolo. |
 | **Document Symbols / Outline** | ✅ Implementado | ✅ Outline tab | ✅ Duplo (`outline.scm` + LSP) | **Paridade atingida**. |
-| **Rename Symbol** (`rename`) | ❌ Pendente | ❌ Indisponível | ❌ Indisponível | **Pendente** no `pnuts-lsp`. |
+| **Rename Symbol** (`rename`) | ✅ Implementado | ✅ Suportado via LSP (F2) | ✅ Suportado via LSP | **Concluído**: AST Tree-sitter com prepareRename e escopo seguro. |
 | **Find References** (`references`)| ❌ Pendente | ❌ Indisponível | ❌ Indisponível | **Pendente** no `pnuts-lsp`. |
-| **Suporte a Groovy (`.groovy`)** | ⚠️ Parser tolerante | ❌ Não registrado no `package.json` | ⚠️ Apenas no `settings.json` | **Pendente**: Oficializar extensões. |
+| **Suporte a Groovy (`.groovy`)** | ✅ Parser tolerante | ✅ Oficializado no `package.json` | ⚠️ Apenas no `settings.json` | **Oficializado no VS Code**; pendente no Zed. |
 | **Portabilidade da Gramática** | N/A | ✅ TextMate empacotado | ⚠️ Caminho absoluto Windows no `extension.toml` | **Ajustar Zed**: Tornar caminho relativo. |
 
 ---
@@ -70,9 +70,10 @@
 - [x] **2.3. Testes:** Validar formatação e completion em scripts `.groovy` de exemplo (implementado teste E2E `test_lsp_groovy_document_lifecycle_and_completions`).
 
 ### 🎯 Passo 3: Implementação de Novas Capacidades Core no `pnuts-lsp`
-- [ ] **3.1. Rename Symbol (`textDocument/rename`):**
-  - Implementar renomeação segura de variáveis locais e funções no arquivo com base na AST Tree-sitter.
-  - Testes unitários e E2E.
+- [x] **3.1. Rename Symbol (`textDocument/rename`):**
+  - Implementado módulo `rename.rs` com resolução de escopos via AST Tree-sitter (parâmetros, variáveis locais e funções).
+  - Implementado `textDocument/prepareRename` para validação prévia de identificadores e proteção de built-ins/keywords.
+  - 5 testes unitários e 1 teste E2E criados e validados. VSIX `0.3.12` gerado e instalado.
 - [ ] **3.2. Find References (`textDocument/references`):**
   - Localizar todas as referências de um símbolo no escopo do documento.
   - Testes unitários e E2E.
@@ -91,3 +92,4 @@
 | 2026-09-18 | 1.3 Zed Extension & Buffers Não Salvos | ✅ Concluído | Identificado que buffers `untitled` rodam no cliente local Windows e arquivos salvos no SSH Linux. Criados scripts de instalação e higienização automática (`install-zed.sh` e `install-zed.ps1`), tornando PATH e `settings.json` automáticos e transparentes. |
 | 2026-09-18 | 1.4 Validar e Empacotar VSIX atualizado | ✅ Concluído | Pacote `vscode-pnuts-0.3.11.vsix` gerado com os binários de release e instalado com sucesso no VS Code Server (`code-server`). |
 | 2026-09-18 | 2.1 & 2.3 Suporte Oficial a Groovy no VS Code e Testes E2E | ✅ Concluído | Declarada linguagem `groovy`, snippets e seletor `vscode-vfs` no VS Code. Implementado teste E2E automatizado de ciclo de vida e completions para documentos Groovy. |
+| 2026-09-18 | 3.1 Rename Symbol (LSP Core & VS Code) | ✅ Concluído | Módulo `rename.rs` com suporte a `rename` e `prepareRename`. Proteção de built-ins e isolamento estrito de parâmetros e escopos locais. VSIX `0.3.12` instalado e 49 testes aprovados. |

@@ -5,6 +5,7 @@ pub mod document;
 pub mod formatter;
 pub mod navigation;
 pub mod parser;
+pub mod rename;
 
 pub use backend::Backend;
 pub use completion::provide_completions;
@@ -13,6 +14,7 @@ pub use document::{Document, DocumentSnapshot, DocumentStore, SharedDocumentStor
 pub use formatter::{format_code, FormatterError};
 pub use navigation::{find_definition, find_document_symbols, find_hover};
 pub use parser::{create_parser, has_errors, parse_pnuts};
+pub use rename::{prepare_rename, rename_symbol};
 
 #[cfg(test)]
 mod tests {

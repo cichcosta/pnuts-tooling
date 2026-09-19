@@ -854,3 +854,119 @@ async fn test_lsp_groovy_document_lifecycle_and_completions() {
 
     backend.shutdown().await.unwrap();
 }
+
+#[tokio::test]
+async fn test_lsp_rename_and_prepare_rename_lifecycle() {
+    let (service, _socket) = LspService::new(Backend::new);
+    let backend = service.inner();
+
+    let init_params = InitializeParams {
+        process_id: Some(42),
+        #[allow(deprecated)]
+        root_path: None,
+        root_uri: Some(Url::parse("file:///workspace").unwrap()),
+        initialization_options: None,
+        capabilities: ClientCapabilities::default(),
+        trace: None,
+        workspace_folders: None,
+        client_info: Some(ClientInfo {
+            name: "VSCode".to_string(),
+            version: Some("1.90.0".to_string()),
+        }),
+        locale: None,
+    };
+
+    let init_res = backend.initialize(init_params).await.unwrap();
+    assert!(
+        init_res.capabilities.rename_provider.is_some(),
+        "ServerCapabilities must expose rename_provider"
+    );
+    backend.initialized(InitializedParams {}).await;
+
+    let uri = Url::parse("file:///workspace/rename_test.pnuts").unwrap();
+    let code = r#"
+        function formatName(firstName, lastName) {
+            fullName = firstName + " " + lastName;
+            return fullName;
+        }
+    "#;
+
+    backend
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "pnuts".to_string(),
+                version: 1,
+                text: code.to_string(),
+            },
+        })
+        .await;
+
+    // 1. prepare_rename on parameter `firstName` (line 1, col 29)
+    let prep_params = TextDocumentPositionParams {
+        text_document: TextDocumentIdentifier { uri: uri.clone() },
+        position: Position { line: 1, character: 30 },
+    };
+
+    let prep_res = backend.prepare_rename(prep_params).await.unwrap();
+    assert!(prep_res.is_some(), "prepare_rename must succeed on firstName");
+    if let Some(PrepareRenameResponse::RangeWithPlaceholder { placeholder, .. }) = prep_res {
+        assert_eq!(placeholder, "firstName");
+    } else {
+        panic!("Expected RangeWithPlaceholder");
+    }
+
+    // 2. rename `firstName` to `givenName`
+    #[allow(deprecated)]
+    let rename_params = RenameParams {
+        text_document_position: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            position: Position { line: 1, character: 30 },
+        },
+        new_name: "givenName".to_string(),
+        work_done_progress_params: Default::default(),
+    };
+
+    let rename_res = backend.rename(rename_params).await.unwrap();
+    assert!(rename_res.is_some(), "rename must return a WorkspaceEdit");
+    let ws_edit = rename_res.unwrap();
+    let changes = ws_edit.changes.expect("WorkspaceEdit must have changes");
+    let file_edits = changes.get(&uri).expect("Changes must contain document URI");
+    assert_eq!(file_edits.len(), 2, "Must rename parameter and its usage");
+    for edit in file_edits {
+        assert_eq!(edit.new_text, "givenName");
+    }
+
+    // 3. prepare_rename on keyword `return` (line 3, col 14) -> must return None
+    let keyword_prep = backend
+        .prepare_rename(TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            position: Position { line: 3, character: 14 },
+        })
+        .await
+        .unwrap();
+    assert!(keyword_prep.is_none(), "prepare_rename on keyword must return None");
+
+    // 4. rename with invalid identifier -> must return None
+    #[allow(deprecated)]
+    let invalid_rename = backend
+        .rename(RenameParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                position: Position { line: 1, character: 30 },
+            },
+            new_name: "123invalid".to_string(),
+            work_done_progress_params: Default::default(),
+        })
+        .await
+        .unwrap();
+    assert!(invalid_rename.is_none(), "rename with invalid name must return None");
+
+    backend
+        .did_close(DidCloseTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri },
+        })
+        .await;
+
+    backend.shutdown().await.unwrap();
+}
