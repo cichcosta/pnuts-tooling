@@ -65,6 +65,7 @@ impl LanguageServer for Backend {
                     TextDocumentSyncKind::FULL,
                 )),
                 document_formatting_provider: Some(OneOf::Left(true)),
+                document_range_formatting_provider: Some(OneOf::Left(true)),
                 completion_provider: Some(CompletionOptions {
                     resolve_provider: Some(false),
                     trigger_characters: Some(vec![
@@ -77,6 +78,7 @@ impl LanguageServer for Backend {
                     completion_item: None,
                 }),
                 definition_provider: Some(OneOf::Left(true)),
+                references_provider: Some(OneOf::Left(true)),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
                 rename_provider: Some(OneOf::Right(RenameOptions {
@@ -180,6 +182,33 @@ impl LanguageServer for Backend {
             Err(e) => {
                 warn!("Formatting failed for {}: {}", uri, e);
                 // Return Ok(None) to prevent editor from overwriting or losing code
+                Ok(None)
+            }
+        }
+    }
+
+    async fn range_formatting(
+        &self,
+        params: DocumentRangeFormattingParams,
+    ) -> Result<Option<Vec<TextEdit>>> {
+        let uri = params.text_document.uri;
+        let range = params.range;
+        debug!("textDocument/rangeFormatting for {} in {:?}", uri, range);
+
+        let Some(text) = self.documents.get_text(&uri).await else {
+            warn!("Document not found for range formatting: {}", uri);
+            return Ok(None);
+        };
+
+        if text.trim().is_empty() {
+            return Ok(Some(vec![]));
+        }
+
+        match crate::formatter::format_range(&text, range).await {
+            Ok(Some(edit)) => Ok(Some(vec![edit])),
+            Ok(None) => Ok(None),
+            Err(e) => {
+                warn!("Range formatting failed for {}: {}", uri, e);
                 Ok(None)
             }
         }
@@ -317,6 +346,30 @@ impl LanguageServer for Backend {
             .flatten();
 
         Ok(response)
+    }
+
+    async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
+        let uri = params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
+        let context = params.context;
+        debug!(
+            "textDocument/references at {}: {:?} (include_declaration={})",
+            uri, position, context.include_declaration
+        );
+
+        let Some(text) = self.documents.get_text(&uri).await else {
+            return Ok(None);
+        };
+
+        let locations = self
+            .documents
+            .with_tree(&uri, |tree| {
+                crate::references::find_references(tree, &text, position, &context, &uri)
+            })
+            .await
+            .flatten();
+
+        Ok(locations)
     }
 }
 

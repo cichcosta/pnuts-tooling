@@ -96,7 +96,7 @@ pub fn resolve_target_symbol<'a>(
 }
 
 /// Checks if a node is the right-hand property of an object access (e.g., `obj.property`).
-fn is_property_access(node: Node) -> bool {
+pub fn is_property_access(node: Node) -> bool {
     if let Some(parent) = node.parent() {
         if parent.kind() == "member_expression" || parent.kind() == "static_member_expression" {
             if let Some(last) = parent.child(parent.child_count().saturating_sub(1)) {
@@ -108,7 +108,7 @@ fn is_property_access(node: Node) -> bool {
 }
 
 /// Finds the enclosing function or method definition for a given node.
-fn find_enclosing_function<'a>(node: Node<'a>) -> Option<Node<'a>> {
+pub fn find_enclosing_function<'a>(node: Node<'a>) -> Option<Node<'a>> {
     let mut curr = node.parent();
     while let Some(n) = curr {
         if n.kind() == "function_definition" || n.kind() == "method_definition" {
@@ -120,7 +120,7 @@ fn find_enclosing_function<'a>(node: Node<'a>) -> Option<Node<'a>> {
 }
 
 /// Checks whether a function defines or assigns a symbol locally in its own scope.
-fn has_local_definition(func: Node, source: &str, target_name: &str) -> bool {
+pub fn has_local_definition(func: Node, source: &str, target_name: &str) -> bool {
     let mut stack = vec![func];
     while let Some(n) = stack.pop() {
         if n != func && (n.kind() == "function_definition" || n.kind() == "method_definition") {
@@ -163,7 +163,7 @@ fn has_local_definition(func: Node, source: &str, target_name: &str) -> bool {
 }
 
 /// Recursively collects identifier occurrences of target_name within a given scope.
-fn collect_occurrences_in_scope<'a>(
+pub fn collect_occurrences_in_scope<'a>(
     scope_node: Node<'a>,
     source: &str,
     target_name: &str,

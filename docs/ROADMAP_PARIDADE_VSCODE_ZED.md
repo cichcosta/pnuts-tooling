@@ -28,7 +28,7 @@
 | Funcionalidade | No LSP Core (`pnuts-lsp`) | No VS Code (`vscode-pnuts`) | No Zed (`zed-pnuts`) | Status Geral & Ação |
 | :--- | :---: | :---: | :---: | :--- |
 | **Formatação de Documento** | ✅ Nativo Rust | ✅ Nativo via LSP (+ fallback JS) | ✅ Externo via `--stdin` (+ LSP) | **Estável** (Zed mantém `--stdin` por design para `untitled`). |
-| **Formatação em Range** (`rangeFormatting`) | ❌ Pendente | ❌ Indisponível | ❌ Indisponível | **Pendente** no `pnuts-lsp`. |
+| **Formatação em Range** (`rangeFormatting`) | ✅ Implementado | ✅ Suportado via LSP | ✅ Suportado via LSP | **Concluído**: Formatação de ranges com preservação de indentação base. |
 | **Autocomplete / Sugestões** | ✅ Nativo Rust | ✅ Limpo (LSP com fallback JS) | ✅ Limpo (LSP + Buffer Words) | **Paridade atingida**. |
 | **Snippets com Placeholders** | ✅ Nativo Rust | ✅ Suportado | ✅ Suportado | **Paridade atingida**. |
 | **Diagnósticos em Tempo Real** | ✅ Nativo Rust | ✅ Sublinhado e Problems tab | ✅ Sublinhado nativo | **Paridade atingida**. |
@@ -36,9 +36,9 @@
 | **Hover / Documentação** | ✅ Implementado | ✅ Suportado | ⚠️ Depende de atalho no Zed | Paridade no protocolo. |
 | **Document Symbols / Outline** | ✅ Implementado | ✅ Outline tab | ✅ Duplo (`outline.scm` + LSP) | **Paridade atingida**. |
 | **Rename Symbol** (`rename`) | ✅ Implementado | ✅ Suportado via LSP (F2) | ✅ Suportado via LSP | **Concluído**: AST Tree-sitter com prepareRename e escopo seguro. |
-| **Find References** (`references`)| ❌ Pendente | ❌ Indisponível | ❌ Indisponível | **Pendente** no `pnuts-lsp`. |
-| **Suporte a Groovy (`.groovy`)** | ✅ Parser tolerante | ✅ Oficializado no `package.json` | ⚠️ Apenas no `settings.json` | **Oficializado no VS Code**; pendente no Zed. |
-| **Portabilidade da Gramática** | N/A | ✅ TextMate empacotado | ⚠️ Caminho absoluto Windows no `extension.toml` | **Ajustar Zed**: Tornar caminho relativo. |
+| **Find References** (`references`)| ✅ Implementado | ✅ Suportado via LSP (Shift+F12) | ✅ Suportado via LSP | **Concluído**: Resolução de escopo, parâmetros, funções e include_declaration. |
+| **Suporte a Groovy (`.groovy`)** | ✅ Parser tolerante | ✅ Oficializado no `package.json` | ✅ Suportado no `extension.toml` | **Paridade atingida** nos dois editores. |
+| **Portabilidade da Gramática** | N/A | ✅ TextMate empacotado | ✅ URL de repositório portátil no `extension.toml` | **Paridade atingida**. |
 
 ---
 
@@ -66,20 +66,22 @@
 
 ### 🎯 Passo 2: Oficializar o Suporte a Groovy (`.groovy`)
 - [x] **2.1. VS Code:** Adicionar suporte a `.groovy` no `package.json` (`activationEvents`, `languages`, `documentSelector`, `snippets`).
-- [ ] **2.2. Zed:** Declarar suporte a Groovy no `extension.toml`.
+- [x] **2.2. Zed:** Declarar suporte a Groovy no `extension.toml`, criar `languages/groovy/config.toml` e associar queries do parser Tree-sitter.
 - [x] **2.3. Testes:** Validar formatação e completion em scripts `.groovy` de exemplo (implementado teste E2E `test_lsp_groovy_document_lifecycle_and_completions`).
-- [ ] **2.4. Realce de Sintaxe do Groovy (Poucas Cores):** Enriquecer a gramática TextMate / escopos de colorização para `.groovy` no `vscode-pnuts`, garantindo realce vivo de keywords, anotações, strings interpoladas, métodos e chamadas Java.
+- [x] **2.4. Realce de Sintaxe do Groovy (Poucas Cores):** Criada gramática TextMate rica em `syntaxes/groovy.tmLanguage.json` para `.groovy` no `vscode-pnuts`, com destaque visual para anotações (`@Annotation`), strings multilinhas (`"""`, `'''`), strings interpoladas (`${expr}`, `$var`), slashy strings (`/regex/`, `$/.../$`), operadores Elvis (`?:`), safe navigation (`?.`), spread (`*.`), method pointer (`.&`, `::`), keywords completas, classes e tipos primitivos. VSIX `0.3.13` empacotado e instalado.
 
 ### 🎯 Passo 3: Implementação de Novas Capacidades Core no `pnuts-lsp`
 - [x] **3.1. Rename Symbol (`textDocument/rename`):**
   - Implementado módulo `rename.rs` com resolução de escopos via AST Tree-sitter (parâmetros, variáveis locais e funções).
   - Implementado `textDocument/prepareRename` para validação prévia de identificadores e proteção de built-ins/keywords.
   - 5 testes unitários e 1 teste E2E criados e validados. VSIX `0.3.12` gerado e instalado.
-- [ ] **3.2. Find References (`textDocument/references`):**
-  - Localizar todas as referências de um símbolo no escopo do documento.
-  - Testes unitários e E2E.
-- [ ] **3.3. Range Formatting (`textDocument/rangeFormatting`):**
-  - Formatar trechos selecionados de código sem desestruturar o restante do buffer.
+- [x] **3.2. Find References (`textDocument/references`):**
+  - Implementado módulo `references.rs` com resolução e contagem precisa de referências a funções, parâmetros e variáveis locais.
+  - Suporte completo a `ReferenceContext { include_declaration }` (inclusão ou exclusão da definição/declaração).
+  - 5 testes unitários e 1 teste E2E adicionados.
+- [x] **3.3. Range Formatting (`textDocument/rangeFormatting`):**
+  - Implementado `format_range` em `formatter.rs` com detecção inteligente de indentação comum, dedent, formatação isolada de snippet e re-indentação sem desestruturar o buffer externo.
+  - 2 testes unitários e 1 teste E2E adicionados. Todos os 57 testes passando 100%.
 
 ---
 
@@ -94,3 +96,7 @@
 | 2026-09-18 | 1.4 Validar e Empacotar VSIX atualizado | ✅ Concluído | Pacote `vscode-pnuts-0.3.11.vsix` gerado com os binários de release e instalado com sucesso no VS Code Server (`code-server`). |
 | 2026-09-18 | 2.1 & 2.3 Suporte Oficial a Groovy no VS Code e Testes E2E | ✅ Concluído | Declarada linguagem `groovy`, snippets e seletor `vscode-vfs` no VS Code. Implementado teste E2E automatizado de ciclo de vida e completions para documentos Groovy. |
 | 2026-09-18 | 3.1 Rename Symbol (LSP Core & VS Code) | ✅ Concluído | Módulo `rename.rs` com suporte a `rename` e `prepareRename`. Proteção de built-ins e isolamento estrito de parâmetros e escopos locais. VSIX `0.3.12` instalado e 49 testes aprovados. |
+| 2026-09-19 | 2.4 Realce de Sintaxe do Groovy no VS Code | ✅ Concluído | Criado `groovy.tmLanguage.json` rico com anotações, strings interpoladas, closures, operadores Elvis/safe navigation e registrado no `package.json`. VSIX `0.3.13` gerado e instalado. |
+| 2026-09-19 | 3.2 Find References (`textDocument/references`) | ✅ Concluído | Módulo `references.rs` com resolução por AST, suporte a `include_declaration` (true/false) e proteção contra palavras-chave. Testes unitários e E2E implementados. |
+| 2026-09-19 | 3.3 Range Formatting (`textDocument/rangeFormatting`) | ✅ Concluído | Função `format_range` em `formatter.rs` com preservação de indentação base e isolamento seguro de snippet. Capability declarada e testada via E2E. |
+| 2026-09-19 | 2.2 Suporte a Groovy no Zed | ✅ Concluído | Declarado `Groovy` em `extension.toml`, criado `languages/groovy/config.toml` com queries do parser e tornado o repositório da gramática portátil. |

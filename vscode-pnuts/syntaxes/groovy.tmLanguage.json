@@ -1,0 +1,459 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Groovy",
+  "scopeName": "source.groovy",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#annotations"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#constants"
+    },
+    {
+      "include": "#functions"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#classes"
+    },
+    {
+      "include": "#identifiers"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.shebang.groovy",
+          "match": "^#!.*$"
+        },
+        {
+          "name": "comment.line.double-slash.groovy",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.documentation.groovy",
+          "begin": "/\\*\\*",
+          "end": "\\*/"
+        },
+        {
+          "name": "comment.block.groovy",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "annotations": {
+      "patterns": [
+        {
+          "match": "(@)([a-zA-Z_$][a-zA-Z0-9_$.]*)",
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.annotation.groovy"
+            },
+            "2": {
+              "name": "storage.type.annotation.groovy"
+            }
+          }
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.triple.double.groovy",
+          "begin": "\"\"\"",
+          "end": "\"\"\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.groovy",
+              "match": "\\\\."
+            },
+            {
+              "name": "meta.embedded.line.groovy",
+              "begin": "\\$\\{",
+              "end": "\\}",
+              "beginCaptures": {
+                "0": {
+                  "name": "punctuation.section.embedded.begin.groovy"
+                }
+              },
+              "endCaptures": {
+                "0": {
+                  "name": "punctuation.section.embedded.end.groovy"
+                }
+              },
+              "patterns": [
+                {
+                  "include": "$self"
+                }
+              ]
+            },
+            {
+              "match": "(\\$)([a-zA-Z_$][a-zA-Z0-9_.]*)",
+              "captures": {
+                "1": {
+                  "name": "punctuation.definition.variable.groovy"
+                },
+                "2": {
+                  "name": "variable.other.interpolated.groovy"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.triple.single.groovy",
+          "begin": "'''",
+          "end": "'''",
+          "patterns": [
+            {
+              "name": "constant.character.escape.groovy",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.regexp.dollar-slashy.groovy",
+          "begin": "\\$/",
+          "end": "/\\$",
+          "patterns": [
+            {
+              "name": "constant.character.escape.groovy",
+              "match": "\\$\\$|\\$/"
+            },
+            {
+              "name": "meta.embedded.line.groovy",
+              "begin": "\\$\\{",
+              "end": "\\}",
+              "beginCaptures": {
+                "0": {
+                  "name": "punctuation.section.embedded.begin.groovy"
+                }
+              },
+              "endCaptures": {
+                "0": {
+                  "name": "punctuation.section.embedded.end.groovy"
+                }
+              },
+              "patterns": [
+                {
+                  "include": "$self"
+                }
+              ]
+            },
+            {
+              "match": "(\\$)([a-zA-Z_$][a-zA-Z0-9_.]*)",
+              "captures": {
+                "1": {
+                  "name": "punctuation.definition.variable.groovy"
+                },
+                "2": {
+                  "name": "variable.other.interpolated.groovy"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.double.groovy",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.groovy",
+              "match": "\\\\."
+            },
+            {
+              "name": "meta.embedded.line.groovy",
+              "begin": "\\$\\{",
+              "end": "\\}",
+              "beginCaptures": {
+                "0": {
+                  "name": "punctuation.section.embedded.begin.groovy"
+                }
+              },
+              "endCaptures": {
+                "0": {
+                  "name": "punctuation.section.embedded.end.groovy"
+                }
+              },
+              "patterns": [
+                {
+                  "include": "$self"
+                }
+              ]
+            },
+            {
+              "match": "(\\$)([a-zA-Z_$][a-zA-Z0-9_.]*)",
+              "captures": {
+                "1": {
+                  "name": "punctuation.definition.variable.groovy"
+                },
+                "2": {
+                  "name": "variable.other.interpolated.groovy"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.groovy",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            {
+              "name": "constant.character.escape.groovy",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.regexp.slashy.groovy",
+          "begin": "(?<![a-zA-Z0-9_)\\]])\\/(?![/*])",
+          "end": "\\/",
+          "patterns": [
+            {
+              "name": "constant.character.escape.groovy",
+              "match": "\\\\."
+            },
+            {
+              "name": "meta.embedded.line.groovy",
+              "begin": "\\$\\{",
+              "end": "\\}",
+              "beginCaptures": {
+                "0": {
+                  "name": "punctuation.section.embedded.begin.groovy"
+                }
+              },
+              "endCaptures": {
+                "0": {
+                  "name": "punctuation.section.embedded.end.groovy"
+                }
+              },
+              "patterns": [
+                {
+                  "include": "$self"
+                }
+              ]
+            },
+            {
+              "match": "(\\$)([a-zA-Z_$][a-zA-Z0-9_.]*)",
+              "captures": {
+                "1": {
+                  "name": "punctuation.definition.variable.groovy"
+                },
+                "2": {
+                  "name": "variable.other.interpolated.groovy"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.groovy",
+          "match": "\\b(if|else|while|do|for|in|switch|case|default|return|yield|try|catch|finally|throw|assert|break|continue)\\b"
+        },
+        {
+          "name": "keyword.control.import.groovy",
+          "match": "\\b(package|import)\\b"
+        },
+        {
+          "name": "keyword.declaration.groovy",
+          "match": "\\b(class|interface|trait|enum|extends|implements|new|as)\\b"
+        },
+        {
+          "name": "storage.modifier.groovy",
+          "match": "\\b(def|var|final|abstract|public|private|protected|static|synchronized|transient|volatile|native|strictfp)\\b"
+        },
+        {
+          "name": "keyword.operator.expression.groovy",
+          "match": "\\b(instanceof)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "storage.type.primitive.groovy",
+          "match": "\\b(boolean|byte|char|short|int|long|float|double|void)\\b"
+        },
+        {
+          "name": "support.class.groovy",
+          "match": "\\b(String|Object|List|Map|Set|Integer|Long|Boolean|Double|Float|Byte|Short|Character|BigInteger|BigDecimal|Closure|Pattern|Matcher|Date|Exception|Throwable|Error|StringBuilder|StringBuffer|Thread|Class)\\b"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.groovy",
+          "match": "\\b(true|false)\\b"
+        },
+        {
+          "name": "constant.language.null.groovy",
+          "match": "\\b(null)\\b"
+        },
+        {
+          "name": "variable.language.groovy",
+          "match": "\\b(this|super|it)\\b"
+        }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        {
+          "match": "\\b(?:def|void|[A-Z][a-zA-Z0-9_<>, ]*)\\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\\s*\\(",
+          "captures": {
+            "1": {
+              "name": "entity.name.function.groovy"
+            }
+          }
+        },
+        {
+          "match": "(\\.)([a-zA-Z_$][a-zA-Z0-9_$]*)\\s*\\(",
+          "captures": {
+            "1": {
+              "name": "punctuation.accessor.groovy"
+            },
+            "2": {
+              "name": "entity.name.function.method.groovy"
+            }
+          }
+        },
+        {
+          "match": "\\b([a-zA-Z_$][a-zA-Z0-9_$]*)\\s*\\(",
+          "captures": {
+            "1": {
+              "name": "entity.name.function.call.groovy"
+            }
+          }
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.groovy",
+          "match": "\\b0[xX][0-9a-fA-F]+[gGlL]?\\b"
+        },
+        {
+          "name": "constant.numeric.binary.groovy",
+          "match": "\\b0[bB][01]+[gGlL]?\\b"
+        },
+        {
+          "name": "constant.numeric.decimal.groovy",
+          "match": "\\b\\d+(\\.\\d+)?([eE][+-]?\\d+)?[gGfFdDlL]?\\b|\\.\\d+([eE][+-]?\d+)?[gGfFdDlL]?\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.elvis.groovy",
+          "match": "\\?:"
+        },
+        {
+          "name": "keyword.operator.safe-navigation.groovy",
+          "match": "\\?\\."
+        },
+        {
+          "name": "keyword.operator.spread.groovy",
+          "match": "\\*\\."
+        },
+        {
+          "name": "keyword.operator.method-pointer.groovy",
+          "match": "\\.&|::"
+        },
+        {
+          "name": "keyword.operator.comparison.groovy",
+          "match": "<=>"
+        },
+        {
+          "name": "keyword.operator.regex.groovy",
+          "match": "=~|==~"
+        },
+        {
+          "name": "keyword.operator.range.groovy",
+          "match": "\\.\\.<|\\.\\."
+        },
+        {
+          "name": "keyword.operator.arrow.groovy",
+          "match": "->|=>"
+        },
+        {
+          "name": "keyword.operator.comparison.groovy",
+          "match": "===|!==|==|!=|<=|>=|<|>"
+        },
+        {
+          "name": "keyword.operator.assignment.groovy",
+          "match": "\\+=|-=|\\*=|/=|%=|&=|\\|=|\\^=|<<=|>>=|>>>=|="
+        },
+        {
+          "name": "keyword.operator.logical.groovy",
+          "match": "&&|\\|\\||!"
+        },
+        {
+          "name": "keyword.operator.bitwise.groovy",
+          "match": "&|\\||\\^|~|<<|>>>|>>"
+        },
+        {
+          "name": "keyword.operator.arithmetic.groovy",
+          "match": "\\+\\+|--|\\*\\*|\\+|-|\\*|/|%"
+        },
+        {
+          "name": "keyword.operator.ternary.groovy",
+          "match": "\\?|:"
+        }
+      ]
+    },
+    "classes": {
+      "patterns": [
+        {
+          "name": "entity.name.type.class.groovy",
+          "match": "\\b[A-Z][a-zA-Z0-9_$]*\\b"
+        }
+      ]
+    },
+    "identifiers": {
+      "patterns": [
+        {
+          "match": "(\\.)([a-zA-Z_$][a-zA-Z0-9_$]*)",
+          "captures": {
+            "1": {
+              "name": "punctuation.accessor.groovy"
+            },
+            "2": {
+              "name": "variable.other.property.groovy"
+            }
+          }
+        },
+        {
+          "name": "variable.other.groovy",
+          "match": "\\b[a-zA-Z_$][a-zA-Z0-9_$]*\\b"
+        }
+      ]
+    }
+  }
+}

@@ -5,15 +5,17 @@ pub mod document;
 pub mod formatter;
 pub mod navigation;
 pub mod parser;
+pub mod references;
 pub mod rename;
 
 pub use backend::Backend;
 pub use completion::provide_completions;
 pub use diagnostics::collect_diagnostics;
 pub use document::{Document, DocumentSnapshot, DocumentStore, SharedDocumentStore};
-pub use formatter::{format_code, FormatterError};
+pub use formatter::{format_code, format_range, FormatterError};
 pub use navigation::{find_definition, find_document_symbols, find_hover};
 pub use parser::{create_parser, has_errors, parse_pnuts};
+pub use references::find_references;
 pub use rename::{prepare_rename, rename_symbol};
 
 #[cfg(test)]

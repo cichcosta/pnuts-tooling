@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
+use tower_lsp::lsp_types::{Position, Range, TextEdit};
 use tracing::{debug, warn};
 
 #[derive(Debug)]
@@ -551,6 +552,122 @@ pub async fn format_code(text: &str) -> Result<String, FormatterError> {
     Ok(stdout_str)
 }
 
+/// Formats a specific line range within the document, preserving surrounding context and indentation.
+pub async fn format_range(
+    text: &str,
+    range: Range,
+) -> Result<Option<TextEdit>, FormatterError> {
+    let all_lines: Vec<&str> = text
+        .split('\n')
+        .map(|l| l.strip_suffix('\r').unwrap_or(l))
+        .collect();
+
+    if all_lines.is_empty() {
+        return Ok(None);
+    }
+
+    let start_line = range.start.line as usize;
+    let end_line = (range.end.line as usize).min(all_lines.len().saturating_sub(1));
+    if start_line > end_line || start_line >= all_lines.len() {
+        return Ok(None);
+    }
+
+    let eol = if text.contains("\r\n") { "\r\n" } else { "\n" };
+    let selected = &all_lines[start_line..=end_line];
+
+    if selected.iter().all(|l| l.trim().is_empty()) {
+        return Ok(Some(TextEdit {
+            range: Range {
+                start: Position {
+                    line: start_line as u32,
+                    character: 0,
+                },
+                end: Position {
+                    line: end_line as u32,
+                    character: all_lines[end_line].encode_utf16().count() as u32,
+                },
+            },
+            new_text: selected.join(eol),
+        }));
+    }
+
+    // Determine common leading whitespace across non-empty lines
+    let mut common_indent: Option<String> = None;
+    for line in selected {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let indent: String = line.chars().take_while(|c| c.is_whitespace()).collect();
+        match &common_indent {
+            None => common_indent = Some(indent),
+            Some(curr) => {
+                let common_len = curr
+                    .chars()
+                    .zip(indent.chars())
+                    .take_while(|(a, b)| a == b)
+                    .count();
+                common_indent = Some(curr.chars().take(common_len).collect());
+            }
+        }
+    }
+    let base_indent = common_indent.unwrap_or_default();
+
+    // Dedent the snippet
+    let mut dedented_lines = Vec::new();
+    for line in selected {
+        if line.starts_with(&base_indent) {
+            dedented_lines.push(&line[base_indent.len()..]);
+        } else {
+            dedented_lines.push(line.trim_start());
+        }
+    }
+    let snippet = dedented_lines.join(eol);
+
+    // Format the snippet
+    let formatted_snippet = match format_code(&snippet).await {
+        Ok(f) => f,
+        Err(_) => return Ok(None),
+    };
+
+    // Re-apply indentation to formatted lines
+    let clean_formatted = formatted_snippet.trim_end_matches(|c| c == '\r' || c == '\n');
+    let mut reindented_lines = Vec::new();
+    for line in clean_formatted.split('\n') {
+        let clean = line.strip_suffix('\r').unwrap_or(line);
+        if clean.trim().is_empty() {
+            reindented_lines.push(String::new());
+        } else {
+            reindented_lines.push(format!("{}{}", base_indent, clean));
+        }
+    }
+
+    let new_text = reindented_lines.join(eol);
+    let orig_text = selected.join(eol);
+
+    let target_range = Range {
+        start: Position {
+            line: start_line as u32,
+            character: 0,
+        },
+        end: Position {
+            line: end_line as u32,
+            character: all_lines[end_line].encode_utf16().count() as u32,
+        },
+    };
+
+    if new_text == orig_text {
+        return Ok(Some(TextEdit {
+            range: target_range,
+            new_text: orig_text,
+        }));
+    }
+
+    Ok(Some(TextEdit {
+        range: target_range,
+        new_text,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -674,6 +791,40 @@ mod tests {
             assert!(!formatted.contains("case \"2017\" :"));
             assert!(!formatted.contains("case \"2017\"\r\n:"));
         }
+    }
+
+    #[tokio::test]
+    async fn test_format_range_with_indentation() {
+        let code = r#"function calc() {
+    a=1;
+    b=2;
+    return a+b;
+}
+"#;
+        // Select lines 1 to 2 (`    a=1;` and `    b=2;`)
+        let range = Range {
+            start: Position { line: 1, character: 0 },
+            end: Position { line: 2, character: 8 },
+        };
+
+        if let Ok(Some(edit)) = format_range(code, range).await {
+            assert_eq!(edit.range.start.line, 1);
+            assert_eq!(edit.range.end.line, 2);
+            assert!(edit.new_text.contains("    a = 1;"));
+            assert!(edit.new_text.contains("    b = 2;"));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_format_range_invalid_fragment_returns_none() {
+        let code = "function foo() {\n";
+        let range = Range {
+            start: Position { line: 0, character: 0 },
+            end: Position { line: 0, character: 15 },
+        };
+        let res = format_range(code, range).await;
+        assert!(res.is_ok());
+        assert!(res.unwrap().is_none());
     }
 }
 

@@ -970,3 +970,239 @@ async fn test_lsp_rename_and_prepare_rename_lifecycle() {
 
     backend.shutdown().await.unwrap();
 }
+
+#[tokio::test]
+async fn test_lsp_find_references_lifecycle() {
+    let (service, _socket) = LspService::new(|client| Backend::new(client));
+    let backend = service.inner();
+
+    // 1. Initialize
+    #[allow(deprecated)]
+    let init_params = InitializeParams {
+        process_id: None,
+        root_path: None,
+        root_uri: None,
+        initialization_options: None,
+        capabilities: ClientCapabilities::default(),
+        trace: None,
+        workspace_folders: None,
+        client_info: None,
+        locale: None,
+    };
+    let init_result = backend.initialize(init_params).await.unwrap();
+    assert_eq!(
+        init_result.capabilities.references_provider,
+        Some(OneOf::Left(true)),
+        "Server must declare references_provider capability"
+    );
+    backend.initialized(InitializedParams {}).await;
+
+    // 2. Open document
+    let uri = Url::parse("file:///workspace/calculator.pnuts").unwrap();
+    let code = r#"function computeDiscount(price, rate) {
+    discount = price * rate;
+    return discount;
+}
+
+first = computeDiscount(100, 0.1);
+second = computeDiscount(200, 0.2);
+"#;
+
+    backend
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "pnuts".to_string(),
+                version: 1,
+                text: code.to_string(),
+            },
+        })
+        .await;
+
+    // 3. references on `computeDiscount` with include_declaration: true
+    let ref_params_with = ReferenceParams {
+        text_document_position: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            position: Position {
+                line: 0,
+                character: 12,
+            },
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+        context: ReferenceContext {
+            include_declaration: true,
+        },
+    };
+
+    let refs_with = backend.references(ref_params_with).await.unwrap();
+    assert!(refs_with.is_some(), "references must return locations");
+    let locs = refs_with.unwrap();
+    assert_eq!(locs.len(), 3, "Must find definition and 2 call sites");
+    assert_eq!(locs[0].range.start.line, 0);
+    assert_eq!(locs[1].range.start.line, 5);
+    assert_eq!(locs[2].range.start.line, 6);
+
+    // 4. references on `computeDiscount` with include_declaration: false
+    let ref_params_without = ReferenceParams {
+        text_document_position: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            position: Position {
+                line: 5,
+                character: 10,
+            },
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+        context: ReferenceContext {
+            include_declaration: false,
+        },
+    };
+
+    let refs_without = backend.references(ref_params_without).await.unwrap();
+    assert!(refs_without.is_some());
+    let locs_without = refs_without.unwrap();
+    assert_eq!(locs_without.len(), 2, "Must return only the 2 call sites");
+    assert_eq!(locs_without[0].range.start.line, 5);
+    assert_eq!(locs_without[1].range.start.line, 6);
+
+    // 5. references on parameter `rate` with include_declaration: false
+    let param_refs_params = ReferenceParams {
+        text_document_position: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            position: Position {
+                line: 0,
+                character: 34,
+            },
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+        context: ReferenceContext {
+            include_declaration: false,
+        },
+    };
+
+    let param_refs = backend.references(param_refs_params).await.unwrap();
+    assert!(param_refs.is_some());
+    let param_locs = param_refs.unwrap();
+    assert_eq!(param_locs.len(), 1, "Must return only the usage inside function body");
+    assert_eq!(param_locs[0].range.start.line, 1);
+
+    // 6. references on keyword `return` -> must return None
+    let kw_params = ReferenceParams {
+        text_document_position: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            position: Position {
+                line: 2,
+                character: 6,
+            },
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+        context: ReferenceContext {
+            include_declaration: true,
+        },
+    };
+
+    let kw_refs = backend.references(kw_params).await.unwrap();
+    assert!(kw_refs.is_none(), "references on keyword must return None");
+
+    backend
+        .did_close(DidCloseTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri },
+        })
+        .await;
+
+    backend.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_lsp_range_formatting_lifecycle() {
+    let (service, _socket) = LspService::new(|client| Backend::new(client));
+    let backend = service.inner();
+
+    // 1. Initialize
+    #[allow(deprecated)]
+    let init_params = InitializeParams {
+        process_id: None,
+        root_path: None,
+        root_uri: None,
+        initialization_options: None,
+        capabilities: ClientCapabilities::default(),
+        trace: None,
+        workspace_folders: None,
+        client_info: None,
+        locale: None,
+    };
+    let init_result = backend.initialize(init_params).await.unwrap();
+    assert_eq!(
+        init_result.capabilities.document_range_formatting_provider,
+        Some(OneOf::Left(true)),
+        "Server must declare document_range_formatting_provider capability"
+    );
+    backend.initialized(InitializedParams {}).await;
+
+    // 2. Open document
+    let uri = Url::parse("file:///workspace/range_test.pnuts").unwrap();
+    let code = r#"function calc() {
+    a=1;
+    b=2;
+    return a+b;
+}
+"#;
+
+    backend
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "pnuts".to_string(),
+                version: 1,
+                text: code.to_string(),
+            },
+        })
+        .await;
+
+    // 3. Format range (lines 1 to 2)
+    let range_params = DocumentRangeFormattingParams {
+        text_document: TextDocumentIdentifier { uri: uri.clone() },
+        range: Range {
+            start: Position {
+                line: 1,
+                character: 0,
+            },
+            end: Position {
+                line: 2,
+                character: 8,
+            },
+        },
+        options: FormattingOptions {
+            tab_size: 4,
+            insert_spaces: true,
+            properties: Default::default(),
+            trim_trailing_whitespace: None,
+            insert_final_newline: None,
+            trim_final_newlines: None,
+        },
+        work_done_progress_params: Default::default(),
+    };
+
+    let edits = backend.range_formatting(range_params).await.unwrap();
+    assert!(edits.is_some(), "range_formatting must return edits");
+    let edit_list = edits.unwrap();
+    assert_eq!(edit_list.len(), 1);
+    let edit = &edit_list[0];
+    assert_eq!(edit.range.start.line, 1);
+    assert_eq!(edit.range.end.line, 2);
+    assert!(edit.new_text.contains("    a = 1;"));
+    assert!(edit.new_text.contains("    b = 2;"));
+
+    backend
+        .did_close(DidCloseTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri },
+        })
+        .await;
+
+    backend.shutdown().await.unwrap();
+}
+
+

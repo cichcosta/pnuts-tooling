@@ -12,10 +12,10 @@ kind = "Rust"
 version = "0.7.0"
 
 [grammars.pnuts]
-repository = "file:///C:/Users/chsilva/AppData/Local/Zed/extensions/pnuts-tooling"
-rev = "main"
+repository = "https://github.com/pnuts-tooling/pnuts-tooling"
+rev = "feature/pnuts-groovy-lsp"
 path = "tree-sitter-pnuts"
 
 [language_servers.pnuts-lsp]
 name = "Pnuts Language Server"
-languages = ["Pnuts"]
+languages = ["Pnuts", "Groovy"]
