@@ -68,6 +68,7 @@
 - [x] **2.1. VS Code:** Adicionar suporte a `.groovy` no `package.json` (`activationEvents`, `languages`, `documentSelector`, `snippets`).
 - [ ] **2.2. Zed:** Declarar suporte a Groovy no `extension.toml`.
 - [x] **2.3. Testes:** Validar formatação e completion em scripts `.groovy` de exemplo (implementado teste E2E `test_lsp_groovy_document_lifecycle_and_completions`).
+- [ ] **2.4. Realce de Sintaxe do Groovy (Poucas Cores):** Enriquecer a gramática TextMate / escopos de colorização para `.groovy` no `vscode-pnuts`, garantindo realce vivo de keywords, anotações, strings interpoladas, métodos e chamadas Java.
 
 ### 🎯 Passo 3: Implementação de Novas Capacidades Core no `pnuts-lsp`
 - [x] **3.1. Rename Symbol (`textDocument/rename`):**

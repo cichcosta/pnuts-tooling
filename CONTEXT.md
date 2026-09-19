@@ -98,8 +98,10 @@ Ao modificar `grammar.js`, NUNCA reintroduzir os seguintes erros:
   3. **Portabilidade, Buffers Não Salvos e Instaladores Unificados no Zed (Concluído):** Identificada assimetria entre execução local (Windows) para buffers `untitled` e remota (Linux via SSH) para buffers de worktree. Criados instaladores automáticos (`scripts/install-zed.sh` e `scripts/install-zed.ps1`) que adicionam o executável ao PATH e higienizam o `settings.json` eliminando caminhos manuais. Resolução em `zed-pnuts/src/lib.rs` tornada genérica sem hardcoded username.
   4. **Empacotamento e Suporte Groovy no VS Code (Concluído):** VSIX `0.3.11` empacotado e instalado no VS Code Server (`code-server`). Adicionada contribuição formal para linguagem `groovy`, snippets estruturais, seletor de scheme `vscode-vfs` e teste automatizado E2E de ciclo de vida e completions em `.groovy` adicionado com sucesso.
   5. **Rename Symbol e prepareRename (Concluído - Passo 3.1):** Implementado módulo `rename.rs` com suporte completo a `textDocument/rename` e `textDocument/prepareRename` no `pnuts-lsp`. Validação de identificadores válidos, proteção estrita contra renomeação acidental de palavras-chave e built-ins (`println`, `getRows`, etc.), e isolamento seguro de escopo (parâmetros, variáveis locais e funções). VSIX `0.3.12` gerado e instalado no VS Code Server. Todos os 49 testes automatizados passando 100%.
-- **Próximas Fases:**
+- **Próximas Fases e Pendências:**
+  - **Pendência UI/Sintaxe (Passo 2.4):** Groovy ficou com poucas cores no VS Code — enriquecer a gramática TextMate / escopos de sintaxe para `.groovy` em `vscode-pnuts` para dar realce visual rico.
   - **Passo 3.2:** Implementar Find References (`textDocument/references`) no `pnuts-lsp`.
   - **Passo 3.3:** Implementar Range Formatting (`textDocument/rangeFormatting`) no `pnuts-lsp`.
   - **Passo 2.2:** Declarar suporte a Groovy no `extension.toml` do Zed (quando for retomar o Zed).
+
 
