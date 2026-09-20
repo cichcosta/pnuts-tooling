@@ -162,4 +162,25 @@ A ordem de trabalho acordada para as IDEs é rigorosamente sequencial:
 ### Arquivo Empacotado:
 - [`vscode-pnuts-0.3.17.vsix`](file:///home/chsilva/personal/projects/pnuts-tooling/vscode-pnuts/vscode-pnuts-0.3.17.vsix) (gerado e instalado no VS Code Server).
 
+---
+
+## 10. Modernização e Ajuste Minimalista de Ícones (v0.3.18)
+
+### Melhorias Realizadas:
+1. **Novo Ícone Minimalista para Arquivos Groovy (`icons/groovy.svg`):**
+   - Anteriormente, arquivos `.groovy` não possuíam ícone de arquivo associado na extensão, exibindo o ícone genérico/em branco do VS Code.
+   - Criado vetor SVG moderno e minimalista (`0 0 32 32`) com o glifo clássico e reconhecível da linguagem Groovy em ciano vibrante (`#26C6DA`), garantindo excelente contraste tanto em temas escuros quanto claros.
+   - Registrado em `contributes.languages[].icon` no `package.json` e no tema de ícones em `icons/icon-theme.json` para as extensões `.groovy`, `.gvy`, `.gy`, `.gsh` e language ID `groovy`.
+2. **Redesign Moderno e Minimalista do Ícone Pnuts (`icons/pnuts.svg`):**
+   - O ícone anterior do Pnuts possuía um desenho carregado de clip-art com 13 linhas de hachura/grade, sombras pesadas e filtro de drop-shadow que, quando reduzidos para a escala de 16x16 pixels na barra lateral do editor, tornavam-se um borrão marrom ilegível.
+   - Redesenhado completamente para um vetor moderno, limpo e minimalista (`viewBox="0 0 32 32"`):
+     - Silhueta fluida e orgânica do amendoim rotacionada a -18°.
+     - Gradiente suave e dourado em tons de âmbar quente (`#FDE68A` $\rightarrow$ `#FBBF24` $\rightarrow$ `#F59E0B` $\rightarrow$ `#D97706` $\rightarrow$ `#B45309`).
+     - Contorno sutil da cintura e reflexos de brilho suaves (highlights) na parte superior e inferior dos lobos.
+     - Excelente legibilidade e distinção cromática imediata ao lado de scripts Groovy (âmbar dourado vs ciano vibrante).
+
+### Arquivo Empacotado:
+- [`vscode-pnuts-0.3.18.vsix`](file:///home/chsilva/personal/projects/pnuts-tooling/vscode-pnuts/vscode-pnuts-0.3.18.vsix) (gerado e instalado no VS Code Server).
+
+
 
