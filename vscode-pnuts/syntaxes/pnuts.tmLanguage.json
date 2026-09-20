@@ -22,10 +22,16 @@
       "include": "#functions"
     },
     {
+      "include": "#properties"
+    },
+    {
       "include": "#numbers"
     },
     {
       "include": "#operators"
+    },
+    {
+      "include": "#classes"
     },
     {
       "include": "#identifiers"
@@ -123,6 +129,10 @@
         {
           "name": "storage.type.primitive.pnuts",
           "match": "\\b(boolean|byte|char|short|int|long|float|double|void)\\b"
+        },
+        {
+          "name": "support.class.pnuts",
+          "match": "\\b(String|Object|List|Map|Set|Integer|Long|Boolean|Double|Float|Byte|Short|Character|BigInteger|BigDecimal|Date|Exception|Throwable|Error|StringBuilder|StringBuffer|Thread|Class)\\b"
         }
       ]
     },
@@ -135,6 +145,10 @@
         {
           "name": "constant.language.null.pnuts",
           "match": "\\b(null)\\b"
+        },
+        {
+          "name": "variable.language.pnuts",
+          "match": "\\b(this|super)\\b"
         }
       ]
     },
@@ -160,7 +174,7 @@
           }
         },
         {
-          "match": "(\\.)([a-zA-Z_$][a-zA-Z0-9_$]*)\\s*\\(",
+          "match": "(\\?\\.|\\*\\.|\\.)([a-zA-Z_$][a-zA-Z0-9_$]*)\\s*\\(",
           "captures": {
             "1": {
               "name": "punctuation.accessor.pnuts"
@@ -194,6 +208,14 @@
     },
     "operators": {
       "patterns": [
+        {
+          "name": "keyword.operator.safe-navigation.pnuts",
+          "match": "\\?\\."
+        },
+        {
+          "name": "keyword.operator.spread.pnuts",
+          "match": "\\*\\."
+        },
         {
           "name": "keyword.operator.static.pnuts",
           "match": "::"
@@ -232,6 +254,40 @@
         }
       ]
     },
+    "properties": {
+      "patterns": [
+        {
+          "match": "(::)([a-zA-Z_$][a-zA-Z0-9_$]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.operator.static.pnuts punctuation.accessor.pnuts"
+            },
+            "2": {
+              "name": "support.type.property-name.pnuts"
+            }
+          }
+        },
+        {
+          "match": "(\\?\\.|\\*\\.|\\.)([a-zA-Z_$][a-zA-Z0-9_$]*)",
+          "captures": {
+            "1": {
+              "name": "punctuation.accessor.pnuts"
+            },
+            "2": {
+              "name": "support.type.property-name.pnuts"
+            }
+          }
+        }
+      ]
+    },
+    "classes": {
+      "patterns": [
+        {
+          "name": "entity.name.type.class.pnuts",
+          "match": "\\b[A-Z][a-zA-Z0-9_$]*\\b"
+        }
+      ]
+    },
     "identifiers": {
       "patterns": [
         {
@@ -246,7 +302,7 @@
           }
         },
         {
-          "match": "(\\.)([a-zA-Z_$][a-zA-Z0-9_$]*)",
+          "match": "(\\?\\.|\\*\\.|\\.)([a-zA-Z_$][a-zA-Z0-9_$]*)",
           "captures": {
             "1": {
               "name": "punctuation.accessor.pnuts"

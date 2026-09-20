@@ -141,4 +141,25 @@ A ordem de trabalho acordada para as IDEs é rigorosamente sequencial:
 ### Arquivo Empacotado:
 - [`vscode-pnuts-0.3.16.vsix`](file:///home/chsilva/personal/projects/pnuts-tooling/vscode-pnuts/vscode-pnuts-0.3.16.vsix) (gerado e instalado no VS Code Server).
 
+---
+
+## 9. Diagnóstico e Correções Consolidadas (v0.3.17)
+
+### Causas Raízes Identificadas e Sanadas:
+1. **Identificadores em Caixa Alta e Classes/Constantes Brancas no Pnuts (`WN`, `MConnection`, etc.):**
+   - Na gramática Pnuts (`syntaxes/pnuts.tmLanguage.json`), não existia regra para `#classes` nem para `support.class.pnuts`. Identificadores iniciados com letra maiúscula como `WN`, `MConnection`, `MLogin`, `MForm` caíam diretamente em `variable.other.pnuts`, ficando com a cor padrão branca/azul indistinguível das variáveis locais.
+   - No Groovy, por outro lado, existia a regra `#classes` mapeando `\b[A-Z][a-zA-Z0-9_$]*\b` para `entity.name.type.class.groovy`, o que dava a `WN` e às classes Java a cor verde/ciano de classes e constantes.
+   - **Solução consolidada:**
+     - Adicionamos a regra `#classes` (`entity.name.type.class.pnuts`) em [`syntaxes/pnuts.tmLanguage.json`](file:///home/chsilva/personal/projects/pnuts-tooling/vscode-pnuts/syntaxes/pnuts.tmLanguage.json#L280) e incluímos no array de `patterns` antes de `#identifiers`.
+     - Adicionamos classes utilitárias de runtime Java/Pnuts em `support.class.pnuts` dentro de `types`.
+     - Adicionamos a seção `#properties` e suporte a safe-navigation `?.` e `*.` também na gramática Pnuts para 100% de paridade com o Groovy.
+     - Agora tanto no Pnuts quanto no Groovy:
+       - `WN`, `MConnection`, `MLogin`, `MForm` $\rightarrow$ `entity.name.type.class.pnuts` (verde/ciano).
+       - `werror`, `wsel`, `m`, `wrow` $\rightarrow$ `variable.other.pnuts` (azul claro).
+       - `idoct`, `idoc`, `cstc`, `csto` $\rightarrow$ `support.type.property-name.pnuts` (cor de propriedade).
+       - `trim()`, `getMCursor()`, `equals()` $\rightarrow$ `entity.name.function.method.pnuts` (amarelo).
+
+### Arquivo Empacotado:
+- [`vscode-pnuts-0.3.17.vsix`](file:///home/chsilva/personal/projects/pnuts-tooling/vscode-pnuts/vscode-pnuts-0.3.17.vsix) (gerado e instalado no VS Code Server).
+
 
