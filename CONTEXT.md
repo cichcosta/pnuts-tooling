@@ -201,6 +201,24 @@ A ordem de trabalho acordada para as IDEs é rigorosamente sequencial:
    - Atualizados os caminhos de busca de fallback do binário `topiary`, gramáticas dinâmicas e queries para utilizarem [`vscode-pnuts/resources/`](file:///home/chsilva/personal/projects/pnuts-tooling/vscode-pnuts/resources/) e `~/.local/bin/`, eliminando qualquer dependência da existência de `zed-pnuts`.
    - Todos os 58 testes automatizados do LSP e formatação passando com 100% de sucesso (`cargo test`).
 
+---
+
+## 12. Próximos Passos e Backlog Priorizado (Roadmap Operacional)
+
+Consulte o documento completo em [`docs/PROXIMOS_PASSOS.md`](file:///home/chsilva/personal/projects/pnuts-tooling/docs/PROXIMOS_PASSOS.md) para detalhes técnicos de implementação e plano de testes.
+
+### Resumo do Backlog Priorizado:
+1. **Signature Help (`textDocument/signatureHelp`):**
+   - Exibir balão flutuante com assinatura de funções/métodos com parâmetro ativo destacado em negrito ao digitar `(` e `,`.
+   - Suporte a funções locais e built-ins/funções de banco (`getMCursor`, `getDialogFormEx`, etc.).
+2. **Investigação e Refinamento do Ícone Pnuts:**
+   - Investigar cache de ícones do VS Code, atualizar [`vscode-pnuts/icons/pnuts.png`](file:///home/chsilva/personal/projects/pnuts-tooling/vscode-pnuts/icons/pnuts.png) para a nova versão minimalista e revisar precedência de tema no `icon-theme.json`.
+3. **Enriquecimento de Documentação no Hover (`textDocument/hover`):**
+   - Expandir documentação e exemplos para classes/objetos frequentes (`MConnection`, `MLogin`, `MForm`, `MCursor`).
+4. **Code Actions / Quick Fixes (`textDocument/codeAction`):**
+   - Ações automáticas (`Ctrl + .`) como envolver em `try/catch` e auto-importar classes Java.
+
+
 
 
 
