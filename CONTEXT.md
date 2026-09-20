@@ -122,4 +122,23 @@ A ordem de trabalho acordada para as IDEs é rigorosamente sequencial:
 ### Arquivo Empacotado:
 - [`vscode-pnuts-0.3.15.vsix`](file:///home/chsilva/personal/projects/pnuts-tooling/vscode-pnuts/vscode-pnuts-0.3.15.vsix) (instalado no VS Code Server e disponível para instalação no Windows).
 
+---
+
+## 8. Diagnóstico e Correções Consolidadas (v0.3.16)
+
+### Causas Raízes Identificadas e Sanadas:
+1. **Perda de Cores a partir da Linha 177 (Slashy Strings vs Divisão Aritmética):**
+   - Na linha 177 (`elapsedTime = (endTime - startTime) / 1000`), a regra TextMate `string.regexp.slashy.groovy` usava `(?<![a-zA-Z0-9_)\\]])\\/(?![/*])`.
+   - Por ter espaços ao redor da barra (` ) / 1000 `), o lookbehind de 1 caractere no Oniguruma enxergava apenas o caractere de espaço `' '`, que não estava na lista de exclusão. Isso fazia o parser TextMate interpretar a barra de divisão `/` como o início de uma regex multilinhas (*slashy string*), engolindo todo o código subsequente até a próxima barra e corrompendo toda a colorização dali em diante.
+   - **Solução consolidada:** O início de slashy strings foi restringido para contextos sintaticamente válidos onde uma regex pode iniciar em Groovy: após `=`, `=~`, `==~`, `~`, `(`, `[`, `{`, `,`, `:`, `!`, `?`, `return`, `assert`, `case`, `throw`, `yield`, `in` ou início de linha com `(?<=(?:^|[=~,(:{\\[?!]|return|assert|case|throw|yield|in)\\s*)\\/(?![/*])`. Linhas com divisão com ou sem espaços agora são 100% preservadas como operadores aritméticos.
+2. **Diferenciação Cromática de Variável, Propriedade e Método (`m.idoc.trim()`):**
+   - Em [`vscode-pnuts/syntaxes/groovy.tmLanguage.json`](file:///home/chsilva/personal/projects/pnuts-tooling/vscode-pnuts/syntaxes/groovy.tmLanguage.json), propriedades de objeto estavam com o escopo `variable.other.property.groovy`. Temas do VS Code (como Dark+) atribuem a mesma cor (`#9CDCFE`) para qualquer `variable.*`, fazendo com que `m` e `idoc` ficassem com a mesma cor.
+   - **Solução consolidada:** Adicionamos o grupo `#properties` posicionado estrategicamente após `#functions` e mapeamos acessos a propriedades (`.`, `?.`, `*.`, `::`) para `support.type.property-name.groovy` (exatamente como já feito com sucesso na gramática Pnuts). Dessa forma:
+     - `m` fica como `variable.other.groovy` (azul claro).
+     - `idoc` fica como `support.type.property-name.groovy` (cor de propriedade / verde/ciano).
+     - `trim()` fica como `entity.name.function.method.groovy` (amarelo).
+
+### Arquivo Empacotado:
+- [`vscode-pnuts-0.3.16.vsix`](file:///home/chsilva/personal/projects/pnuts-tooling/vscode-pnuts/vscode-pnuts-0.3.16.vsix) (gerado e instalado no VS Code Server).
+
 

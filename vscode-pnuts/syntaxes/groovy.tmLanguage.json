@@ -25,6 +25,9 @@
       "include": "#functions"
     },
     {
+      "include": "#properties"
+    },
+    {
       "include": "#numbers"
     },
     {
@@ -227,7 +230,7 @@
         },
         {
           "name": "string.regexp.slashy.groovy",
-          "begin": "(?<![a-zA-Z0-9_)\\]])\\/(?![/*])",
+          "begin": "(?<=(?:^|[=~,(:{\\[?!]|return|assert|case|throw|yield|in)\\s*)\\/(?![/*])",
           "end": "\\/",
           "patterns": [
             {
@@ -332,7 +335,18 @@
           }
         },
         {
-          "match": "(\\.)([a-zA-Z_$][a-zA-Z0-9_$]*)\\s*\\(",
+          "match": "(::)([a-zA-Z_$][a-zA-Z0-9_$]*)\\s*\\(",
+          "captures": {
+            "1": {
+              "name": "keyword.operator.static.groovy punctuation.accessor.groovy"
+            },
+            "2": {
+              "name": "entity.name.function.method.groovy"
+            }
+          }
+        },
+        {
+          "match": "(\\?\\.|\\*\\.|\\.)([a-zA-Z_$][a-zA-Z0-9_$]*)\\s*\\(",
           "captures": {
             "1": {
               "name": "punctuation.accessor.groovy"
@@ -428,6 +442,32 @@
         }
       ]
     },
+    "properties": {
+      "patterns": [
+        {
+          "match": "(::)([a-zA-Z_$][a-zA-Z0-9_$]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.operator.static.groovy punctuation.accessor.groovy"
+            },
+            "2": {
+              "name": "support.type.property-name.groovy"
+            }
+          }
+        },
+        {
+          "match": "(\\?\\.|\\*\\.|\\.)([a-zA-Z_$][a-zA-Z0-9_$]*)",
+          "captures": {
+            "1": {
+              "name": "punctuation.accessor.groovy"
+            },
+            "2": {
+              "name": "support.type.property-name.groovy"
+            }
+          }
+        }
+      ]
+    },
     "classes": {
       "patterns": [
         {
@@ -439,13 +479,24 @@
     "identifiers": {
       "patterns": [
         {
-          "match": "(\\.)([a-zA-Z_$][a-zA-Z0-9_$]*)",
+          "match": "(::)([a-zA-Z_$][a-zA-Z0-9_$]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.operator.static.groovy punctuation.accessor.groovy"
+            },
+            "2": {
+              "name": "support.type.property-name.groovy"
+            }
+          }
+        },
+        {
+          "match": "(\\?\\.|\\*\\.|\\.)([a-zA-Z_$][a-zA-Z0-9_$]*)",
           "captures": {
             "1": {
               "name": "punctuation.accessor.groovy"
             },
             "2": {
-              "name": "variable.other.property.groovy"
+              "name": "support.type.property-name.groovy"
             }
           }
         },
