@@ -763,32 +763,32 @@ int main(int argc, char **argv) {
 
     // Candidate 3: self is in scripts/
     if (!file_exists(topiary_bin)) {
-        snprintf(topiary_bin, sizeof(topiary_bin), "%s" PATH_SEP_STR ".." PATH_SEP_STR "zed-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "bin" PATH_SEP_STR PLATFORM_DIR PATH_SEP_STR TOPIARY_NAME, self_dir);
-        snprintf(grammar_dll, sizeof(grammar_dll), "%s" PATH_SEP_STR ".." PATH_SEP_STR "zed-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "grammars" PATH_SEP_STR PLATFORM_DIR PATH_SEP_STR GRAMMAR_NAME, self_dir);
-        snprintf(query_file, sizeof(query_file), "%s" PATH_SEP_STR ".." PATH_SEP_STR "zed-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "queries" PATH_SEP_STR "pnuts.scm", self_dir);
-        snprintf(query_dir, sizeof(query_dir), "%s" PATH_SEP_STR ".." PATH_SEP_STR "zed-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "queries", self_dir);
+        snprintf(topiary_bin, sizeof(topiary_bin), "%s" PATH_SEP_STR ".." PATH_SEP_STR "vscode-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "bin" PATH_SEP_STR PLATFORM_DIR PATH_SEP_STR TOPIARY_NAME, self_dir);
+        snprintf(grammar_dll, sizeof(grammar_dll), "%s" PATH_SEP_STR ".." PATH_SEP_STR "vscode-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "grammars" PATH_SEP_STR PLATFORM_DIR PATH_SEP_STR GRAMMAR_NAME, self_dir);
+        snprintf(query_file, sizeof(query_file), "%s" PATH_SEP_STR ".." PATH_SEP_STR "vscode-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "queries" PATH_SEP_STR "pnuts.scm", self_dir);
+        snprintf(query_dir, sizeof(query_dir), "%s" PATH_SEP_STR ".." PATH_SEP_STR "vscode-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "queries", self_dir);
     }
 
     // Candidate 4: self is in repo root
     if (!file_exists(topiary_bin)) {
-        snprintf(topiary_bin, sizeof(topiary_bin), "%s" PATH_SEP_STR "zed-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "bin" PATH_SEP_STR PLATFORM_DIR PATH_SEP_STR TOPIARY_NAME, self_dir);
-        snprintf(grammar_dll, sizeof(grammar_dll), "%s" PATH_SEP_STR "zed-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "grammars" PATH_SEP_STR PLATFORM_DIR PATH_SEP_STR GRAMMAR_NAME, self_dir);
-        snprintf(query_file, sizeof(query_file), "%s" PATH_SEP_STR "zed-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "queries" PATH_SEP_STR "pnuts.scm", self_dir);
-        snprintf(query_dir, sizeof(query_dir), "%s" PATH_SEP_STR "zed-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "queries", self_dir);
+        snprintf(topiary_bin, sizeof(topiary_bin), "%s" PATH_SEP_STR "vscode-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "bin" PATH_SEP_STR PLATFORM_DIR PATH_SEP_STR TOPIARY_NAME, self_dir);
+        snprintf(grammar_dll, sizeof(grammar_dll), "%s" PATH_SEP_STR "vscode-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "grammars" PATH_SEP_STR PLATFORM_DIR PATH_SEP_STR GRAMMAR_NAME, self_dir);
+        snprintf(query_file, sizeof(query_file), "%s" PATH_SEP_STR "vscode-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "queries" PATH_SEP_STR "pnuts.scm", self_dir);
+        snprintf(query_dir, sizeof(query_dir), "%s" PATH_SEP_STR "vscode-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "queries", self_dir);
     }
 
     // Candidate 6: environment variable PNUTS_TOOLING_DIR
     const char *env_tooling = getenv("PNUTS_TOOLING_DIR");
     if (!file_exists(topiary_bin) && env_tooling && *env_tooling) {
-        snprintf(topiary_bin, sizeof(topiary_bin), "%s" PATH_SEP_STR "zed-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "bin" PATH_SEP_STR PLATFORM_DIR PATH_SEP_STR TOPIARY_NAME, env_tooling);
-        snprintf(grammar_dll, sizeof(grammar_dll), "%s" PATH_SEP_STR "zed-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "grammars" PATH_SEP_STR PLATFORM_DIR PATH_SEP_STR GRAMMAR_NAME, env_tooling);
-        snprintf(query_file, sizeof(query_file), "%s" PATH_SEP_STR "zed-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "queries" PATH_SEP_STR "pnuts.scm", env_tooling);
-        snprintf(query_dir, sizeof(query_dir), "%s" PATH_SEP_STR "zed-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "queries", env_tooling);
+        snprintf(topiary_bin, sizeof(topiary_bin), "%s" PATH_SEP_STR "vscode-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "bin" PATH_SEP_STR PLATFORM_DIR PATH_SEP_STR TOPIARY_NAME, env_tooling);
+        snprintf(grammar_dll, sizeof(grammar_dll), "%s" PATH_SEP_STR "vscode-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "grammars" PATH_SEP_STR PLATFORM_DIR PATH_SEP_STR GRAMMAR_NAME, env_tooling);
+        snprintf(query_file, sizeof(query_file), "%s" PATH_SEP_STR "vscode-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "queries" PATH_SEP_STR "pnuts.scm", env_tooling);
+        snprintf(query_dir, sizeof(query_dir), "%s" PATH_SEP_STR "vscode-pnuts" PATH_SEP_STR "resources" PATH_SEP_STR "queries", env_tooling);
     }
 
     // Candidate 7: standard user personal project fallback
     if (!file_exists(topiary_bin)) {
-        const char *known_root = "/home/chsilva/personal/projects/pnuts-tooling/zed-pnuts";
+        const char *known_root = "/home/chsilva/personal/projects/pnuts-tooling/vscode-pnuts";
         snprintf(topiary_bin, sizeof(topiary_bin), "%s" PATH_SEP_STR "resources" PATH_SEP_STR "bin" PATH_SEP_STR PLATFORM_DIR PATH_SEP_STR TOPIARY_NAME, known_root);
         snprintf(grammar_dll, sizeof(grammar_dll), "%s" PATH_SEP_STR "resources" PATH_SEP_STR "grammars" PATH_SEP_STR PLATFORM_DIR PATH_SEP_STR GRAMMAR_NAME, known_root);
         snprintf(query_file, sizeof(query_file), "%s" PATH_SEP_STR "resources" PATH_SEP_STR "queries" PATH_SEP_STR "pnuts.scm", known_root);

@@ -182,5 +182,25 @@ A ordem de trabalho acordada para as IDEs é rigorosamente sequencial:
 ### Arquivo Empacotado:
 - [`vscode-pnuts-0.3.18.vsix`](file:///home/chsilva/personal/projects/pnuts-tooling/vscode-pnuts/vscode-pnuts-0.3.18.vsix) (gerado e instalado no VS Code Server).
 
+---
+
+## 11. Limpeza do Ecossistema Zed e Receita de Reconstrução
+
+### Ações Realizadas:
+1. **Remoção da Pasta `zed-pnuts/`:**
+   - Liberados ~1.3 GB de espaço em disco (artefatos de compilação WASM em `target/` e cópias duplicadas de binários nativos multiplataforma).
+   - Eliminadas dependências redundantes na árvore raiz de trabalho, focando 100% no core do Language Server (`pnuts-lsp`) e na extensão oficial do **VS Code** (`vscode-pnuts`).
+2. **Documentação e Automação de Reconstrução:**
+   - Criada a receita completa em [`docs/ZED_SETUP_RECIPE.md`](file:///home/chsilva/personal/projects/pnuts-tooling/docs/ZED_SETUP_RECIPE.md) contendo todo o código-fonte de cada arquivo da extensão, queries Tree-sitter, schemas de configuração do Zed, e passos de compilação.
+   - Criado o script executável [`scripts/recreate-zed.sh`](file:///home/chsilva/personal/projects/pnuts-tooling/scripts/recreate-zed.sh) para reconstrução instantânea e autônoma do `zed-pnuts` a qualquer momento.
+   - Preservado no Git todo o histórico até o commit `9c32c45`. Para restauração imediata via Git:
+     ```bash
+     git checkout 9c32c45 -- zed-pnuts/
+     ```
+3. **Desacoplamento do Formatador (`pnuts-lsp` e `pnuts_format_runner.c`):**
+   - Atualizados os caminhos de busca de fallback do binário `topiary`, gramáticas dinâmicas e queries para utilizarem [`vscode-pnuts/resources/`](file:///home/chsilva/personal/projects/pnuts-tooling/vscode-pnuts/resources/) e `~/.local/bin/`, eliminando qualquer dependência da existência de `zed-pnuts`.
+   - Todos os 58 testes automatizados do LSP e formatação passando com 100% de sucesso (`cargo test`).
+
+
 
 

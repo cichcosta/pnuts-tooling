@@ -414,11 +414,23 @@ pub fn resolve_formatter_binary() -> Option<PathBuf> {
         }
     }
 
+    let platform_dir = if cfg!(windows) {
+        "win32-x64"
+    } else if cfg!(target_os = "macos") {
+        if cfg!(target_arch = "aarch64") {
+            "darwin-arm64"
+        } else {
+            "darwin-x64"
+        }
+    } else {
+        "linux-x64"
+    };
+
     // 2. Check PNUTS_TOOLING_DIR environment variable
     if let Ok(env_tooling) = std::env::var("PNUTS_TOOLING_DIR") {
         let root = PathBuf::from(env_tooling);
         let candidates = [
-            root.join("zed-pnuts").join("bin").join(exe_name),
+            root.join("vscode-pnuts").join("resources").join("bin").join(platform_dir).join(exe_name),
             root.join("bin").join(exe_name),
         ];
         for c in candidates {
@@ -433,9 +445,9 @@ pub fn resolve_formatter_binary() -> Option<PathBuf> {
         if let Some(exe_dir) = current_exe.parent() {
             let candidates = [
                 exe_dir.join(exe_name),
-                exe_dir.join("../zed-pnuts/bin").join(exe_name),
-                exe_dir.join("../../zed-pnuts/bin").join(exe_name),
-                exe_dir.join("../../../zed-pnuts/bin").join(exe_name),
+                exe_dir.join(format!("../vscode-pnuts/resources/bin/{platform_dir}")).join(exe_name),
+                exe_dir.join(format!("../../vscode-pnuts/resources/bin/{platform_dir}")).join(exe_name),
+                exe_dir.join(format!("../../../vscode-pnuts/resources/bin/{platform_dir}")).join(exe_name),
                 exe_dir.join("../bin").join(exe_name),
             ];
             for c in candidates {
@@ -453,7 +465,7 @@ pub fn resolve_formatter_binary() -> Option<PathBuf> {
 
     // 4. Check relative to current working directory
     let cwd_candidates = [
-        PathBuf::from("zed-pnuts").join("bin").join(exe_name),
+        PathBuf::from(format!("vscode-pnuts/resources/bin/{platform_dir}")).join(exe_name),
         PathBuf::from("bin").join(exe_name),
         PathBuf::from(exe_name),
     ];
@@ -472,8 +484,6 @@ pub fn resolve_formatter_binary() -> Option<PathBuf> {
     if let Ok(localappdata) = std::env::var("LOCALAPPDATA") {
         let lad = PathBuf::from(localappdata);
         let lad_candidates = [
-            lad.join("Zed/extensions/pnuts-tooling/zed-pnuts/bin").join(exe_name),
-            lad.join("Zed/extensions/work/pnuts/bin").join(exe_name),
             lad.join("Zed/extensions/installed/pnuts/bin").join(exe_name),
         ];
         for c in lad_candidates {
@@ -488,10 +498,7 @@ pub fn resolve_formatter_binary() -> Option<PathBuf> {
         let home_candidates = [
             home_dir.join(".cargo/bin").join(exe_name),
             home_dir.join(".local/bin").join(exe_name),
-            home_dir.join("personal/projects/pnuts-tooling/zed-pnuts/bin").join(exe_name),
-            home_dir.join("AppData/Local/Zed/extensions/pnuts-tooling/zed-pnuts/bin").join(exe_name),
-            home_dir.join("AppData/Local/Zed/extensions/work/pnuts/bin").join(exe_name),
-            home_dir.join("AppData/Local/Zed/extensions/installed/pnuts/bin").join(exe_name),
+            home_dir.join(format!("personal/projects/pnuts-tooling/vscode-pnuts/resources/bin/{platform_dir}")).join(exe_name),
         ];
         for c in home_candidates {
             if c.is_file() {
