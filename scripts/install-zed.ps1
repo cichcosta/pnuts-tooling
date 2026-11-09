@@ -100,7 +100,7 @@ foreach ($settingsFile in $SettingsCandidates) {
             Set-Content -Path $settingsFile -Value $jsonOutput -Encoding UTF8
             Write-Host "   -> Atualizado com sucesso: $settingsFile" -ForegroundColor Green
         } catch {
-            Write-Host "   -> Aviso ao processar $settingsFile: $($_.Exception.Message)" -ForegroundColor Yellow
+            Write-Host "   -> Aviso ao processar ${settingsFile}: $($_.Exception.Message)" -ForegroundColor Yellow
         }
     }
 }

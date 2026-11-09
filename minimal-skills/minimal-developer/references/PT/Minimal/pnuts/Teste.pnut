@@ -1,0 +1,151 @@
+
+import("java.util.*")
+import("java.math.*")
+//import("PT.Minimal.util.MDate")
+//import("PT.Minimal.projects.rhu.MHUtils")
+import("PT.Minimal.teste.MTestex")
+import("PT.Minimal.actions.*")
+import("PT.Minimal.pnuts.*")
+import("PT.Minimal.geral.console.*")
+
+
+/*	
+function testeMrfc() {
+
+	ent = "MRFC0";
+	entName = "Atributos Form";
+	mpnut = MPnuts(ent);
+	pent = MPrepareEnt(ent, entName);
+	rdata = pent.getResData();
+
+	form = MForm(ent + "BR");
+	form.setEnt(ent);
+	form.setEntName(entName);
+	form.addCmds(ent, rdata.getCmds());
+	form.addPanelList(Hashtable());
+	form.setType(MForm::SINGLEROW);
+	form.setAction("BROWSE_ROW");
+	frame = MFrame();
+	frame.setTitle(entName);
+	frame.setForm(form);
+
+	vrows = getMRows("MRFC", "select * from mrfct0 where i_ob='HRGR0' and i_comp = 'icrm'");
+	foreach row (vrows.elements()) row.setRecord(Hashtable());
+	form.setRow(vrows.firstElement());
+	MHandleCommand(frame, null, form, frame, null, "PROTOTYPE_ENT", vrows);
+
+	MTestex::exit = false;
+}
+
+
+function testeImagem() {
+
+	ent = "BENT2";
+	entName = "Pessoas/Efectivos";
+	mpnut = MPnuts(ent);
+	pent = MPrepareEnt(ent, entName);
+	rdata = pent.getResData();
+
+	form = MForm(ent + "BR");
+	form.setEnt(ent);
+	form.setEntName(entName);
+	form.addCmds(ent, rdata.getCmds());
+	form.addPanelList(Hashtable());
+	form.setType(MForm::SINGLEROW);
+	form.setAction("BROWSE_ROW");
+	form.setRow(getMRow("BENT", "select * from bentt0 where ientt='EM' and ient='CE' and iuorgt='*' and iuorg='*'"));
+	frame = MFrame();
+	frame.setTitle(entName);
+	frame.setForm(form);
+
+	MHandleCommand(frame, null, form, frame, null, "IMAGE_ROW");
+
+	MTestex::exit = false;
+}
+
+*/
+
+function teste() {
+
+p = MLogin::getLoginProperties();
+p.put("user.dsn", MTestex::ora_lus);
+MLogin::doLogin()
+
+   println("user: " + MLogin::getUser());flush();
+   return;
+
+
+MConsole::enableTraceSql()
+
+p = MLogin::getLoginProperties();
+p.put("user.dsn", MTestex::ora_lus);
+MLogin::doLogin()
+
+wcsel = "select ient,nent,nent[3, 5] as nenta,left(nent[5,15],6) as nentb from bentt0 where ient = '030005'"
+wrow = getRow("BENT", wcsel)
+println(wrow.toLongString());flush()
+
+wcsel = "select ient,nent from bentt0 where ient = '030005'"
+wrow = getRow("BENT", wcsel)
+println(wrow.toLongString());flush()
+return
+
+wcsel = "select * from hpeft0 where ient = '2206'"
+wrow = getMRow("HPEF0", wcsel)
+//wrow.zctl = null
+println(wrow.toLongString())
+
+	
+//testeMrfc()
+//testeCommand()
+
+//MTestex::exit = false;
+//MinMain::main(["BCPT0", "Códigos Postais"]);
+//MinMain::main(["BENT2", "Pessoas/Efectivos"]);
+
+/*
+catch(MError, function (e) {
+	err = e.getThrowable()
+	println("catched " + err.getMessage());flush()
+	println("class " + err.getClass());flush()
+	println("teste_var: " + teste_var);flush()
+	println("teste_var2: " + teste_var2);flush()
+	} )
+
+throw(MError("teste erro"))
+*/
+
+/*
+println("System properties:")
+prop = System::getProperties()
+foreach p (prop.propertyNames()) {
+   println(p + ": " + prop.getProperty(p))
+}
+println("")
+println("Minimal properties:")
+prop = MLogin::getLoginProperties()
+foreach p (prop.propertyNames()) {
+   println(p + ": " + prop.getProperty(p))
+}
+*/
+
+/*
+start = st = Date().getTime()
+for (i = 0; i < 100; ++i) {
+   for (j = 0; j < 1000; ++j) z = j + i
+   x = Date().getTime()
+   t = x - st
+   println("t: " + t);flush()
+   st = x
+}
+end = Date().getTime()
+t = end - start
+println("Total: " + t);flush()
+*/
+
+
+println("done");flush()
+}
+
+
+//

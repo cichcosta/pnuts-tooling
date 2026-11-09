@@ -203,20 +203,52 @@ A ordem de trabalho acordada para as IDEs é rigorosamente sequencial:
 
 ---
 
-## 12. Próximos Passos e Backlog Priorizado (Roadmap Operacional)
+## 12. Implementação Consolidada do Sprint (v0.3.22)
 
-Consulte o documento completo em [`docs/PROXIMOS_PASSOS.md`](file:///home/chsilva/personal/projects/pnuts-tooling/docs/PROXIMOS_PASSOS.md) para detalhes técnicos de implementação e plano de testes.
+### 1. Signature Help (`textDocument/signatureHelp`):
+- Implementado em [`pnuts-lsp/src/signature_help.rs`](file:///home/chsilva/personal/projects/pnuts-tooling/pnuts-lsp/src/signature_help.rs).
+- Acionamento automático ao digitar `(` ou `,` e via atalho `Ctrl + Shift + Space`.
+- Scanner léxico tolerante que mascara strings literais, comentários de linha e bloco, preservando parênteses reais e contagem exata de parâmetros (`active_parameter`).
+- Suporte a funções locais da AST (`function` / `def`), built-ins e banco (`getRows`, `getMCursor`, `getDialogForm`, `getDialogFormEx`, etc.), e métodos de objetos (`trim`, `substring`, etc.).
 
-### Resumo do Backlog Priorizado:
-1. **Signature Help (`textDocument/signatureHelp`):**
-   - Exibir balão flutuante com assinatura de funções/métodos com parâmetro ativo destacado em negrito ao digitar `(` e `,`.
-   - Suporte a funções locais e built-ins/funções de banco (`getMCursor`, `getDialogFormEx`, etc.).
-2. **Investigação e Refinamento do Ícone Pnuts:**
-   - Investigar cache de ícones do VS Code, atualizar [`vscode-pnuts/icons/pnuts.png`](file:///home/chsilva/personal/projects/pnuts-tooling/vscode-pnuts/icons/pnuts.png) para a nova versão minimalista e revisar precedência de tema no `icon-theme.json`.
-3. **Enriquecimento de Documentação no Hover (`textDocument/hover`):**
-   - Expandir documentação e exemplos para classes/objetos frequentes (`MConnection`, `MLogin`, `MForm`, `MCursor`).
-4. **Code Actions / Quick Fixes (`textDocument/codeAction`):**
-   - Ações automáticas (`Ctrl + .`) como envolver em `try/catch` e auto-importar classes Java.
+### 2. Ícones Inspirados no Catppuccin (`daveedmee/catppuccin-icons`) sem alteração do tema padrão:
+- **Pnuts:**
+  - `icons/pnuts.svg`: Amendoim vetorial autêntico na paleta suave Catppuccin Macchiato: casca em Peach (`#f5a97f`), nervuras em Yellow (`#eed49f`), contorno Macchiato Base (`#24273a`) e brilhos em Rosewater (`#f4dbd6`).
+  - `icons/pnuts.png`: Renderização vetorial anti-aliased em 256x256 (Lanczos supersampling) para o ícone da extensão no marketplace e painel de extensões.
+- **Groovy:**
+  - `icons/groovy.svg`: Glifo dinâmico clássico em Catppuccin Sapphire (`#7dc4e4`) com acento inferior em Sky (`#91d7e3`).
+- **Preservação Estrita do Tema de Ícones Padrão:**
+  - Removida qualquer contribuição de tema de ícones (`iconThemes`) e comandos associados.
+  - O VS Code mantém 100% o tema de pastas e arquivos padrão do usuário (Seti ou customizado), associando os novos ícones exclusivamente às linguagens Pnuts e Groovy via `contributes.languages[].icon`.
+  - Código em `extension.js` restaura automaticamente `workbench.iconTheme` caso tivesse sido alterado.
+
+### 3. Enriquecimento da Documentação no Hover (`textDocument/hover`):
+- Adicionados cards ricos de documentação em Markdown para classes empresariais frequentes: `MConnection`, `MLogin`, `MForm`, `MCursor`, `MRow`, `MDate`, `MFile`, `JSONObject`, `JSONArray`.
+- Inclusão de blocos de código práticos com exemplos de transação (`beginWork`/`commitWork`/`rollbackWork`), abertura de telas e manipulação de registros prontos para copiar e colar.
+- Documentação de métodos comuns (`COMMON_METHODS`), classes padrão Java (`COMMON_JAVA_CLASSES`) e identificação de variáveis locais atribuídas.
+
+### 4. Code Actions / Quick Fixes (`textDocument/codeAction`):
+- Implementado em [`pnuts-lsp/src/code_actions.rs`](file:///home/chsilva/personal/projects/pnuts-tooling/pnuts-lsp/src/code_actions.rs).
+- Acionado via atalho universal `Ctrl + .` ou lâmpada de ações rápidas:
+  - **Refactoring:** "Envolver em bloco try / catch" envolvendo a seleção ou linha com indentação preservada e tratamento padrão com `showError`.
+  - **Quick Fix:** "Importar '<classe>'" para classes Java frequentes (`java.util.ArrayList`, `java.util.HashMap`, `java.util.List`, `java.math.BigDecimal`, etc.) com inserção limpa no topo do arquivo sem duplicatas.
+  - **Quick Action:** "Inserir cabeçalho padrão de script" para novos arquivos ou scripts sem header.
+
+### 5. Cobertura de Testes e Empacotamento:
+- **74 testes automatizados passando** (100% de sucesso): 59 testes unitários, 14 testes ponta a ponta JSON-RPC e 1 teste de gramática.
+- Binários compilados para Linux (`target/release/pnuts-lsp`) e Windows (`target/x86_64-pc-windows-gnu/release/pnuts-lsp.exe` via `cargo-zigbuild`).
+- Extensão empacotada e instalada no VS Code Server: [`vscode-pnuts-0.3.22.vsix`](file:///home/chsilva/personal/projects/pnuts-tooling/vscode-pnuts/vscode-pnuts-0.3.22.vsix).
+
+---
+
+## 13. Próximos Passos e Backlog Futuro
+
+1. **Guia Mestre e Receita da IDE Portável no Neovim:**
+   - Registrado na íntegra em [`docs/NEOVIM_PORTABLE_IDE_RECIPE.md`](file:///home/chsilva/personal/projects/pnuts-tooling/docs/NEOVIM_PORTABLE_IDE_RECIPE.md).
+   - Roadmap estruturado em 5 fases para transformar o Neovim `v0.12.5` em uma IDE completa (Java, Kotlin, Go, Rust, Zig, React, Node, Pnuts) com startup < 30ms, estética Catppuccin e Debug visual (DAP).
+2. Consulte também o documento de roadmap em [`docs/PROXIMOS_PASSOS.md`](file:///home/chsilva/personal/projects/pnuts-tooling/docs/PROXIMOS_PASSOS.md).
+
+
 
 
 

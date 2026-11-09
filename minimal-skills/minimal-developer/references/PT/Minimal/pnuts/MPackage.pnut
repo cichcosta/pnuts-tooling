@@ -1,0 +1,70 @@
+/*
+ * MPackage.pnut
+ *
+ * Inicialização de um package no interface Minimal / Pnuts
+ *
+ * @author Minimal Lda
+ */
+
+import("PT.Minimal.geral.*")
+import("PT.Minimal.util.*")
+import("PT.Minimal.pnuts.*")
+
+//println("!*** MPackage (pnuts): " + package().getName())
+
+
+// lista de todas as variáveis e funções activas neste package
+function listPackage() {
+   pkg = package()
+   println(pkg)
+   foreach wkey (pkg.keys()) {
+      println(wkey + ": " + pkg.get(wkey))
+   }
+   flush()
+}
+//
+
+// interface pnuts
+
+function evalValues(wstr) {
+   mpnut = MPnuts::getMPnut(package().getName())
+   return mpnut.evalValues(wstr)
+}
+
+function evalFormatedValues(wstr) {
+   mpnut = MPnuts::getMPnut(package().getName())
+   return mpnut.evalFormatedValues(wstr)
+}
+
+//
+
+
+// devolve a organização por defeito
+function getIorgx() {
+  wiorgx = " "
+  wiorg = MLogin::getUserOrg()
+  if (defined("vrows")) {
+     i = 0
+     for (i=0; i < vrows.size(); i++) {
+       wrow = vrows.elementAt(i)
+       if (wrow.isValidRow()) {
+         if (wrow.containsKey("iorg")) {
+           wiorg = wrow.iorg
+         }
+         break;
+       }
+     }
+  }
+  if (wiorg.trim() != "") {
+    wcsel  = "select nvl(max(nnomel), '') from bentt0"
+    wcsel += " where ientt = '*'"
+    wcsel +=   " and ient = '" + wiorg + "'"
+    wcsel +=   " and iuorgt = '*'"
+    wcsel +=   " and iuorg = '*'"
+    wiorgx = getSQLValue(wcsel)
+  }
+  return wiorgx
+}
+//
+
+// eof MPackage.pnut

@@ -2,7 +2,7 @@ use tower_lsp::lsp_types::*;
 use tree_sitter::{Node, Tree};
 use url::Url;
 
-use crate::completion::BUILTIN_FUNCTIONS;
+use crate::completion::{BUILTIN_FUNCTIONS, COMMON_JAVA_CLASSES, COMMON_METHODS};
 
 /// Converts a tree-sitter node to an LSP Range using line-based UTF-16 character offsets.
 pub fn node_to_range(node: Node, lines: &[&str]) -> Range {
@@ -229,7 +229,112 @@ pub fn find_hover(tree: &Tree, source: &str, position: Position) -> Option<Hover
         curr = n.parent();
     }
 
+    // 4. Check Enterprise Classes with rich documentation and code examples
+    if let Some(hover_text) = get_enterprise_class_hover(symbol_name) {
+        return Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: hover_text.to_string(),
+            }),
+            range: None,
+        });
+    }
+
+    // 5. Check Common Java Framework Classes
+    for &(name, desc) in COMMON_JAVA_CLASSES {
+        if name == symbol_name {
+            let markdown = format!("```pnuts\nclass {}\n```\n\n{}", name, desc);
+            return Some(Hover {
+                contents: HoverContents::Markup(MarkupContent {
+                    kind: MarkupKind::Markdown,
+                    value: markdown,
+                }),
+                range: None,
+            });
+        }
+    }
+
+    // 6. Check Common Methods
+    for &(name, sig, _snippet, doc) in COMMON_METHODS {
+        if name == symbol_name {
+            let markdown = format!("```pnuts\n{}{}\n```\n\n{}", name, sig, doc);
+            return Some(Hover {
+                contents: HoverContents::Markup(MarkupContent {
+                    kind: MarkupKind::Markdown,
+                    value: markdown,
+                }),
+                range: None,
+            });
+        }
+    }
+
+    // 7. Check local variable assignment (either at declaration or at usage)
+    let var_assign = if let Some(parent) = node.parent() {
+        if parent.kind() == "assignment_expression" && parent.child(0) == Some(node) {
+            Some(node)
+        } else {
+            find_assignment_def(root, source, symbol_name, node.start_byte())
+        }
+    } else {
+        find_assignment_def(root, source, symbol_name, node.start_byte())
+    };
+
+    if let Some(assign_node) = var_assign {
+        let parent = assign_node.parent();
+        let decl_text = if let Some(p) = parent {
+            if p.kind() == "assignment_expression" {
+                p.utf8_text(source.as_bytes()).unwrap_or(symbol_name).trim().to_string()
+            } else {
+                format!("var {}", symbol_name)
+            }
+        } else {
+            format!("var {}", symbol_name)
+        };
+        let markdown = format!("```pnuts\n(variable) {}\n```\n\n*(local variable)*", decl_text);
+        return Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: markdown,
+            }),
+            range: None,
+        });
+    }
+
     None
+}
+
+/// Returns rich markdown documentation and usage examples for enterprise classes.
+fn get_enterprise_class_hover(symbol: &str) -> Option<&'static str> {
+    match symbol {
+        "MConnection" => Some(
+            "```pnuts\nclass MConnection\n```\n\n**MConnection**: Gerenciador de conexão e controle transacional com o banco de dados.\n\n### Métodos Frequentes:\n- `MConnection::getMCursor()`: Retorna o cursor de banco ativo para execução de comandos e transações.\n\n### Exemplo de Uso:\n```pnuts\ncursor = MConnection::getMCursor();\ncursor.beginWork();\ntry {\n    cursor.executeSQL(\"UPDATE CLIENTES SET ATIVO = 'S' WHERE ID = 1\");\n    cursor.commitWork();\n} catch (Exception e) {\n    cursor.rollbackWork();\n    showError(e.getMessage());\n}\n```"
+        ),
+        "MLogin" => Some(
+            "```pnuts\nclass MLogin\n```\n\n**MLogin**: Provedor de contexto de autenticação e sessão do usuário.\n\n### Métodos Frequentes:\n- `MLogin::getUser()`: Retorna o nome do usuário autenticado na sessão.\n- `MLogin::getUserNodo()`: Retorna a identificação da estação de trabalho ou nodo de rede.\n\n### Exemplo de Uso:\n```pnuts\nusuario = MLogin::getUser();\nprintln(\"Executado por: \" + usuario);\n```"
+        ),
+        "MForm" => Some(
+            "```pnuts\nclass MForm\n```\n\n**MForm**: Utilitário de interface para abertura e controle de telas e caixas de diálogo.\n\n### Métodos Frequentes:\n- `MForm::getDialogForm(parent, name, mode, title, size)`: Abre diálogo modal ou não-modal.\n- `MForm::getDialogFormEx(parent, name, mode, title, size, [options])`: Abre diálogo com opções estendidas.\n\n### Exemplo de Uso:\n```pnuts\nwdfform = MForm::getDialogForm(m, \"DDOC0CFPSR\", \"ME\", \"Informações Fiscais\", 3);\n```"
+        ),
+        "MCursor" => Some(
+            "```pnuts\nclass MCursor\n```\n\n**MCursor**: Cursor de execução SQL e controle de transação.\n\n### Métodos Frequentes:\n- `cursor.beginWork()`: Inicia uma transação no banco de dados.\n- `cursor.commitWork()`: Confirma a transação ativa.\n- `cursor.rollbackWork()`: Desfaz a transação ativa em caso de erro.\n- `cursor.close()`: Libera o cursor e recursos associados.\n\n### Exemplo de Uso:\n```pnuts\ncursor.beginWork();\ntry {\n    executeSQL(\"INSERT INTO HISTORICO (MSG) VALUES ('OK')\");\n    cursor.commitWork();\n} catch (Exception e) {\n    cursor.rollbackWork();\n}\n```"
+        ),
+        "MRow" | "MRows" => Some(
+            "```pnuts\nclass MRow\n```\n\n**MRow**: Representação em memória de um registro de banco de dados com colunas nomeadas.\n\n### Métodos Frequentes:\n- `row.getString(col)`: Retorna o valor da coluna como texto.\n- `row.getInt(col)`: Retorna o valor como inteiro.\n- `row.getBigDecimal(col)`: Retorna o valor monetário ou decimal exato.\n- `row.set(col, valor)`: Atribui novo valor para a coluna no buffer.\n\n### Exemplo de Uso:\n```pnuts\nwrow = getMRow(\"CLIENTES\");\nwrow.set(\"NOME\", \"EMPRESA EXEMPLO\");\ninsertRow(wrow);\n```"
+        ),
+        "MDate" => Some(
+            "```pnuts\nclass MDate\n```\n\n**MDate**: Utilitário para formatação, cálculo e conversão de datas e timestamps."
+        ),
+        "MFile" => Some(
+            "```pnuts\nclass MFile\n```\n\n**MFile**: Utilitário para manipulação de arquivos, diretórios e fluxos no sistema de arquivos."
+        ),
+        "JSONObject" => Some(
+            "```pnuts\nclass JSONObject\n```\n\n**JSONObject**: Objeto estruturado JSON (`org.json.JSONObject`).\n\n### Exemplo de Uso:\n```pnuts\njson = new JSONObject();\njson.put(\"status\", \"sucesso\");\njson.put(\"codigo\", 200);\n```"
+        ),
+        "JSONArray" => Some(
+            "```pnuts\nclass JSONArray\n```\n\n**JSONArray**: Coleção de elementos em formato de array JSON (`org.json.JSONArray`).\n\n### Exemplo de Uso:\n```pnuts\narray = new JSONArray();\narray.put(jsonItem);\n```"
+        ),
+        _ => None,
+    }
 }
 
 /// Collects document symbols (outline of functions, methods, classes).
@@ -537,5 +642,63 @@ mod tests {
         assert!(symbols.iter().any(|s| s.name == "funcA" && s.kind == SymbolKind::FUNCTION));
         assert!(symbols.iter().any(|s| s.name == "funcB" && s.kind == SymbolKind::FUNCTION));
         assert!(symbols.iter().any(|s| s.name == "MinhaClasse" && s.kind == SymbolKind::CLASS));
+    }
+
+    #[test]
+    fn test_hover_enterprise_classes() {
+        let source = "cursor = MConnection::getMCursor();\nuser = MLogin::getUser();\nform = MForm::getDialogForm(m, 'TESTE', 'ME', 'Titulo', 3);";
+        let tree = parse_pnuts(source, None).unwrap();
+
+        // 1. MConnection hover
+        let hover_conn = find_hover(&tree, source, Position { line: 0, character: 12 }).unwrap();
+        if let HoverContents::Markup(c) = hover_conn.contents {
+            assert!(c.value.contains("MConnection"));
+            assert!(c.value.contains("Gerenciador de conexão"));
+            assert!(c.value.contains("cursor.beginWork()"));
+        } else {
+            panic!("Expected markup");
+        }
+
+        // 2. MLogin hover
+        let hover_login = find_hover(&tree, source, Position { line: 1, character: 9 }).unwrap();
+        if let HoverContents::Markup(c) = hover_login.contents {
+            assert!(c.value.contains("MLogin"));
+            assert!(c.value.contains("MLogin::getUser()"));
+        } else {
+            panic!("Expected markup");
+        }
+
+        // 3. MForm hover
+        let hover_form = find_hover(&tree, source, Position { line: 2, character: 9 }).unwrap();
+        if let HoverContents::Markup(c) = hover_form.contents {
+            assert!(c.value.contains("MForm"));
+            assert!(c.value.contains("getDialogForm"));
+        } else {
+            panic!("Expected markup");
+        }
+    }
+
+    #[test]
+    fn test_hover_common_methods_and_variables() {
+        let source = "texto = '  teste  ';\nlimpo = texto.trim();";
+        let tree = parse_pnuts(source, None).unwrap();
+
+        // Hover on 'trim'
+        let hover_trim = find_hover(&tree, source, Position { line: 1, character: 16 }).unwrap();
+        if let HoverContents::Markup(c) = hover_trim.contents {
+            assert!(c.value.contains("trim"));
+            assert!(c.value.contains("whitespace"));
+        } else {
+            panic!("Expected markup");
+        }
+
+        // Hover on local variable 'limpo'
+        let hover_var = find_hover(&tree, source, Position { line: 1, character: 2 }).unwrap();
+        if let HoverContents::Markup(c) = hover_var.contents {
+            assert!(c.value.contains("limpo"));
+            assert!(c.value.contains("variable"));
+        } else {
+            panic!("Expected markup");
+        }
     }
 }

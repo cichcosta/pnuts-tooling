@@ -1,4 +1,5 @@
 pub mod backend;
+pub mod code_actions;
 pub mod completion;
 pub mod diagnostics;
 pub mod document;
@@ -7,8 +8,10 @@ pub mod navigation;
 pub mod parser;
 pub mod references;
 pub mod rename;
+pub mod signature_help;
 
 pub use backend::Backend;
+pub use code_actions::provide_code_actions;
 pub use completion::provide_completions;
 pub use diagnostics::collect_diagnostics;
 pub use document::{Document, DocumentSnapshot, DocumentStore, SharedDocumentStore};
@@ -17,6 +20,7 @@ pub use navigation::{find_definition, find_document_symbols, find_hover};
 pub use parser::{create_parser, has_errors, parse_pnuts};
 pub use references::find_references;
 pub use rename::{prepare_rename, rename_symbol};
+pub use signature_help::provide_signature_help;
 
 #[cfg(test)]
 mod tests {

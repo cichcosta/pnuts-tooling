@@ -84,7 +84,6 @@
   "class"
   "extends"
   "implements"
-  "instanceof"
   "return"
   "throw"
   "yield"
@@ -105,6 +104,7 @@
 "while" @prepend_space @append_space
 "extends" @prepend_space @append_space
 "implements" @prepend_space @append_space
+"instanceof" @prepend_space @append_space
 
 ;; Space after closing parenthesis in control flow structures
 (if_statement
@@ -186,6 +186,7 @@
   "?"
   ":"
   "in"
+  "instanceof"
 ] @prepend_space @append_space
 
 ;; Unary operators (no space after)

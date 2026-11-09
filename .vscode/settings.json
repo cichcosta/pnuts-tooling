@@ -1,0 +1,10 @@
+{
+  "[pnuts]": {
+    "editor.defaultFormatter": "pnuts-tooling.vscode-pnuts",
+    "editor.formatOnSave": true
+  },
+  "[groovy]": {
+    "editor.defaultFormatter": "pnuts-tooling.vscode-pnuts",
+    "editor.formatOnSave": true
+  }
+}

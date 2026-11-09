@@ -271,6 +271,8 @@ cp tree-sitter-pnuts/queries/highlights.scm zed-pnuts/languages/groovy/highlight
 # Snippets e Ícones
 cp vscode-pnuts/snippets/pnuts.json zed-pnuts/snippets/pnuts.json
 cp vscode-pnuts/icons/pnuts.svg zed-pnuts/icons/pnuts.svg
+cp vscode-pnuts/icons/pnuts.png zed-pnuts/icons/pnuts.png
+cp vscode-pnuts/icons/groovy.svg zed-pnuts/icons/groovy.svg
 
 cat << 'EOF' > zed-pnuts/icon_themes/pnuts.json
 {
@@ -282,34 +284,46 @@ cat << 'EOF' > zed-pnuts/icon_themes/pnuts.json
       "name": "Pnuts Icon Theme",
       "appearance": "dark",
       "file_icons": {
-        "pnuts": { "path": "./icons/pnuts.svg" }
+        "pnuts": { "path": "./icons/pnuts.svg" },
+        "groovy": { "path": "./icons/groovy.svg" }
       },
       "file_suffixes": {
         "pnuts": "pnuts",
         "pnut": "pnuts",
-        "groovy": "pnuts"
+        "groovy": "groovy"
       }
     },
     {
       "name": "Pnuts Icon Theme Light",
       "appearance": "light",
       "file_icons": {
-        "pnuts": { "path": "./icons/pnuts.svg" }
+        "pnuts": { "path": "./icons/pnuts.svg" },
+        "groovy": { "path": "./icons/groovy.svg" }
       },
       "file_suffixes": {
         "pnuts": "pnuts",
         "pnut": "pnuts",
-        "groovy": "pnuts"
+        "groovy": "groovy"
       }
     }
   ]
 }
 EOF
 
-# 7. Copiar executável nativo do LSP para a pasta de execução local
+mkdir -p zed-pnuts/resources/queries
+cp vscode-pnuts/resources/queries/pnuts.scm zed-pnuts/resources/queries/pnuts.scm
+
+# 7. Copiar executáveis nativos para a pasta bin local
 if [ -f "target/release/pnuts-lsp" ]; then
   cp target/release/pnuts-lsp zed-pnuts/bin/pnuts-lsp
   chmod +x zed-pnuts/bin/pnuts-lsp
+fi
+if [ -f "vscode-pnuts/resources/bin/win32-x64/pnuts-lsp.exe" ]; then
+  cp vscode-pnuts/resources/bin/win32-x64/pnuts-lsp.exe zed-pnuts/bin/pnuts-lsp.exe
+fi
+if [ -f "$HOME/.local/bin/pnuts-format" ]; then
+  cp "$HOME/.local/bin/pnuts-format" zed-pnuts/bin/pnuts-format
+  chmod +x zed-pnuts/bin/pnuts-format
 fi
 
 echo "✅ zed-pnuts recriado com sucesso!"

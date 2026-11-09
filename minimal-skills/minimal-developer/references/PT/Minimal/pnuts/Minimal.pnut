@@ -1,0 +1,1040 @@
+/*
+ * Minimal.pnut
+ *
+ * Inicialização do interface Minimal / Pnuts
+ *
+ * @author Minimal Lda
+ */
+
+import("PT.Minimal.projects.rhu.*")
+import("PT.Minimal.geral.*")
+import("PT.Minimal.pnuts.*")
+import("PT.Minimal.util.*")
+import("PT.Minimal.sql.*")
+import("javax.mail.*")
+import("javax.mail.internet.*")
+import("javax.activation.*")
+import("java.util.*")
+import("javax.swing.*")
+
+
+function mdigest(wstring) {
+   MString::mdigest(wstring)
+}
+// devolve true se o pnut existe
+function isMPnut(pnutName) {
+   MPnuts::isMPnut(pnutName)
+}
+// devolve pnut especificado
+function getMPnut(pnutName) {
+   MPnuts::getMPnut(pnutName)
+}
+
+// tratamento de Strings, Números e Datas
+function extenso(wvalor) {
+   MNumberUtil::toText(wvalor)
+}
+function extenso(wvalor, wmoeda) {
+   MNumberUtil::toText(wvalor, wmoeda)
+}
+function extenso(wvalor, wscale, wmoeda) {
+   MNumberUtil::toText(wvalor, wscale, wmoeda)
+}
+function extenso(wvalor, wscale, wunits, wdecimals) {
+   MNumberUtil::toText(wvalor, wscale, wunits, wdecimals)
+}
+
+function toBigDecimal(wvalue) {
+   MNumberUtil::toBigDecimal(wvalue)
+}
+function toNumber(wstring) {
+   //MNumberUtil::toBigDecimal(MUtil::getNumber(wstring))
+   DOUBLE(MUtil::getNumber(wstring))
+}
+function DOUBLE(value) {
+  if (value instanceof String){
+    Double::valueOf(value)
+  } else {
+    value.doubleValue()
+  }
+}
+function INT(value) {
+  if (value instanceof Character){
+    Types::charToInt(value)
+  } else if (value instanceof String){
+    Integer::parseInt(value)
+  } else {
+    value.intValue()
+  }
+}
+function max(val1, val2) {
+   if (val1 > val2) return val1;
+   return val2;
+}
+function min(val1, val2) {
+   if (val1 < val2) return val1;
+   return val2;
+}
+
+function formatNumber(wval, wformat) {
+   MUtil::getFormattedNumber(wval,wformat)
+}
+function formatNumber(wval, wformat, wlength) {
+   MUtil::getFormattedNumber(wval, wformat, wlength)
+}
+
+function trimLeft(wstring) {
+   MString::trimLeft(wstring)
+}
+function trimRight(wstring) {
+   MString::trimRight(wstring)
+}
+function trimLeft(wstring, wchar) {
+   MString::trimLeft(wstring, wchar)
+}
+function trimRight(wstring, wchar) {
+   MString::trimRight(wstring, wchar)
+}
+
+function padLeft(wstring, wlength) {
+   MString::fillLeft(wstring, wlength)
+}
+function padRight(wstring, wlength) {
+   MString::fillRight(wstring, wlength)
+}
+function padLeft(wstring, wlength, wchar) {
+   MString::fillLeft(wstring, wlength, wchar)
+}
+function padRight(wstring, wlength, wchar) {
+   MString::fillRight(wstring, wlength, wchar)
+}
+
+function splitRight(wstring, wlength) {
+   MString::splitRight(wstring, wlength, ' ')
+}
+function splitRight(wstring, wlength, wchar) {
+   MString::splitRight(wstring, wlength, wchar)
+}
+function splitLeft(wstring, wlength) {
+   MString::splitLeft(wstring, wlength, ' ')
+}
+function splitLeft(wstring, wlength, wchar) {
+   MString::splitLeft(wstring, wlength, wchar)
+}
+
+function split(wstring, wlength) {
+   MString::split(wstring, wlength)
+}
+function split(wstring, wlength, wchar) {
+   MString::split(wstring, wlength, wchar)
+}
+function splitLines(wstring, wlength) {
+   MString::splitLines(wstring, wlength)
+}
+function splitLines(wstring, wlength, c, eol) {
+   MString::splitLines(wstring, wlength, c, eol)
+}
+function join(wstringlist) {
+   MString::splitLines(wstringlist)
+}
+function join(wstringlist) {
+   MString::join(wstringlist)
+}
+function join(wstringlist, wchar) {
+   MString::join(wstringlist, wchar)
+}
+function removeDupSpaces(wstring) {
+   MString::removeDupSpaces(wstring)
+}
+function removeDup(wstring, wchar) {
+   MString::removeDup(wstring, wchar)
+}
+function pow(wval1,wval2) {
+   MNumberUtil::pow(wval1,wval2)
+}
+function abs(wval) {
+   MNumberUtil::abs(wval)
+}
+function round(wval) {
+   MNumberUtil::round(wval)
+}
+function round(wval, wdec) {
+   MNumberUtil::round(wval, wdec)
+}
+
+function today() {
+   MDate::getToday()
+}
+function today(wformat) {
+   MDate::getToday(wformat)
+}
+
+function time() {
+   MDate::getTime()
+}
+function time(wformat) {
+   MDate::getTime(wformat)
+}
+
+function workingDays(wdatai,wdataf) {
+   MHCbcal::workingDays(wdatai,wdataf)
+}
+
+function getMinProperty(wProperty) {
+   MUtil::getMinProperty(wProperty)
+}
+
+function getLoginProperty(wProperty) {
+   MLogin::getLoginProperty(wProperty)
+}
+function getDBProperty(wProperty) {
+   MLogin::getDBProperty(wProperty)
+}
+
+function getMHashtable() {
+   MHashtable(true, false)
+}
+function getMHashtable(wadd) {
+   if (!(wadd instanceof Boolean)) {
+      getMHashtable(wadd, true, false);
+   } else {
+      MHashtable(wadd, false)
+   }
+}
+function getMHashtable(wadd, wexists) {
+   MHashtable(wadd, wexists)
+}
+function getMHashtable(wobj, wadd, wexists) {
+   hash = MHashtable(wobj)
+   hash.setAllowChange(wadd)
+   hash.setAllowExists(wexists)
+   hash
+}
+
+function showText(mform) {
+   MUtil::showText(mform)
+}
+function showText(mform, wtitle) {
+   MUtil::showText(mform, wtitle)
+}
+function showText(mform, wtitle, wtext) {
+   MUtil::showText(mform, wtitle, wtext)
+}
+function showTextRTF(mform) {
+   MUtil::showTextRTF(mform)
+}
+function showTextRTF(mform, wtitle) {
+   MUtil::showTextRTF(mform, wtitle)
+}
+function showTextRTF(mform, wtitle, wtext) {
+   MUtil::showTextRTF(mform, wtitle, wtext)
+}
+
+function getTextRTF(wtext) {
+   MUtil::getTextRTF(wtext)
+}
+
+//
+
+
+// Interface erros da aplicação
+
+function showMessage(werr) {
+   return showMessage(werr, null)
+}
+
+function showMessage(wmsg, wparms) {
+   println("showMessage: " + wmsg + " - " + wparms);flush()
+   if (wmsg.startsWith("MIN-")) {
+      return showError(wmsg, wparms)
+   }
+   err = MError("MIN-000001M", wparms)
+   err.setMessage(wmsg)
+   return err.show()
+}
+
+function showError(werr) {
+   return MError(werr).show()
+}
+
+function showError(werr, wparms) {
+  merr = MError(werr, wparms)
+  merr.setFromPnut(true)
+  return merr.show()
+}
+
+function throwError(werr) {
+   err = MError(werr)
+   err.setFromPnut(true)
+   throw(err)
+}
+function throwError(werr, wparms) {
+   err = MError(werr, wparms)
+   err.setFromPnut(true)
+   throw(err)
+}
+
+function throwError(werr, wform, watrib) {
+   err = MError(werr)
+   err.setFromPnut(true)
+   err.setAtrib(watrib)
+   err.setForm(wform)
+   err.setWmcode(-1)
+   throw(err)
+}
+
+function throwError(werr, wform, watrib, wmsg) {
+   err = MError(werr, wmsg)
+   err.setFromPnut(true)
+   err.setAtrib(watrib)
+   err.setForm(wform)
+   err.setWmcode(-1)
+   throw(err)
+}
+
+//
+
+
+// Interface Sql
+function getSQLValue(wcsel) {
+  MUtil::getSQLValue(wcsel)
+}
+
+function getSQLValue(wcsel,mcurs) {
+  MUtil::getSQLValue(wcsel,mcurs)
+}
+
+function getSQLNumber(wcsel) {
+  toNumber(getSQLValue(wcsel))
+}
+
+function getSQLNumber(wcsel,mcurs) {
+  toNumber(getSQLValue(wcsel,mcurs))
+}
+
+function executeSQL(wcsel) {
+   MUtil::executeSQL(wcsel)
+}
+
+function executeSQL(wcsel,mcurs) {
+   MUtil::executeSQL(wcsel, mcurs)
+}
+
+function getRow(wcsel) {
+   getRow(null, wcsel)
+}
+function getRow(wname, wcsel) {
+   getRow(wname, wcsel, null)
+}
+function getRow(wname, wcsel, mcurs) {
+   if (wname == null) {
+      wname = "ROW"
+   }
+   _rows = getRows(wname, wcsel, 1, mcurs);
+   if (_rows.isEmpty()) {
+      _row = MRecord(wname + " - NOT-FOUND")
+      _row.put("wdcode", SQL_NOTFOUND)
+   } else {
+      _row = _rows.firstElement()
+      _row.put("wdcode", SQL_OK)
+   }
+   _rows.close()
+   return _row
+}
+
+function getRows(name, sql) {
+   return MResultSet(name, sql)
+}
+function getRows(name, sql, countORmcurs) {
+   if (countORmcurs instanceof MCursor) {
+      return getRows(name, sql, -1, countORmcurs)
+   } else {
+      return MResultSet(name, sql, countORmcurs)
+   }
+}
+function getRows(name, sql, count, mcurs) {
+   if (mcurs == null) {
+      return MResultSet(name, sql, count)
+   } else {
+      return MResultSet(mcurs, name, sql, count)
+   }
+}
+
+function executeQuery(wcsel) {
+   executeQuery(null, wcsel)
+}
+
+function executeQuery(wname, wcsel) {
+   wmcurs = MConnection::getMCursor()
+   wmcurs.execQuery(wname, wcsel)
+   if (wmcurs.getWdcode() == SQL_OK) {
+      wtbl = wmcurs.getRecord()
+      wtbl.setAllowExists(false)
+   } else {
+      wtbl = getMHashtable()
+      if (wname != null) wtbl.setName(wname + " - NOT-FOUND")
+   }
+   wmcurs.close()
+   wtbl.put("wdcode", wmcurs.getWdcode());
+   wtbl
+}
+
+
+function executeVectorQuery(wcsel) {
+   executeVectorQuery(wcsel, -1)
+}
+function executeVectorQuery(wpar1, wpar2) {
+   if (wpar2 instanceof Number) {
+      return executeVectorQuery(null, wpar1, wpar2)
+   } else {
+      return executeVectorQuery(wpar1, wpar2, -1)
+   }
+}
+
+function executeVectorQuery(wname, wcsel, wnum) {
+   println("O método executeVectorQuery() está desactualizado. Utilizar o método getRows().");flush()
+   mcurs = MConnection::getMCursor()
+   mcurs.execQuery(wname, wcsel)
+   if (mcurs.getWdcode() == SQL_OK) {
+      wvec = mcurs.getXRecords(wnum)
+      foreach wvecrow (wvec.elements()) wvecrow.setAllowExists(false)
+   } else {
+      wvec = Vector()
+   }
+   mcurs.close()
+   wvec
+}
+
+
+
+function executeObjectQuery(wcsel) {
+   executeObjectQuery(null, wcsel)
+}
+function executeObjectQuery(wname, wcsel) {
+   println("O método executeObjectQuery() está desactualizado. Utilizar o método getRow().");flush()
+   wmcurs = MConnection::getMCursor()
+   wmcurs.execQuery(wname, wcsel)
+   if (wmcurs.getWdcode() == SQL_OK) {
+      wtbl = wmcurs.getObjectRecord()
+      wtbl.setAllowExists(false)
+   } else {
+      wtbl = getMHashtable()
+      if (wname != null) wtbl.setName(wname + " - NOT-FOUND")
+   }
+   wmcurs.close()
+   wtbl.put("wdcode", wmcurs.getWdcode());
+   wtbl
+}
+
+
+function executeObjectVectorQuery(wcsel) {
+   throwError("O método executeObjectVectorQuery() está desactualizado. Utilizar o método getRows().");
+}
+function executeObjectVectorQuery(wpar1, wpar2) {
+   throwError("O método executeObjectVectorQuery() está desactualizado. Utilizar o método getRows().");
+}
+function executeObjectVectorQuery(wname,wcsel, wnum) {
+   throwError("O método executeObjectVectorQuery() está desactualizado. Utilizar o método getRows().");
+}
+
+function executeProcedure(name)
+{
+   executeProcedure(name, null)
+}
+function executeProcedure(name, parms)
+{
+   MSqlProc::doStaticProc(name, parms)
+}
+
+function executeProcedure(name, parms, mcursor)
+{
+   MSqlProc::doStaticProc(mcursor.getMConnection(), name, parms)
+}
+
+
+//
+
+
+// Interface Aplicação
+function getMRow(went) {
+  MMData::getMRow(went)
+}
+
+function getMRow(row, wcsel) {
+  wv = getMRows(row, wcsel, 1)
+  if (wv != null && wv.size() > 0) {
+    return wv.elementAt(0)
+  } else {
+    return null
+  }
+}
+
+function getMRows(row, wcsel) {
+  getMRows(row, wcsel, -1)
+}
+
+function getMRows(row, wcsel, n) {
+  if (row instanceof String) {
+      row = getMRow(row)
+  }
+  MUtil::getRows(row, wcsel, n)
+}
+
+function changeCurrency(wvrows, wcurrency) {
+   foreach wrow (wvrows.elements()) {
+      wrow.changeCurrency(wcurrency)
+   }
+}
+
+function expandRow(wrow) {
+   MUtil::expand(wrow);
+}
+function expandRow(wrow, wfield) {
+   MUtil::expand(wrow, wfield);
+}
+
+function expandForm(wform) {
+   MUtil::expandForm(wform, false);
+}
+function expandForm(wform, withErrors) {
+   MUtil::expandForm(wform, withErrors);
+}
+function expandForm(wform, withErrors, wfields) {
+   if (wfields instanceof String) {
+      whash = Hashtable()
+      whash.put(wfields, wfields)
+   } else if (wfields.getClass().isArray()) {
+      whash = Hashtable()
+      foreach wfield (wfields) {
+         whash.put(wfield, wfield)
+      }
+   } else if (wfields instanceof Vector) {
+      whash = Hashtable()
+      foreach wfield (wfields.elements()) {
+         whash.put(wfield, wfield)
+      }
+   } else {
+      whash = wfields
+   }
+   MUtil::expandForm(wform, withErrors, whash);
+}
+
+
+function getDialogForm(formParent, panel, paneltype, paneltitle, button_int) {
+  MForm::getDialogForm(formParent, panel, paneltype, paneltitle, button_int)
+}
+function getDialogForm(formParent, panel, paneltype, paneltitle, button_int, connection) {
+  MForm::getDialogForm(formParent, panel, paneltype, paneltitle, button_int, connection)
+}
+
+function getNctx(wictx, wivalk) {
+   if (wivalk.trim() == "") {return ""}
+   wcsel = "select nvl(max(nctx),'?') as nctx from bctxt0 where ictx = '" + wictx + "' and ivalk = '" + wivalk + "'"
+   getSQLValue(wcsel)
+}
+
+function getNctx(wictx, wivalk, wdata) {
+   if (wivalk.trim() == "") {return ""}
+   wcsel = "select nvl(max(nctx),'?') as nctx from bctxt0 where ictx = '" + wictx + "' and ivalk = '" + wivalk + "' and '" + wdata + "-01' between dini and dfim "
+   getSQLValue(wcsel)
+}
+
+function getTparms(wictx, wivalk) {
+   if (wivalk.trim() == "") {return ""}
+   wcsel = "select nvl(max(tparms),'?') as tparms from bctxt0 where ictx = '" + wictx + "' and ivalk = '" + wivalk + "'"
+   getSQLValue(wcsel)
+}
+function getBctx(wictx, wivalk) {
+   wcsel = "select * from bctxt0 where ictx = '" + wictx + "' and ivalk = '" + wivalk + "'"
+   wrow = getRow("BCTX", wcsel)
+   if (wrow.wdcode != SQL_OK) {
+      wrow = getMRow("BCTX")
+      wrow.getRecord().put("wdcode", Integer(SQL_NOTFOUND).toString())
+      wrow.getMTable().setType("wdcode", MRow::NUMTYPE)
+   }
+   return wrow
+}
+
+
+
+
+//
+
+
+// Funções várias
+
+// Validação de mandatórios [um e só um preenchido]
+function validateOne(wform, warray) {
+   wfound = null
+   foreach f (warray) {
+      wempty = false
+      val = wform.get(f)
+      if (val instanceof Number) {
+         if (val == 0) wempty = true
+      } else {
+         if (val.trim() == "") wempty = true
+      }
+      if (!wempty) {
+         if (wfound != null) throwError("MIN-001011E", wform, f, [wfound])
+         wfound = f
+      }
+   }
+   if (wfound == null) {
+      throwError("MIN-001010E", wform, warray[0])
+   }
+}
+
+// Validação de mandatórios [pelo menos 1 preenchido]
+function validateAny(wform, warray) {
+   foreach f (warray) {
+      val = wform.get(f)
+      if (val instanceof Number) {
+         if (val != 0) return
+      } else {
+         if (val.trim() != "") return
+      }
+   }
+   throwError("MIN-001010E", wform, warray[0])
+}
+
+// Validação de mandatórios [ou nenhum ou todos]
+function validate(wform, warray) {
+   validateAll(wform, warray)
+}
+
+function validateAll(wform, warray) {
+   wfound = false
+   wfirst_field = true
+   foreach f (warray) {
+      wempty = false
+      val = wform.get(f)
+      if (val instanceof Number) {
+         if (val == 0) wempty = true
+      } else {
+         if (val.trim() == "") wempty = true
+      }
+      if (wfound) {
+         if (wempty) {
+            throwError("MIN-001010E", wform, f)
+         }
+      } else if (!wempty) {
+         if (! wfirst_field) {
+            throwError("MIN-001010E", wform, warray[0])
+         }
+         wfound = true
+      }
+      wfirst_field = false
+   }
+}
+
+// Validação que estão todos vazios
+function validateEmpty(wform, warray) {
+   wempty = true
+   foreach f (warray) {
+      val = wform.get(f)
+      if (val instanceof Number) {
+         if (val != 0) wempty = false
+      } else {
+         if (val.trim() != "") wempty = false
+      }
+      if (!wempty) throwError("MIN-001012E", wform, f)
+   }
+}
+
+// Testa se um valor existe num array ou vector
+function inArray(wvalue, warray)
+{
+   if (warray instanceof java.util.Vector) {
+      foreach v (warray.elements()) if (wvalue.equals(v)) return true
+   } else if (warray) {
+      foreach v (warray) if (wvalue.equals(v)) return true
+   }
+   false
+}
+
+// devolve true se um elemento está num array
+function inList(wstr, wlist)
+{
+   //if (wlist instanceof java.util.Vector || wlist instanceof java.util.Hashtable) {
+   if (wlist instanceof Vector || wlist instanceof Hashtable) {
+      wlist = wlist.elements()
+   }
+   foreach wval (wlist) {
+      if (wstr.equals(wval)) {
+         return true;
+      }
+   }
+   return false;
+}
+
+//
+
+
+//
+function memberOf(wautline)
+{
+  MCheckAut::checkAutLine("AL", wautline)
+}
+
+
+
+// interface com impressão RTF
+function getLogoPath(wiorg) {
+   MUtil::getLogoPath(wiorg)
+}
+
+function getLogoPath() {
+   MUtil::getLogoPath()
+}
+
+function getFooterPath(wiorg) {
+   MUtil::getFooterPath(wiorg)
+}
+
+function getFooterPath() {
+   MUtil::getFooterPath()
+}
+
+function getFilePath(wtitle) {
+   MUtil::getFilePath(wtitle)
+}
+
+function getFilePath(wtitle, wdir) {
+   MUtil::getFilePath(wtitle, wdir)
+}
+function getFilePath(wtitle, wdir, wfilename) {
+   MUtil::getFilePath(wtitle, wdir, wfilename)
+}
+function getSimpleText(wstring) {
+   MUtil::getSimpleText(wstring)
+}
+//
+
+
+
+function getMoeda1() {
+   wmoeda = MLogin::getDBProperty("MINMOEDA1")
+   if (wmoeda == null) return "PTE"
+   return wmoeda
+}
+function getMoeda2() {
+   wmoeda = MLogin::getDBProperty("MINMOEDA2")
+   if (wmoeda == null) return "EUR"
+   return wmoeda
+}
+
+
+function getCambio(wmcm) {
+   return getCambio(wmcm, getMoeda1())
+}
+function getCambio(wmcm, wcmc) {
+   return getCambio(wmcm, wcmc, today())
+}
+function getCambio(wmcm, wcmc, wdata) {
+   return getCambio(wmcm, wcmc, wdata, "*")
+}
+function getCambio(wmcm, wcmc, wdata, wccm) {
+   wdcam = getCambioRecord(wmcm, wcmc, wdata, wccm)
+   return wdcam.qcamb
+}
+function getCambioRecord(wmcm) {
+   return getCambioRecord(wmcm, getMoeda1())
+}
+function getCambioRecord(wmcm, wvcm) {
+   return getCambioRecord(wmcm, wvcm, today())
+}
+function getCambioRecord(wmcm, wvcm, wdata) {
+   return getCambioRecord(wmcm, wvcm, wdata, "*")
+}
+function getCambioRecord(wmcm, wcmc, wdata, wccm) {
+   wcsel  = "select * from dcamt0"
+   wcsel += " where mcm = '" + wmcm + "' and cmc = '" + wcmc + "' and ccm = '" + wccm + "'"
+   wcsel +=   " and dini <= '" + wdata + "' and dfim >= '" + wdata + "'"
+   wdcam = getRow("DCAM", wcsel)
+   if (wdcam.wdcode != SQL_OK) {
+      throwError("MIN-DCAM01E", [wmcm, wcmc, wccm, wdata])
+   }
+   return wdcam
+}
+
+function converterMoeda(wvalor) {
+   return converterMoeda(wvalor, getMoeda1())
+}
+function converterMoeda(wvalor, wmcm) {
+   return converterMoeda(wvalor, wmcm, 0, getMoeda1())
+}
+function converterMoeda(wvalor, wmcm, wqcamb, wcmc) {
+   return converterMoeda(wvalor, wmcm, wqcamb, wcmc, today())
+}
+function converterMoeda(wvalor, wmcm, wqcamb, wcmc, wdata) {
+   return converterMoeda(wvalor, wmcm, wqcamb, wcmc, wdata, "*")
+}
+function converterMoeda(wvalor, wmcm, wqcamb, wcmc, wdata, wccm) {
+   vcm = getMoeda1()
+   ycm = getMoeda2()
+   if (wmcm == null || wmcm.trim() == "") wmcm = getMoeda1()
+   if (wcmc == null || wcmc.trim() == "") wcmc = getMoeda1()
+   if (wccm == null || wccm.trim() == "") wccm = "*"
+   if (wdata == null || wdata.trim() == "") wdata = today()
+   if (wqcamb == 0) wqcamb = getCambio(wmcm, wcmc, wdata, wccm)
+
+   if (wvalor == 0) {
+      return [0, vcm, 0, ycm, wqcamb, wcmc]
+   }
+   vvalor = getValorMoeda1(wvalor, wmcm, wqcamb, wcmc, wdata, wccm)
+   yvalor = getValorMoeda2(wvalor, wmcm, wqcamb, wcmc, wdata, wccm)
+   return [vvalor, vcm, yvalor, ycm, wqcamb, wcmc]
+}
+
+function getValorMoeda1(wvalor, wmcm, wqcamb, wcmc) {
+   return getValorMoeda1(wvalor, wmcm, wqcamb, wcmc, today())
+}
+function getValorMoeda1(wvalor, wmcm, wqcamb, wcmc, wdata) {
+   return getValorMoeda1(wvalor, wmcm, wqcamb, wcmc, wdata, "*")
+}
+function getValorMoeda1(wvalor, wmcm, wqcamb, wcmc, wdata, wccm) {
+   return getValorMoedaReferencia("v", wvalor, wmcm, wqcamb, wcmc, wdata, wccm)
+}
+
+function getValorMoeda2(wvalor, wmcm, wqcamb, wcmc) {
+   return getValorMoeda2(wvalor, wmcm, wqcamb, wcmc, today())
+}
+function getValorMoeda2(wvalor, wmcm, wqcamb, wcmc, wdata) {
+   return getValorMoeda2(wvalor, wmcm, wqcamb, wcmc, wdata, "*")
+}
+function getValorMoeda2(wvalor, wmcm, wqcamb, wcmc, wdata, wccm) {
+   return getValorMoedaReferencia("y", wvalor, wmcm, wqcamb, wcmc, wdata, wccm)
+}
+
+function getValorIvaMoeda1(wvalor, wmcm, wqcamb, wcmc) {
+   return getValorIvaMoeda1(wvalor, wmcm, wqcamb, wcmc, today())
+}
+function getValorIvaMoeda1(wvalor, wmcm, wqcamb, wcmc, wdata) {
+   return getValorIvaMoeda1(wvalor, wmcm, wqcamb, wcmc, wdata, "*")
+}
+function getValorIvaMoeda1(wvalor, wmcm, wqcamb, wcmc, wdata, wccm) {
+   return getValorMoedaReferencia("vi", wvalor, wmcm, wqcamb, wcmc, wdata, wccm)
+}
+
+function getValorIvaMoeda2(wvalor, wmcm, wqcamb, wcmc) {
+   return getValorIvaMoeda2(wvalor, wmcm, wqcamb, wcmc, today())
+}
+function getValorIvaMoeda2(wvalor, wmcm, wqcamb, wcmc, wdata) {
+   return getValorIvaMoeda2(wvalor, wmcm, wqcamb, wcmc, wdata, "*")
+}
+function getValorIvaMoeda2(wvalor, wmcm, wqcamb, wcmc, wdata, wccm) {
+   return getValorMoedaReferencia("yi", wvalor, wmcm, wqcamb, wcmc, wdata, wccm)
+}
+
+function getValorMoedaReferencia(wtipo, wvalor, wmcm, wqcamb, wcmc, wdata) {
+   return getValorMoedaReferencia(wtipo, wvalor, wmcm, wqcamb, wcmc, wdata, "*")
+}
+function getValorMoedaReferencia(wtipo, wvalor, wmcm, wqcamb, wcmc, wdata, wccm) {
+   wvcm = getMoeda1()
+   wycm = getMoeda2()
+
+   if (wmcm == null || wmcm.trim() == "") wmcm = getMoeda1()
+   if (wcmc == null || wcmc.trim() == "") wcmc = getMoeda1()
+   if (wccm == null || wccm.trim() == "") wccm = "*"
+   if (wdata == null || wdata.trim() == "") wdata = today()
+   if (wqcamb == 0) wqcamb = getCambio(wmcm, wcmc, wdata, wccm)
+
+   wcsel  = " select mincvm('" + wtipo + "', " + wvalor + ", '" + wmcm + "', " + wqcamb + ", '" + wcmc + "', '" + wccm + "', '" + wdata + "', '" + wvcm + "', '" + wycm + "') "
+   wcsel += " from dual "
+   return getSQLNumber(wcsel)
+}
+
+// NFA 2003-02-07
+
+function getPassword(wform, wtitle, wlabel) {
+
+   wpane = JOptionPane()
+   wdefaults = MTextField()
+   woptions = ["     OK     ","Cancelar"]
+   wfield = JPasswordField()
+   wfield.setEchoChar('*')
+   wfield.setFont(wdefaults.DEFAULTFONT)
+   wfield.setBackground(wdefaults.DEFAULTCOLOR)
+   wfield.setForeground(wdefaults.DEFFONTCOLOR)
+
+
+   wcampos = [wlabel,wfield]
+
+   wanswer = wpane.showOptionDialog(wform.getMFrame(), wcampos, wtitle, wpane.DEFAULT_OPTION, wpane.QUESTION_MESSAGE , null, woptions, woptions[0]);
+   if (wanswer == 1) {
+      return null
+   }
+   return wfield.getText()
+}
+
+//****
+
+function sendEmail(mailhost, subject, contents, from, to){
+   sendEmail(mailhost, subject, contents, from, to, "", "", "")
+}
+
+function sendEmail(mailhost, subject, contents, from, to, cc, bcc, replyTo){
+   sendEmail(mailhost, 25, subject, contents, from, to, cc, bcc, replyTo)
+}
+
+function sendEmail(mailhost, mailport, subject, contents, from, to, cc, bcc, replyTo)
+{
+  props = Properties()
+  props.put("mail.smtp.host", mailhost)
+  props.put("mail.smtp.port", mailport)
+
+  session = Session::getInstance(props, null)
+  msg = MimeMessage(session)
+  msg.setFrom(senderAddress(from))
+  msg.setRecipients(Message$RecipientType::TO, receiverAddress(to))
+
+  if (cc.trim() != "") msg.setRecipients(Message$RecipientType::CC, receiverAddress(cc))
+  if (bcc.trim() != "") msg.setRecipients(Message$RecipientType::BCC, receiverAddress(bcc))
+  if (replyTo.trim() != "") msg.setReplyTo(receiverAddress(replyTo))
+
+  msg.setSubject(subject)
+  msg.setHeader("Minimal", "pnuts")
+  msg.setSentDate(Date())
+
+  if (contents instanceof MimeMultipart){
+    msg.setContent(contents)
+  } else if (contents instanceof String){
+    msg.setText(contents)
+  } else {
+    throw("contents must be a String or a MimeMultipart")
+  }
+
+  Transport::send(msg)
+}
+
+function sendEmailAuth(user,pass,mailhost, mailport, subject, contents, from, to, cc, bcc, replyTo)
+{
+  props = Properties()
+  props.put("mail.smtp.host", mailhost)
+  props.put("mail.smtp.port", mailport)
+
+  props.put("mail.smtp.starttls.enable", "true");
+  props.put("mail.smtp.user", user);
+  props.put("mail.smtp.password", pass);
+  props.put("mail.smtp.auth", "true");
+
+
+  session = Session::getDefaultInstance(props, null)
+  msg = MimeMessage(session)
+  msg.setFrom(senderAddress(from))
+  msg.setRecipients(Message$RecipientType::TO, receiverAddress(to))
+
+
+  if (cc.trim() != "") msg.setRecipients(Message$RecipientType::CC, receiverAddress(cc))
+  if (bcc.trim() != "") msg.setRecipients(Message$RecipientType::BCC, receiverAddress(bcc))
+  if (replyTo.trim() != "") msg.setReplyTo(receiverAddress(replyTo))
+
+  msg.setSubject(subject)
+  msg.setHeader("Minimal", "pnuts")
+  msg.setSentDate(Date())
+
+  if (contents instanceof MimeMultipart){
+    msg.setContent(contents)
+  } else if (contents instanceof String){
+    msg.setText(contents)
+  } else {
+    throw("contents must be a String or a MimeMultipart")
+  }
+
+ transport = session.getTransport("smtp")
+ transport.connect(mailhost,user, pass)
+ //transport.connect(mailhost, mailport,user, pass)
+ // Transport::send(msg )
+ transport.sendMessage(msg,msg.getAllRecipients())
+ transport.close()
+
+
+
+
+}
+
+
+function senderAddress(addr){
+  if (addr instanceof InternetAddress){
+    addr
+  } else if (addr instanceof String){
+    InternetAddress(addr)
+  } else {
+    throw("illegal arguments")
+  }
+}
+
+function receiverAddress(addr){
+  if (addr instanceof InternetAddress){
+    addr
+  } else if (addr instanceof InternetAddress[]){
+    [addr]
+  } else if (addr instanceof String){
+    InternetAddress::parse(addr, false)
+  } else if (isArray(addr)){
+    map(addr, function (x) InternetAddress(x))
+  } else {
+    throw("illegal arguments")
+  }
+}
+
+function attachText(text) attachText(null, text)
+function attachFile(filename) attachFile(null, filename)
+function attachURL(url) attachURL(null, url)
+
+function attachText(multipart, text){
+  if (multipart == null) multipart = MimeMultipart()
+  part1 = MimeBodyPart()
+  part1.setText(text)
+  multipart.addBodyPart(part1)
+  multipart
+}
+
+function attachFile(multipart, filename){
+  if (multipart == null) multipart = MimeMultipart()
+  part1 = MimeBodyPart()
+  fds = FileDataSource(filename)
+  part1.setDataHandler(DataHandler(fds))
+  part1.setFileName(fds.getName())
+  multipart.addBodyPart(part1)
+  multipart
+}
+
+function attachURL(multipart, url){
+  if (multipart == null) multipart = MimeMultipart()
+  part1 = MimeBodyPart()
+  ds = URLDataSource(url)
+  part1.setDataHandler(DataHandler(ds))
+  part1.setFileName(ds.getName())
+  multipart.addBodyPart(part1)
+  multipart
+}
+
+//****
+
+// ***********************************
+
+// Constantes várias
+SYSTEM_PROPERTIES = System::getProperties()
+
+// SQL
+SQL_OK = 0
+SQL_NOTFOUND = 100
+
+DB_CLIENT = "DEFAULT"
+DB_METADATA = "JMETADATA"
+
+
+// Form's
+BUTTON_CANCEL = 1
+BUTTON_OK = 2
+BUTTON_OK_CANCEL = BUTTON_OK + BUTTON_CANCEL
+
+
+// Ficheiros
+EOL = SYSTEM_PROPERTIES.getProperty("line.separator")
+FILESEP = SYSTEM_PROPERTIES.getProperty("file.separator")
+PATHSEP = SYSTEM_PROPERTIES.getProperty("path.separator")
+
+
+// eof Minimal.pnut

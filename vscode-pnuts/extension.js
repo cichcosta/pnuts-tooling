@@ -1069,11 +1069,67 @@ function createCompletionItemProvider() {
 }
 
 /**
+ * Automatically ensures executable permissions (+x / 0755) for all bundled binaries
+ * on Unix platforms (Linux / macOS). This transparently resolves permission loss
+ * from VSIX extraction in remote SSH environments without any manual user intervention.
+ */
+function ensureBundledBinariesExecutable(context) {
+    if (process.platform === 'win32' || !context || !context.extensionPath) {
+        return;
+    }
+    const binBase = path.join(context.extensionPath, 'resources', 'bin');
+    if (!fs.existsSync(binBase)) {
+        return;
+    }
+    try {
+        const entries = fs.readdirSync(binBase, { withFileTypes: true });
+        for (const entry of entries) {
+            const entryPath = path.join(binBase, entry.name);
+            if (entry.isDirectory()) {
+                try {
+                    const subFiles = fs.readdirSync(entryPath);
+                    for (const subFile of subFiles) {
+                        const subFilePath = path.join(entryPath, subFile);
+                        try {
+                            const stat = fs.statSync(subFilePath);
+                            if (stat.isFile()) {
+                                fs.chmodSync(subFilePath, 0o755);
+                            }
+                        } catch (e) {}
+                    }
+                } catch (e) {}
+            } else if (entry.isFile()) {
+                try {
+                    fs.chmodSync(entryPath, 0o755);
+                } catch (e) {}
+            }
+        }
+        log('Proactively ensured executable permissions (0755) on all bundled binaries.');
+    } catch (e) {
+        log(`Notice: Could not scan bin directory for permissions: ${e.message}`);
+    }
+}
+
+/**
  * Activates the VSCode extension.
  * @param {vscode.ExtensionContext} context
  */
 async function activate(context) {
     log('Pnuts Language Support extension activating...');
+
+    // 0. Proactively ensure executable permissions on bundled binaries for remote-SSH / Unix
+    ensureBundledBinariesExecutable(context);
+
+    // Restore default icon theme if it was previously set to pnuts-icons
+    try {
+        const currentIconTheme = vscode.workspace.getConfiguration('workbench').get('iconTheme');
+        if (currentIconTheme === 'pnuts-icons') {
+            await vscode.workspace.getConfiguration('workbench').update('iconTheme', undefined, vscode.ConfigurationTarget.Global);
+            log('Restored workbench.iconTheme to default');
+        }
+    } catch (e) {
+        // Non-critical
+    }
 
     // 1. Start LanguageClient if LSP binary is found and enabled
     const config = vscode.workspace.getConfiguration('pnuts');

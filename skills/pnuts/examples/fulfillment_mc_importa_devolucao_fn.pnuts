@@ -1,0 +1,457 @@
+// Função para processar Devoluções Fulfillment Mercado Livre.
+// fulfillment_mc_importa_devolucao_fn()
+
+WN = "\n"
+
+println("FUNÇÃO: FULFILLMENT_MC_IMPORTA_DEVOLUCAO_FN() - INICIO"); flush();
+
+function enviarNotificacaoError(e) {
+
+  println("Erro ao processar devolução."); flush();
+  println("Erro: " + e.toString()); flush();
+
+  tassunto = "Erro ao processar devolução fulfillment."
+  tcorpo = "Houve um erro no processamento da devolução fulfillment." + EOL + EOL
+
+  tcorpo += "Erro: " + padRight(e.toString(), 300).substring(0, 300).trim() + EOL + EOL
+  tcorpo += "****** FIM DA MENSAGEM ******"
+
+  tfrom = "comunicacao_interna@ibyte.com.br"
+  to = "chsilva@ibyte.com.br"
+  cc = " "
+  bcc = " "
+
+  x_mc_sendmail_aut_fn(tassunto, tcorpo, tfrom, to, cc, bcc)
+}
+
+function updateDstk(wrow, wdstk, whstk) {
+
+  wsel = ""
+  wsel += " update ddolt0 with(rowlock) "
+  wsel += "    set dstk = '" + wdstk + "', hstk = '" + whstk + "', zprc = -1 "
+  wsel += "  where iorg   = '" + wrow.iorg + "' "
+  wsel += "    and ientt  = '" + wrow.ientt + "' "
+  wsel += "    and ient   = '" + wrow.ient + "' "
+  wsel += "    and idoct  = '" + wrow.idoct + "' "
+  wsel += "    and idoc   = '" + wrow.idoc + "' "
+  x = executeSQL(wsel)
+  wrow.refreshRow()
+
+  wsel = ""
+  wsel += " update ddoct0 with(rowlock) "
+  wsel += "    set dstk = '" + wdstk + "', hstk = '" + whstk + "', zprc = -1 "
+  wsel += "  where zk     = " + wrow.zk
+  x = executeSQL(wsel)
+  wrow.refreshRow()
+}
+
+function processarDevolucao(wnota) {
+
+  catch (Exception, function(e) { enviarNotificacaoError(e.toString()) })
+
+  wdatetime = x_mc_br_get_date_server_fn()
+  wdate = wdatetime.substring(0, 10)
+  wtime = wdatetime.substring(11, 19)
+
+  // Consultar itens devolvidos.
+  wsel = ""
+  wsel += " IF OBJECT_ID('tempdb.dbo.##tt_itens_devolvidos', 'U') IS NOT NULL DROP TABLE ##tt_itens_devolvidos; "
+  wsel += " select a.referenceCode "
+  wsel += " into ##tt_itens_devolvidos "
+  wsel += " from vw_magis5_item_invoiced_fulfillment_with_freith a with (nolock) "
+  wsel += " where a.accessKey = '" + wnota.accesskey.trim() + "' "
+  println("wsel: " + wsel); flush();
+  x = executeSQL(wsel)
+
+  // Localizar a NOTA de Venda.
+  wsel = ""
+  wsel += " select b.* "
+  wsel += "   from ddoctx a with (nolock) "
+  wsel += "  inner join ddoct0 b with (nolock)  "
+  wsel += "     on b.zk = a.zkent "
+  wsel += " where a.zcomp = 'widnfe' "
+  wsel += " and a.zchar = '" + wnota.accesskeyreference.trim() + "' "
+  println("wsel: " + wsel); flush();
+  wnnf = getMRow("DDOC", wsel)
+
+  if (wnnf == null) {
+    println("Nota fiscal de venda não encontrada."); flush();
+    return null
+  }
+
+  // Quantidade de itens devolvidos.
+  wsel = ""
+  wsel += " select sum(a.amount) "
+  wsel += " from vw_magis5_item_invoiced_fulfillment_with_freith a with (nolock) "
+  wsel += " where a.accessKey = '" + wnota.accesskey.trim() + "' "
+  println("wsel: " + wsel); flush();
+  wquant = getSQLNumber(wsel)
+
+  // Quantidade de itens da nota de venda.
+  wsel = ""
+  wsel += " select sum(a.qpsr) "
+  wsel += " from ddolt0 a with (nolock) "
+  wsel += " where a.iorg = 'TEC' "
+  wsel += " and a.ientt = '" + wnnf.ientt.trim() + "' "
+  wsel += " and a.ient = '" + wnnf.ient.trim() + "' "
+  wsel += " and a.idoct = '" + wnnf.idoct.trim() + "' "
+  wsel += " and a.idoc = '" + wnnf.idoc.trim() + "' "
+  wsel += " and exists ( select 'exists' from ##tt_itens_devolvidos b where b.referenceCode = a.ipsr ) "
+  println("wsel: " + wsel); flush();
+  wquantnf = getSQLNumber(wsel)
+
+  if (round(wquant, 2) > round(wquantnf, 2)) {
+    println("Quantidade de itens da nota de venda diferente da quantidade de itens devolvidos."); flush();
+    return null
+  }
+
+  // Consulta se já existe devoluções geradas.
+  wsel = ""
+  wsel += " select sum(mvalor)"
+  wsel += "  from ddoct0 (nolock) "
+  wsel += " where idoct  = 'NVD'  "
+  wsel += " and  idoct2  = '" + wnnf.idoct.trim() + "' "
+  wsel += " and idoc2    = '" + wnnf.idoc.trim() + "' "
+  wsel += " and cstc    <> 'XA' "
+  println("wsel: " + wsel); flush();
+  wmvalornvds = getSQLNumber(wsel)
+
+  if (round(wmvalornvds, 2) >= round(wnnf.mvalor, 2)) {
+    println("Valor de devoluções geradas maior ou igual ao valor da nota de venda."); flush();
+    return null
+  }
+
+  // Parametros para gerar a devolução via zglobals.
+  zglobals.ROW_UPD_CLI = wnnf
+  zglobals.DOC = "NVD"
+
+  wientt = wnnf.ientt
+  wient = wnnf.ient
+  println("Iniciando gerar documento de devolução."); flush();
+  wnvd = fulfillment_mc_gerar_doc_fn(wientt, wient)
+
+  // Destruição das variáveis de zglobals após o consumo
+  zglobals.remove("ROW_UPD_CLI")
+  zglobals.remove("DOC")
+
+  if (wnvd == null) {
+    println("Erro ao gerar nota de devolução."); flush();
+    return null
+  }
+
+  wdstk = wnota.date.toString().substring(0, 10)
+  whstk = wnota.date.toString().substring(11, 19)
+
+  // Ajustar status do documento.
+  println("Ajustar status do documento."); flush();
+  wnvd.cstc = "E0"
+  wnvd.updateRow(wnvd)
+  wnvd.setZCommand("VERIFY_ROW", "AA", " ")
+  wnvd.refreshRow()
+
+  wnvd.csto = "CF"
+  wnvd.updateRow(wnvd)
+  wnvd.setZCommand("STOCKF_ROW", "AA", " ")
+  wnvd.refreshRow()
+
+  // Atualizar data de estoque
+  updateDstk(wnvd, wdstk, whstk)
+  wnvd.refreshRow()
+
+  // Processar tesouraria.
+  println("Processar tesouraria."); flush();
+  wddoq = getMRow("DDOQ")
+  wddoq.iorg = wnvd.iorg
+  wddoq.idoct = wnvd.idoct
+  wddoq.idoc = wnvd.idoc
+  wddoq.ientt = wnvd.ientt
+  wddoq.ient = wnvd.ient
+  wddoq.itemt = "AVD"
+  wddoq.item = wnvd.idoc
+  wddoq.itbc = "CCDEV"
+  wddoq.cpg = "T"
+  wddoq.ppg = 100
+  wddoq.xord = "*"
+  wddoq.zent = "DDOC"
+  wddoq.cr = "VX"
+  wddoq.ctem = "QC"
+  wddoq.dtem = wdate
+  wddoq.mcm = "BRL"
+  wddoq.qcamb = 1.00
+  wddoq.cmc = "BRL"
+  wddoq.ntem = ""
+  wddoq.mvalor = wnvd.mvalor
+  wddoq.insertRow()
+  wddoq.setZCommand("INSERT_ROW", "AF", " ")
+
+  // Enviar para Tesouraria
+  wnvd.refreshRow()
+  wnvd.setZCommand("PAY_ROW", "AF", " ")
+  wnvd.refreshRow()
+
+  x_mc_update_extension_fn("c", "ddoctx", wnvd.zk, "wsalesplatformscod", wnota.salesplatformcode.trim())
+  x_mc_update_extension_fn("c", "ddoctx", wnvd.zk, "wsaleschannelcode", wnota.saleschannelcode.trim())
+  x_mc_update_extension_fn("c", "ddoctx", wnvd.zk, "wfulfillment", "SIM")
+  x_mc_update_extension_fn("c", "ddoctx", wnvd.zk, "wchavenfe", wnota.accesskey.trim())
+  println("Documento de devolução gerado."); flush();
+
+  // Gerar NF
+  println("Gerar NF."); flush();
+  wnnf = ddoc0_mc_copy_row_fn(wnvd, "NVD", "NNF", "E", "202", "S", "DV", "VX", "CF", "N", "CF", "", "S")
+  wnnf.refreshRow()
+
+  // Gravar protocolo de envio.
+  x_mc_update_extension_fn("c", "DDOCTX", formatNumber(wnnf.zk, "N00000000000000"), "wprotenv", wnota.protocol.trim())
+
+  magis5_mc_atualiza_nnf_fn(wnota.accesskey.trim(), wnnf.idoc.trim(), "")
+
+  println("Atualizar Status da NF."); flush();
+  zglobals.WESPELHO = ""
+
+  wnfe = getMRow("DDOC", "SELECT * FROM ddoct0 WITH (NOLOCK) WHERE idoct = 'NNF' AND idoc = '" + wnnf.idoc.trim() + "' ")
+  ddoc0_mc_nfe_upd_nfe_fn(wnfe)
+
+  // Atualizar data de estoque
+  updateDstk(wnfe, wdstk, whstk)
+  wnfe.refreshRow()
+
+  println("Atualizar Status da NVD."); flush();
+
+  return wnfe
+}
+
+function processarDevolucao(wnota, wnrt) {
+
+  wnnf = processarDevolucao(wnota)
+
+  if (wnnf == null) {
+    return
+  }
+
+  wdatetime = x_mc_br_get_date_server_fn()
+  wdate = wdatetime.substring(0, 10)
+  wtime = wdatetime.substring(11, 16)
+
+  wsel = ""
+  wsel += WN + " select * "
+  wsel += WN + "  from ddolt0 with (nolock) "
+  wsel += WN + "  where iorg = 'TEC' "
+  wsel += WN + "  and idoct = '" + wnnf.idoct.trim() + "' "
+  wsel += WN + "  and idoc = '" + wnnf.idoc.trim() + "' "
+  wsel += WN + "  and ientt = '" + wnnf.ientt.trim() + "' "
+  wsel += WN + "  and ient = '" + wnnf.ient.trim() + "' "
+  vddol = getMRows("DDOL", wsel)
+
+  foreach wddol(vddol.elements()) {
+
+    wddol_nrt = wddol.Copy()
+
+    wddol_nrt.idoct = wnrt.idoct
+    wddol_nrt.idoc = wnrt.idoc
+    wddol_nrt.ientt = wnrt.ientt
+    wddol_nrt.ient = wnrt.ient
+    wddol_nrt.ddoc = wnrt.ddoc
+    wddol_nrt.ddoces = wdate
+    wddol_nrt.zcst = "us"
+    wddol_nrt.cstc = "PD"
+    wddol_nrt.dstc = wdate
+    wddol_nrt.csto = "PD"
+    wddol_nrt.dsto = wdate
+    wddol_nrt.cr = wnrt.cr
+    wddol_nrt.ctcf = wnrt.ctcf
+    wddol_nrt.xstk = "+ppppppSET"
+    wddol_nrt.dstk = wdate
+    wddol_nrt.hstk = wtime
+    wddol_nrt.idoct2 = wnnf.idoct
+    wddol_nrt.idoc2 = wnnf.idoc
+    wddol_nrt.qdocpg = 0
+
+    wddol_nrt.insertRow()
+    wddol_nrt.setZCommand("INSERT_ROW", "AF", " ")
+
+    ddoc0_pr_insert_ddoe_fn(wnrt, "INS", "S", "(AUT) " + wddol_nrt.ipsr.trim() + "-" + INT(wddol_nrt.qpsr) + "-" + wnnf.idoct.trim() + " " + wnnf.idoc.trim(), wddol_nrt.mvalor)
+  }
+}
+
+cursor = MConnection::getMCursor()
+
+wdatetime = x_mc_br_get_date_server_fn()
+wdate = wdatetime.substring(0, 10)
+wtime = wdatetime.substring(11, 19)
+
+// Consultar notas que ainda não foram processadas.
+wSelect = ""
+wSelect += WN + " IF OBJECT_ID('tempdb.dbo.#tt_ful_params', 'U') IS NOT NULL DROP TABLE #tt_ful_params; "
+wSelect += WN + " SELECT "
+wSelect += WN + "     TRIM(b.ivalk) AS ivalk, "
+wSelect += WN + "     TRIM(b.nctx) AS nctx, "
+wSelect += WN + "     TRIM(b.xord) AS xord, "
+wSelect += WN + "     TRIM(b.tclass) AS tclass, "
+wSelect += WN + "     TRIM(b.tparms) AS tparms "
+wSelect += WN + " INTO #tt_ful_params "
+wSelect += WN + " FROM bctxt0 AS b WITH (NOLOCK) "
+wSelect += WN + " WHERE "
+wSelect += WN + "     b.ictx = 'FULFILLMENT*PARAMS' "
+wSelect += WN + "     AND b.ivalk IN ('SERIE_FULFILLMENT', 'ARMAZEM') "
+wSelect += WN + "     AND b.cst = 'E0'; "
+x = executeSQL(wSelect)
+
+wsel = ""
+wsel += WN + " SELECT a.* "
+wsel += WN + " FROM tb_order_invoiced_fulfillment AS a WITH (NOLOCK) "
+wsel += WN + " INNER JOIN #tt_ful_params AS ser "
+wsel += WN + "     ON "
+wsel += WN + "         ser.ivalk = 'SERIE_FULFILLMENT' "
+wsel += WN + "         AND ser.xord = SUBSTRING(a.accessKey, 23, 3) "
+wsel += WN + " INNER JOIN #tt_ful_params AS chan "
+wsel += WN + "     ON "
+wsel += WN + "         chan.ivalk = 'ARMAZEM' "
+wsel += WN + "         AND ser.tclass = chan.tclass "
+wsel += WN + "         AND a.salesChannelCode = chan.tclass "
+wsel += WN + " WHERE "
+wsel += WN + "     a.salesPlatformCode = 'MAGIS5' "
+wsel += WN + "     AND a.cfop IN ('2202', '1202') "
+wsel += WN + "     AND NOT EXISTS ( "
+wsel += WN + "         SELECT 'exists' "
+wsel += WN + "         FROM tb_order_invoiced_fulfillment AS b WITH (NOLOCK) "
+wsel += WN + "         WHERE "
+wsel += WN + "             b.accessKeyReference = a.accessKey "
+wsel += WN + "             AND b.series = a.series "
+wsel += WN + "             AND b.salesPlatformCode = a.salesPlatformCode "
+wsel += WN + "             AND b.salesChannelCode = a.salesChannelCode "
+wsel += WN + "     ) "
+wsel += WN + "     AND NOT EXISTS ( "
+wsel += WN + "         SELECT 'exists' "
+wsel += WN + "         FROM ddoct0 AS c WITH (NOLOCK) "
+wsel += WN + "         WHERE "
+wsel += WN + "             c.iorg = 'TEC' "
+wsel += WN + "             AND c.idoct = 'NNF' "
+wsel += WN + "             AND c.idoc = ser.tparms + '/' + FORMAT(CAST(a.number AS INT), 'D8') "
+wsel += WN + "     ) "
+wsel += WN + " ORDER BY a.updateDate DESC "
+println("wsel: " + wsel); flush();
+vnotas = getRows("NOTAS", wsel)
+
+// Verificar se tem NRT parametrizado.
+wsel = ""
+wsel += WN + " select xord as ientt, tclass as ient, tparms as idoc "
+wsel += WN + " from bctxt0 with (nolock) "
+wsel += WN + " where ictx = 'B2C*PARAMS' "
+wsel += WN + " and ivalk = 'NRT_FULFILLMENT' "
+wnrt = getRow("NRT", wsel)
+
+if (wnrt.wdcode == 100) {
+  throwError("Operação Cancelada! NRT de Fulfillment nao foi parametrizado.")
+} else {
+  wsel = ""
+  wsel += WN + " select * "
+  wsel += WN + "     from ddoct0 with (nolock) "
+  wsel += WN + " where iorg = 'TEC' "
+  wsel += WN + " and idoct = 'NRT' "
+  wsel += WN + " and idoc = '" + wnrt.idoc.trim() + "' "
+  wsel += WN + " and ientt = '" + wnrt.ientt.trim() + "' "
+  wsel += WN + " and ient = '" + wnrt.ient.trim() + "' "
+  wsel += WN + " and csto != 'XA' and cstc != 'XA' "
+  wnrt = getMRow("DDOC", wsel)
+
+  if (wnrt == null) {
+    throwError("Operação Cancelada! NRT de Fulfillment nao foi encontrado ou está cancelada")
+  }
+}
+
+if (wnrt.csto.trim() != "PD") {
+  wnrt.csto = "PD"
+  wnrt.dsto = wdate
+  wnrt.updateRow(wnrt)
+  wnrt.setZCommand("UPDATE_ROW", "AF", " ")
+  wnrt.refreshRow()
+}
+
+if (wnrt.cstc.trim() != "PD") {
+  wnrt.cstc = "PD"
+  wnrt.dstc = wdate
+  wnrt.updateRow(wnrt)
+  wnrt.setZCommand("UPDATE_ROW", "AF", " ")
+  wnrt.refreshRow()
+}
+
+foreach wnota(vnotas.elements()) {
+  // Gerar devolução
+  processarDevolucao(wnota, wnrt)
+}
+
+// Recalcular documento
+executeProcedure("ddocpcal", [wnrt.iorg, wnrt.ientt, wnrt.ient, wnrt.idoct, wnrt.idoc, "RECALC_ROW", 0])
+
+wnrt.refreshRow()
+
+wnrt.csto = "CE"
+wnrt.updateRow(wnrt)
+wnrt.setZCommand("STOCKE_ROW", "AA", " ")
+wnrt.refreshRow()
+
+wnrt.cstc = "E0"
+wnrt.updateRow(wnrt)
+wnrt.setZCommand("VERIFY_ROW", "AA", " ")
+wnrt.refreshRow()
+
+cursor.commitWork()
+cursor.beginWork()
+
+wsel = ""
+wsel += WN + " SELECT a.* "
+wsel += WN + " FROM tb_order_invoiced_fulfillment AS a WITH (NOLOCK) "
+wsel += WN + " INNER JOIN #tt_ful_params AS ser "
+wsel += WN + "     ON "
+wsel += WN + "         ser.ivalk = 'SERIE_FULFILLMENT' "
+wsel += WN + "         AND ser.xord = SUBSTRING(a.accessKey, 23, 3) "
+wsel += WN + " INNER JOIN #tt_ful_params AS chan "
+wsel += WN + "     ON "
+wsel += WN + "         chan.ivalk = 'ARMAZEM' "
+wsel += WN + "         AND ser.tclass = chan.tclass "
+wsel += WN + "         AND a.salesChannelCode = chan.tclass "
+wsel += WN + " WHERE "
+wsel += WN + "     a.salesPlatformCode = 'MAGIS5' "
+wsel += WN + "     AND a.cfop IN ('2202', '1202') "
+wsel += WN + "     AND EXISTS ( "
+wsel += WN + "         SELECT 'exists' "
+wsel += WN + "         FROM tb_order_invoiced_fulfillment AS b WITH (NOLOCK) "
+wsel += WN + "         WHERE "
+wsel += WN + "             b.accessKeyReference = a.accessKey "
+wsel += WN + "             AND b.series = a.series "
+wsel += WN + "             AND b.salesPlatformCode = a.salesPlatformCode "
+wsel += WN + "             AND b.salesChannelCode = a.salesChannelCode "
+wsel += WN + "     ) "
+wsel += WN + "     AND NOT EXISTS ( "
+wsel += WN + "         SELECT 'exists' "
+wsel += WN + "         FROM ddoct0 AS c WITH (NOLOCK) "
+wsel += WN + "         WHERE "
+wsel += WN + "             c.iorg = 'TEC' "
+wsel += WN + "             AND c.idoct = 'NNF' "
+wsel += WN + "             AND c.idoc = ser.tparms + '/' + FORMAT(CAST(a.number AS INT), 'D8') "
+wsel += WN + "     ) "
+wsel += WN + " ORDER BY a.updateDate DESC "
+println("wsel: " + wsel); flush();
+vnotas = getRows("NOTAS", wsel)
+
+foreach wnota(vnotas.elements()) {
+
+  // Gerar devolução
+  processarDevolucao(wnota)
+
+  function importarNotasRemessa() {
+    println("Importando notas de remessa."); flush();
+    catch (Exception, function(e) { enviarNotificacaoError(e.toString()) })
+    fulfillment_mc_importa_nf_remessa_fn()
+  }
+
+  // Importar notas de remessa
+  importarNotasRemessa()
+
+  cursor.commitWork()
+  cursor.beginWork()
+}
+
+println("FUNÇÃO: FULFILLMENT_MC_IMPORTA_DEVOLUCAO_FN() - FINAL"); flush();
+
+// EOF

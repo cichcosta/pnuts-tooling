@@ -801,6 +801,16 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_instanceof_formatting_regression() {
+        let input = "if (wc instanceof MTextField) {\n  m.showComponentTab(campo)\n}\n";
+        let result = format_code(input).await;
+        if let Ok(formatted) = result {
+            assert!(formatted.contains("wc instanceof MTextField"));
+            assert!(!formatted.contains("wcinstanceof"));
+        }
+    }
+
+    #[tokio::test]
     async fn test_format_range_with_indentation() {
         let code = r#"function calc() {
     a=1;

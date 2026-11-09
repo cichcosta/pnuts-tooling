@@ -2,8 +2,8 @@
 
 > **Data de Atualização:** 2026-09-20  
 > **Branch Ativa:** `feature/pnuts-groovy-lsp`  
-> **Versão Atual da Extensão:** `0.3.18` (instalada no VS Code Server)  
-> **Status dos Testes:** 58 testes automatizados passando (100% de cobertura no Cargo).
+> **Versão Atual da Extensão:** `0.3.22` (instalada no VS Code Server)  
+> **Status dos Testes:** 74 testes automatizados passando (100% de cobertura no Cargo: 59 unitários, 14 E2E e 1 grammar).
 
 Este documento é o plano operacional para as próximas sessões. Seu objetivo é garantir que nenhuma informação se perca, evitar discussões repetidas e guiar a execução passo a passo com clareza.
 
@@ -12,6 +12,20 @@ Este documento é o plano operacional para as próximas sessões. Seu objetivo �
 ## 1. Estado Atual Consolidado (O que já está pronto e testado)
 
 - **LSP Core (`pnuts-lsp`):**
+  - **Signature Help (`textDocument/signatureHelp`):**
+    - Balão flutuante interativo com assinatura completa ativado por digitação de `(` e `,` ou atalho `Ctrl+Shift+Space`.
+    - Destaque em negrito do parâmetro ativo em tempo real (`active_parameter`), com suporte a múltiplos argumentos e chamadas aninhadas (`formatNumber(round(x, 2), ...)`).
+    - Suporte a funções locais declaradas no script (`function nome(...)`), métodos em classes, funções nativas/banco (`getRows`, `getMCursor`, `getDialogFormEx`, etc.) e métodos de objetos (`COMMON_METHODS`).
+    - Scanner léxico resiliente com mascaramento de strings, comentários e blocos aninhados (`[]`, `{}`).
+  - **Hover Enriquecido (`textDocument/hover`):**
+    - Cards completos de documentação e blocos de código com exemplos práticos prontos para copiar e colar para as classes essenciais do dia a dia: `MConnection`, `MLogin`, `MForm`, `MCursor`, `MRow`, `MDate`, `MFile`, `JSONObject`, `JSONArray`.
+    - Documentação de métodos comuns de objetos (`trim`, `substring`, `get`, `put`, `size`, `beginWork`, `commitWork`, etc.).
+    - Exibição de tipo e declaração de variáveis locais atribuídas no escopo.
+  - **Code Actions & Quick Fixes (`textDocument/codeAction`):**
+    - Atalho `Ctrl + .` / lâmpada amarela do editor.
+    - **Refactoring:** "Envolver em bloco try / catch" envolvendo a seleção ou linha com indentação perfeita e tratamento padrão com `showError`.
+    - **Quick Fix:** "Importar '<classe>'" para classes Java frequentes (`ArrayList`, `HashMap`, `List`, `Map`, `BigDecimal`, `SimpleDateFormat`, `JSONObject`, etc.) com inserção limpa no topo do arquivo sem duplicatas.
+    - **Quick Action:** "Inserir cabeçalho padrão de script" para novos arquivos ou scripts sem header.
   - Formatação completa (`textDocument/formatting`) com Topiary integrado e regras de indentação/comentários.
   - Formatação de trechos selecionados (`textDocument/rangeFormatting`) com preservação da indentação base.
   - Autocomplete (`textDocument/completion`) de escopo (funções locais, parâmetros, variáveis locais, built-ins, classes comuns e snippets).
@@ -20,8 +34,12 @@ Este documento é o plano operacional para as próximas sessões. Seu objetivo �
   - Document Outline (`textDocument/documentSymbol`).
   - Renomeação segura (`textDocument/rename` e `prepareRename`).
   - Diagnósticos sintáticos em tempo real (`textDocument/publishDiagnostics`).
-  - Documentação flutuante (`textDocument/hover`).
-- **Colorização Sintática (VS Code):**
+- **Ícones Específicos das Linguagens e Colorização Sintática (VS Code):**
+  - **Ícones Nativos Catppuccin (inspirados em `daveedmee/catppuccin-icons`):**
+    - `icons/pnuts.svg`: Amendoim vetorial autêntico em Catppuccin Peach (`#f5a97f`), nervuras em Yellow (`#eed49f`), contorno Macchiato Base (`#24273a`) e brilhos em Rosewater (`#f4dbd6`).
+    - `icons/pnuts.png`: Renderização vetorial anti-aliased de alta resolução (256x256, Lanczos supersampling) do ícone Catppuccin Pnuts para o marketplace e painel de extensões.
+    - `icons/groovy.svg`: Glifo dinâmico em Catppuccin Sapphire (`#7dc4e4`) com laço em Catppuccin Sky (`#91d7e3`).
+    - **Sem interferência no tema de ícones:** Nenhuma alteração global em `workbench.iconTheme`, preservando 100% o tema de pastas e arquivos padrão do usuário.
   - **Pnuts:** Paridade com Groovy para classes/constantes em maiúsculas (`WN`, `MConnection`, `MLogin` $\rightarrow$ `entity.name.type.class.pnuts`), propriedades (`support.type.property-name.pnuts`), variáveis e métodos.
   - **Groovy:** Correção do lookbehind da regex de *slashy strings* para evitar colisão com divisão aritmética (`(endTime - startTime) / 1000`) e diferenciação cromática de `m.idoc.trim()`.
 - **Limpeza do Zed:**
@@ -30,62 +48,25 @@ Este documento é o plano operacional para as próximas sessões. Seu objetivo �
 
 ---
 
-## 2. Backlog Priorizado para as Próximas Sessões
+## 2. Backlog do Sprint Concluído com Sucesso (v0.3.22)
 
-### 🎯 Passo 1: Implementação do Signature Help (`textDocument/signatureHelp`)
-- **Objetivo:** Exibir um balão flutuante interativo ao abrir parênteses `(` ou digitar vírgulas `,` durante a chamada de qualquer função ou método.
-- **Comportamento Esperado:**
-  - Mostrar a assinatura completa: `getMCursor(query: String, connection: MConnection)`.
-  - Destacar em **negrito** o parâmetro ativo conforme o usuário avança com as vírgulas.
-  - Suportar tanto funções locais declaradas no script (`function calcular(a, b, c)`) quanto funções nativas de banco e runtime (`getDialogFormEx`, `getRows`, etc.).
-- **Tarefas de Implementação:**
-  1. Criar `pnuts-lsp/src/signature_help.rs` com inspeção da AST Tree-sitter para nós `call_expression` e contagem de argumentos (vírgulas).
-  2. Integrar suporte na tabela de assinaturas de funções do domínio e funções declaradas no arquivo.
-  3. Registrar `signature_help_provider` nas capabilities de `initialize` em `pnuts-lsp/src/backend.rs` com triggers `vec!["(".to_string(), ",".to_string()]`.
-  4. Adicionar testes unitários em `signature_help.rs` e teste de integração JSON-RPC em `tests/lsp_e2e_test.rs`.
+- [x] **Passo 1: Signature Help (`textDocument/signatureHelp`)**
+- [x] **Passo 2: Ícones Nativos Catppuccin para Pnuts e Groovy (`icons/pnuts.svg`, `icons/groovy.svg`, `icons/pnuts.png`)**
+- [x] **Passo 3: Preservação estrita do Tema de Ícones Padrão do Usuário (sem alterar `workbench.iconTheme`)**
+- [x] **Passo 4: Enriquecimento da Documentação no Hover (`textDocument/hover`)**
+- [x] **Passo 5: Code Actions / Quick Fixes (`textDocument/codeAction`)**
 
 ---
 
-### 🎨 Passo 2: Investigação e Refinamento do Ícone do Pnuts
-- **Problema Notado:** O usuário observou que o ícone do Pnuts no VS Code continuou com a aparência anterior após a atualização.
-- **Causas Potenciais a Investigar:**
-  1. **Cache de Ícones do VS Code:** O VS Code armazena em cache os SVGs na interface web/desktop. Fazer um teste forçando a limpeza do cache de temas ou recarregando o tema de ícones.
-  2. **Extensão Icon vs File Icon:** No [`vscode-pnuts/package.json`](file:///home/chsilva/personal/projects/pnuts-tooling/vscode-pnuts/package.json), a propriedade raiz `"icon": "icons/pnuts.png"` define o ícone exibido na lista de extensões instaladas. O arquivo `pnuts.png` ainda é a imagem antiga de alta resolução.
-  3. **Tema de Ícones Ativo:** O VS Code aplica o ícone do arquivo de acordo com o tema selecionado (`File Icon Theme`). Se o usuário estiver utilizando "Seti" ou "Material Icon Theme", o tema pode ter precedência sobre o ícone contribuído pela linguagem.
-- **Tarefas de Resolução:**
-  - Gerar uma versão PNG moderna a partir do novo SVG minimalista para substituir `icons/pnuts.png`.
-  - Revisar a contribuição no `icon-theme.json` e orientar o usuário sobre como ativar o `Pnuts File Icons` ou verificar a precedência.
+## 3. Próximos Passos Sugeridos para os Próximos Sprints
 
----
-
-### 📖 Passo 3: Enriquecimento da Documentação no Hover (`textDocument/hover`)
-- **Objetivo:** Tornar os balões de ajuda ao passar o mouse ainda mais ricos e completos.
-- **Tarefas:**
-  - Mapear objetos e classes frequentes no dia a dia: `MConnection`, `MLogin`, `MForm`, `MCursor`, métodos de transação (`commit`, `rollback`).
-  - Adicionar blocos de código markdown com exemplos de uso direto para copiar e colar.
-
----
-
-### ⚡ Passo 4: Code Actions / Quick Fixes (`textDocument/codeAction`)
-- **Objetivo:** Atalhos inteligentes via `Ctrl + .` (ou lâmpada amarela do editor).
-- **Exemplos de Ações:**
-  - "Envolver trecho selecionado em bloco try/catch".
-  - "Adicionar imports de classes comuns da JVM (`java.util.List`, `java.util.HashMap`, etc.)".
-  - "Inserir cabeçalho de script padrão".
-
----
-
-## 3. Comandos Úteis para Retomada
-
-```bash
-# Executar todos os testes da suíte Rust:
-cargo test
-
-# Compilar binário LSP otimizado de release:
-cargo build --release
-
-# Empacotar e reinstalar extensão no VS Code Server:
-cd vscode-pnuts
-npx @vscode/vsce package --no-git-tag-version
-~/.vscode-server/bin/7debcd0e2acdea1c52de81bf9ee1620444407dda/bin/code-server --install-extension vscode-pnuts-0.3.18.vsix --force
-```
+1. **Construção da IDE Portável no Neovim (v0.12+):**
+   - Especificação técnica e roteiro completo registrados em [`docs/NEOVIM_PORTABLE_IDE_RECIPE.md`](file:///home/chsilva/personal/projects/pnuts-tooling/docs/NEOVIM_PORTABLE_IDE_RECIPE.md).
+   - Execução em 5 fases:
+     - **Fase 1:** Base visual estética (Catppuccin Macchiato, Lazy.nvim, Lualine, Bufferline, Snacks/Fzf-lua, Blink.cmp).
+     - **Fase 2:** LSP, Treesitter e integração nativa com o `pnuts-lsp`.
+     - **Fase 3:** Estação de Debug Visual (DAP UI) para Go, Rust, Zig, JS/TS e Java.
+     - **Fase 4:** Especializações Enterprise (Java/Quarkus com JDTLS, Kotlin, Neotest).
+     - **Fase 5:** Empacotamento em repositório Dotfiles universal multiplataforma.
+2. **Gramática Groovy Tree-sitter Nativa:**
+   - Suporte a construções específicas do Groovy avançado (closures multilinhas tipadas, traits).

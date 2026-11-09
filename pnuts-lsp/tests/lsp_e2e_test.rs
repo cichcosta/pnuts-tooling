@@ -1195,6 +1195,236 @@ async fn test_lsp_range_formatting_lifecycle() {
     assert_eq!(edit.range.end.line, 2);
     assert!(edit.new_text.contains("    a = 1;"));
     assert!(edit.new_text.contains("    b = 2;"));
+    backend
+        .did_close(DidCloseTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri },
+        })
+        .await;
+
+    backend.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_lsp_signature_help_lifecycle() {
+    let (service, _socket) = LspService::new(Backend::new);
+    let backend = service.inner();
+
+    // 1. Initialize and verify capabilities
+    #[allow(deprecated)]
+    let init_params = InitializeParams {
+        process_id: Some(1),
+        root_path: None,
+        root_uri: Some(Url::parse("file:///workspace").unwrap()),
+        initialization_options: None,
+        capabilities: ClientCapabilities::default(),
+        trace: None,
+        workspace_folders: None,
+        client_info: Some(ClientInfo {
+            name: "VSCode".to_string(),
+            version: Some("1.90.0".to_string()),
+        }),
+        locale: None,
+    };
+
+    let init_res = backend.initialize(init_params).await.unwrap();
+    let sig_provider = init_res
+        .capabilities
+        .signature_help_provider
+        .expect("signature_help_provider must be advertised");
+
+    assert_eq!(
+        sig_provider.trigger_characters,
+        Some(vec!["(".to_string(), ",".to_string()])
+    );
+
+    backend.initialized(InitializedParams {}).await;
+
+    // 2. Open document with local functions and calls
+    let uri = Url::parse("file:///workspace/sig_test.pnuts").unwrap();
+    let code = r#"// Formats product item
+function formatItem(name, price, discount) {
+    return name + ": " + price;
+}
+
+res = formatItem("Apple", 10.0, 
+rows = getRows("CLIENTS", 
+cur = MConnection::getMCursor(
+"#;
+
+    backend
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "pnuts".to_string(),
+                version: 1,
+                text: code.to_string(),
+            },
+        })
+        .await;
+
+    // 3. Signature help for local function at 3rd parameter (discount)
+    // Line 5: 'res = formatItem("Apple", 10.0, '
+    let sig_params_local = SignatureHelpParams {
+        text_document_position_params: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            position: Position {
+                line: 5,
+                character: 32, // right after ', '
+            },
+        },
+        work_done_progress_params: Default::default(),
+        context: None,
+    };
+
+    let local_help = backend
+        .signature_help(sig_params_local)
+        .await
+        .unwrap()
+        .expect("SignatureHelp for local function expected");
+
+    assert_eq!(local_help.active_parameter, Some(2));
+    assert_eq!(
+        local_help.signatures[0].label,
+        "function formatItem(name, price, discount)"
+    );
+    let params = local_help.signatures[0].parameters.as_ref().unwrap();
+    assert_eq!(params.len(), 3);
+    assert_eq!(params[0].label, ParameterLabel::Simple("name".to_string()));
+    assert_eq!(params[1].label, ParameterLabel::Simple("price".to_string()));
+    assert_eq!(params[2].label, ParameterLabel::Simple("discount".to_string()));
+
+    // 4. Signature help for builtin `getRows` at 2nd parameter (sqlQuery)
+    // Line 6: 'rows = getRows("CLIENTS", '
+    let sig_params_builtin = SignatureHelpParams {
+        text_document_position_params: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            position: Position {
+                line: 6,
+                character: 26, // right after ', '
+            },
+        },
+        work_done_progress_params: Default::default(),
+        context: None,
+    };
+
+    let builtin_help = backend
+        .signature_help(sig_params_builtin)
+        .await
+        .unwrap()
+        .expect("SignatureHelp for getRows expected");
+
+    assert_eq!(builtin_help.active_parameter, Some(1));
+    assert_eq!(builtin_help.signatures[0].label, "getRows(table, sqlQuery)");
+
+    // 5. Signature help for static member call `MConnection::getMCursor(`
+    // Line 7: 'cur = MConnection::getMCursor('
+    let sig_params_static = SignatureHelpParams {
+        text_document_position_params: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            position: Position {
+                line: 7,
+                character: 30, // right after '('
+            },
+        },
+        work_done_progress_params: Default::default(),
+        context: None,
+    };
+
+    let static_help = backend
+        .signature_help(sig_params_static)
+        .await
+        .unwrap()
+        .expect("SignatureHelp for MConnection::getMCursor expected");
+
+    assert_eq!(static_help.active_parameter, Some(0));
+    assert!(static_help.signatures.iter().any(|s| s.label.starts_with("getMCursor")));
+
+    // 6. Clean up
+    backend
+        .did_close(DidCloseTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri },
+        })
+        .await;
+
+    backend.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_lsp_code_actions_lifecycle() {
+    let (service, _socket) = LspService::new(Backend::new);
+    let backend = service.inner();
+
+    #[allow(deprecated)]
+    let init_params = InitializeParams {
+        process_id: Some(1),
+        root_path: None,
+        root_uri: Some(Url::parse("file:///workspace").unwrap()),
+        initialization_options: None,
+        capabilities: ClientCapabilities::default(),
+        trace: None,
+        workspace_folders: None,
+        client_info: Some(ClientInfo {
+            name: "VSCode".to_string(),
+            version: Some("1.90.0".to_string()),
+        }),
+        locale: None,
+    };
+
+    let init_res = backend.initialize(init_params).await.unwrap();
+    assert!(
+        init_res.capabilities.code_action_provider.is_some(),
+        "code_action_provider capability must be advertised"
+    );
+
+    backend.initialized(InitializedParams {}).await;
+
+    let uri = Url::parse("file:///workspace/action_test.pnuts").unwrap();
+    let code = "lista = new ArrayList();\n";
+
+    backend
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "pnuts".to_string(),
+                version: 1,
+                text: code.to_string(),
+            },
+        })
+        .await;
+
+    // Request code action at ArrayList
+    let action_params = CodeActionParams {
+        text_document: TextDocumentIdentifier { uri: uri.clone() },
+        range: Range {
+            start: Position { line: 0, character: 14 },
+            end: Position { line: 0, character: 23 },
+        },
+        context: CodeActionContext {
+            diagnostics: vec![],
+            only: None,
+            trigger_kind: None,
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+    };
+
+    let response = backend.code_action(action_params).await.unwrap();
+    assert!(response.is_some());
+    let actions = response.unwrap();
+
+    // 1. Should offer Import java.util.ArrayList
+    let import_act = actions.iter().find(|a| match a {
+        CodeActionOrCommand::CodeAction(ca) => ca.title.contains("java.util.ArrayList"),
+        _ => false,
+    });
+    assert!(import_act.is_some(), "Import java.util.ArrayList action expected");
+
+    // 2. Should offer Wrap in try/catch
+    let try_act = actions.iter().find(|a| match a {
+        CodeActionOrCommand::CodeAction(ca) => ca.title.contains("try / catch"),
+        _ => false,
+    });
+    assert!(try_act.is_some(), "Wrap in try/catch action expected");
 
     backend
         .did_close(DidCloseTextDocumentParams {

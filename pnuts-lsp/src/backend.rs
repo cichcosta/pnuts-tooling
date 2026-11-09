@@ -85,6 +85,12 @@ impl LanguageServer for Backend {
                     prepare_provider: Some(true),
                     work_done_progress_options: Default::default(),
                 })),
+                signature_help_provider: Some(SignatureHelpOptions {
+                    trigger_characters: Some(vec!["(".to_string(), ",".to_string()]),
+                    retrigger_characters: Some(vec![",".to_string()]),
+                    work_done_progress_options: Default::default(),
+                }),
+                code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
                 ..ServerCapabilities::default()
             },
             server_info: Some(ServerInfo {
@@ -370,6 +376,56 @@ impl LanguageServer for Backend {
             .flatten();
 
         Ok(locations)
+    }
+
+    async fn signature_help(
+        &self,
+        params: SignatureHelpParams,
+    ) -> Result<Option<SignatureHelp>> {
+        let uri = params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+        debug!("textDocument/signatureHelp at {}: {:?}", uri, position);
+
+        let Some(text) = self.documents.get_text(&uri).await else {
+            return Ok(None);
+        };
+
+        let result = self
+            .documents
+            .with_tree(&uri, |tree| {
+                crate::signature_help::provide_signature_help(Some(tree), &text, position)
+            })
+            .await
+            .unwrap_or_else(|| {
+                crate::signature_help::provide_signature_help(None, &text, position)
+            });
+
+        Ok(result)
+    }
+
+    async fn code_action(
+        &self,
+        params: CodeActionParams,
+    ) -> Result<Option<CodeActionResponse>> {
+        let uri = params.text_document.uri;
+        let range = params.range;
+        debug!("textDocument/codeAction for {} at {:?}", uri, range);
+
+        let Some(text) = self.documents.get_text(&uri).await else {
+            return Ok(None);
+        };
+
+        let actions = self
+            .documents
+            .with_tree(&uri, |tree| {
+                crate::code_actions::provide_code_actions(Some(tree), &text, range, &uri)
+            })
+            .await
+            .unwrap_or_else(|| {
+                crate::code_actions::provide_code_actions(None, &text, range, &uri)
+            });
+
+        Ok(Some(actions))
     }
 }
 

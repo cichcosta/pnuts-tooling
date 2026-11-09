@@ -50,8 +50,8 @@ kind = "Rust"
 version = "0.7.0"
 
 [grammars.pnuts]
-repository = "https://github.com/pnuts-tooling/pnuts-tooling"
-rev = "feature/pnuts-groovy-lsp"
+repository = "file:///C:/Users/chsilva/AppData/Local/Zed/extensions/pnuts-tooling"
+commit = "7f664339fd55e4df9ee23794774f87c2537a6f5e"
 path = "tree-sitter-pnuts"
 
 [language_servers.pnuts-lsp]
@@ -244,13 +244,71 @@ if [ -f "vscode-pnuts/icons/pnuts.svg" ]; then
     cp vscode-pnuts/icons/pnuts.svg zed-pnuts/icons/pnuts.svg
 fi
 
-echo "=== [5/5] Copiando binário nativo pnuts-lsp ==="
+if [ -f "vscode-pnuts/icons/pnuts.png" ]; then
+    cp vscode-pnuts/icons/pnuts.png zed-pnuts/icons/pnuts.png
+fi
+
+if [ -f "vscode-pnuts/icons/groovy.svg" ]; then
+    cp vscode-pnuts/icons/groovy.svg zed-pnuts/icons/groovy.svg
+fi
+
+cat << 'EOF' > zed-pnuts/icon_themes/pnuts.json
+{
+  "$schema": "https://zed.dev/schema/icon_themes/v0.3.0.json",
+  "name": "Pnuts Icon Theme",
+  "author": "Pnuts Tooling Team",
+  "themes": [
+    {
+      "name": "Pnuts Icon Theme",
+      "appearance": "dark",
+      "file_icons": {
+        "pnuts": { "path": "./icons/pnuts.svg" },
+        "groovy": { "path": "./icons/groovy.svg" }
+      },
+      "file_suffixes": {
+        "pnuts": "pnuts",
+        "pnut": "pnuts",
+        "groovy": "groovy"
+      }
+    },
+    {
+      "name": "Pnuts Icon Theme Light",
+      "appearance": "light",
+      "file_icons": {
+        "pnuts": { "path": "./icons/pnuts.svg" },
+        "groovy": { "path": "./icons/groovy.svg" }
+      },
+      "file_suffixes": {
+        "pnuts": "pnuts",
+        "pnut": "pnuts",
+        "groovy": "groovy"
+      }
+    }
+  ]
+}
+EOF
+
+mkdir -p zed-pnuts/resources/queries
+if [ -f "vscode-pnuts/resources/queries/pnuts.scm" ]; then
+    cp vscode-pnuts/resources/queries/pnuts.scm zed-pnuts/resources/queries/pnuts.scm
+fi
+
+echo "=== [5/5] Copiando binários nativos pnuts-lsp e formatador ==="
 if [ -f "target/release/pnuts-lsp" ]; then
     cp target/release/pnuts-lsp zed-pnuts/bin/pnuts-lsp
     chmod +x zed-pnuts/bin/pnuts-lsp
 elif [ -f "$HOME/.local/bin/pnuts-lsp" ]; then
     cp "$HOME/.local/bin/pnuts-lsp" zed-pnuts/bin/pnuts-lsp
     chmod +x zed-pnuts/bin/pnuts-lsp
+fi
+
+if [ -f "vscode-pnuts/resources/bin/win32-x64/pnuts-lsp.exe" ]; then
+    cp vscode-pnuts/resources/bin/win32-x64/pnuts-lsp.exe zed-pnuts/bin/pnuts-lsp.exe
+fi
+
+if [ -f "$HOME/.local/bin/pnuts-format" ]; then
+    cp "$HOME/.local/bin/pnuts-format" zed-pnuts/bin/pnuts-format
+    chmod +x zed-pnuts/bin/pnuts-format
 fi
 
 echo "========================================================"
