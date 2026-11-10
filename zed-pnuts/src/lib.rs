@@ -12,9 +12,6 @@ impl Extension for PnutsExtension {
         _language_server_id: &LanguageServerId,
         worktree: &Worktree,
     ) -> Result<Command> {
-        let (os, _arch) = zed::current_platform();
-        let is_windows = matches!(os, Os::Windows);
-
         let env_vars = worktree.shell_env();
         let get_env = |key: &str| -> Option<String> {
             env_vars
@@ -23,7 +20,23 @@ impl Extension for PnutsExtension {
                 .map(|(_, v)| v.clone())
         };
 
-        let binary = if is_windows {
+        // Detecta se o worktree alvo onde o comando será executado é Windows ou Unix/Linux.
+        // ATENÇÃO: Em sessões Remote-SSH, `zed::current_platform()` retorna o SO do cliente Zed local
+        // (ex: Windows), mas o worktree executa no servidor remoto (ex: Linux)!
+        let is_target_windows = {
+            let root = worktree.root_path();
+            if root.starts_with('/') {
+                // Caminho absoluto POSIX: certamente é Linux / macOS no host remoto
+                false
+            } else if get_env("WINDIR").is_some() || get_env("SYSTEMROOT").is_some() {
+                true
+            } else {
+                let (os, _arch) = zed::current_platform();
+                matches!(os, Os::Windows)
+            }
+        };
+
+        let binary = if is_target_windows {
             worktree
                 .which("pnuts-lsp.exe")
                 .or_else(|| worktree.which("pnuts-lsp"))
@@ -47,39 +60,34 @@ impl Extension for PnutsExtension {
                     }
                 })
         } else {
+            // Ambiente Alvo Unix / Linux (Local ou Remote via SSH)
             worktree
                 .which("pnuts-lsp")
                 .unwrap_or_else(|| {
+                    let home = get_env("HOME");
                     let root = worktree.root_path();
                     let trimmed_root = root.trim_end_matches(['/', '\\']);
-                    if trimmed_root.ends_with("zed-pnuts") {
+
+                    if let Some(h) = home {
+                        let base = h.trim_end_matches(['/', '\\']);
+                        if trimmed_root.ends_with("zed-pnuts") {
+                            format!("{trimmed_root}/bin/pnuts-lsp")
+                        } else if trimmed_root.contains("pnuts-tooling") {
+                            format!("{trimmed_root}/zed-pnuts/bin/pnuts-lsp")
+                        } else {
+                            format!("{base}/.local/bin/pnuts-lsp")
+                        }
+                    } else if trimmed_root.ends_with("zed-pnuts") {
                         format!("{trimmed_root}/bin/pnuts-lsp")
                     } else if trimmed_root.contains("pnuts-tooling") {
                         format!("{trimmed_root}/zed-pnuts/bin/pnuts-lsp")
                     } else {
-                        let home = get_env("HOME");
-                        let (os, arch) = zed::current_platform();
-                        let is_mac = matches!(os, Os::Mac);
-
-                        if let Some(h) = home {
-                            let base = h.trim_end_matches(['/', '\\']);
-                            if is_mac {
-                                if matches!(arch, zed_extension_api::Architecture::Aarch64) {
-                                    format!("{base}/Library/Application Support/Zed/extensions/pnuts-tooling/zed-pnuts/bin/pnuts-lsp-darwin-arm64")
-                                } else {
-                                    format!("{base}/Library/Application Support/Zed/extensions/pnuts-tooling/zed-pnuts/bin/pnuts-lsp-darwin-x64")
-                                }
-                            } else {
-                                format!("{base}/.local/bin/pnuts-lsp")
-                            }
-                        } else {
-                            "pnuts-lsp".to_string()
-                        }
+                        "pnuts-lsp".to_string()
                     }
                 })
         };
 
-        let command_path = if is_windows {
+        let command_path = if is_target_windows {
             binary.replace('/', "\\")
         } else {
             let _ = zed::make_file_executable(&binary);
