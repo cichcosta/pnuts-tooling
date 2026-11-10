@@ -90,7 +90,6 @@ impl Extension for PnutsExtension {
         let command_path = if is_target_windows {
             binary.replace('/', "\\")
         } else {
-            let _ = zed::make_file_executable(&binary);
             binary
         };
 
