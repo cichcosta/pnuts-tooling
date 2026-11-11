@@ -65,9 +65,9 @@ impl Extension for PnutsExtension {
 
         // 3. AUTO-PROVISIONING / DOWNLOAD OFICIAL DO ZED
         // Tenta baixar a release oficial mais recente via GitHub Releases do Zed API
-        let downloaded_binary = self.download_server_binary(language_server_id, is_target_windows);
+        let download_result = self.download_server_binary(language_server_id, is_target_windows);
 
-        if let Ok(path) = downloaded_binary {
+        if let Ok(path) = download_result {
             self.cached_binary_path = Some(path.clone());
             return Ok(Command {
                 command: path,
@@ -75,6 +75,8 @@ impl Extension for PnutsExtension {
                 env: Default::default(),
             });
         }
+
+        let download_err = download_result.err().unwrap_or_else(|| "erro desconhecido".to_string());
 
         // 4. FALLBACK TRANSPARENTE: Varredura de caminhos padrão do host
         let root = worktree.root_path();
@@ -118,11 +120,17 @@ impl Extension for PnutsExtension {
             candidate
         };
 
-        Ok(Command {
-            command: command_path,
-            args: vec![],
-            env: Default::default(),
-        })
+        if fs::metadata(&command_path).map_or(false, |stat| stat.is_file()) {
+            return Ok(Command {
+                command: command_path,
+                args: vec![],
+                env: Default::default(),
+            });
+        }
+
+        Err(format!(
+            "Não foi possível iniciar o pnuts-lsp. Falha no auto-download da release GitHub: {download_err}. Caminho local verificado: {command_path}"
+        ))
     }
 }
 
