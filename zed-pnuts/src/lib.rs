@@ -4,7 +4,7 @@ use zed_extension_api::{
     GithubReleaseOptions, LanguageServerId, LanguageServerInstallationStatus, Os, Result, Worktree,
 };
 
-const GITHUB_REPO: &str = "pnuts-tooling/pnuts-tooling";
+const GITHUB_REPO: &str = "cichcosta/pnuts-tooling";
 
 struct PnutsExtension {
     cached_binary_path: Option<String>,

@@ -4,7 +4,7 @@ version = "0.3.0"
 schema_version = 1
 authors = ["Pnuts Tooling Team"]
 description = "Pnuts language support for Zed, including syntax highlighting, code navigation, brackets, indents, and native Language Server Protocol (LSP) formatter."
-repository = "https://github.com/pnuts-tooling/pnuts-tooling"
+repository = "https://github.com/cichcosta/pnuts-tooling"
 snippets = ["./snippets/pnuts.json"]
 
 [lib]
@@ -12,8 +12,8 @@ kind = "Rust"
 version = "0.7.0"
 
 [grammars.pnuts]
-repository = "file:///C:/Users/chsilva/AppData/Local/Zed/extensions/pnuts-tooling"
-commit = "7f664339fd55e4df9ee23794774f87c2537a6f5e"
+repository = "https://github.com/cichcosta/pnuts-tooling"
+rev = "main"
 path = "tree-sitter-pnuts"
 
 [language_servers.pnuts-lsp]

@@ -6,7 +6,7 @@
   "publisher": "pnuts-tooling",
   "repository": {
     "type": "git",
-    "url": "https://github.com/pnuts-tooling/pnuts-tooling"
+    "url": "https://github.com/cichcosta/pnuts-tooling"
   },
   "icon": "icons/pnuts.png",
   "engines": {
