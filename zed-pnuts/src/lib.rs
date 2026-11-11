@@ -209,6 +209,10 @@ impl PnutsExtension {
             )?;
 
             let _ = zed::make_file_executable(&binary_path);
+            let format_bin = if is_target_windows { "pnuts-format.exe" } else { "pnuts-format" };
+            let topiary_bin = if is_target_windows { "topiary.exe" } else { "topiary" };
+            let _ = zed::make_file_executable(&format!("{version_dir}/{format_bin}"));
+            let _ = zed::make_file_executable(&format!("{version_dir}/{topiary_bin}"));
         }
 
         zed::set_language_server_installation_status(
